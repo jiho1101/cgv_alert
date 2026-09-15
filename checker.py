@@ -1,7 +1,9 @@
 import argparse
 import json
 import os
+import re
 import sys
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -27,22 +29,79 @@ def save_state(state):
         f.write("\n")
 
 
-def resolve_date(value: str) -> str:
-    value = str(value).strip().lower()
-    today = datetime.now(KST).date()
+def parse_ymd(value: str):
+    return datetime.strptime(str(value), "%Y%m%d").date()
 
+
+def daterange(start_ymd: str, end_ymd: str):
+    start = parse_ymd(start_ymd)
+    end = parse_ymd(end_ymd)
+    if end < start:
+        raise ValueError("date_range.end는 start보다 빠를 수 없습니다")
+    result = []
+    current = start
+    while current <= end:
+        result.append(current.strftime("%Y%m%d"))
+        current += timedelta(days=1)
+    return result
+
+
+def resolve_target_range(target):
+    date_range = target.get("date_range") or {}
+    if date_range:
+        return daterange(date_range["start"], date_range["end"])
+
+    value = str(target.get("date", "today")).strip().lower()
+    today = datetime.now(KST).date()
     if value == "today":
-        return today.strftime("%Y%m%d")
+        return [today.strftime("%Y%m%d")]
     if value == "tomorrow":
-        return (today + timedelta(days=1)).strftime("%Y%m%d")
+        return [(today + timedelta(days=1)).strftime("%Y%m%d")]
     if value.startswith("today+"):
         days = int(value.split("+", 1)[1])
-        return (today + timedelta(days=days)).strftime("%Y%m%d")
+        return [(today + timedelta(days=days)).strftime("%Y%m%d")]
     if len(value) == 8 and value.isdigit():
-        datetime.strptime(value, "%Y%m%d")
-        return value
-
+        parse_ymd(value)
+        return [value]
     raise ValueError(f"지원하지 않는 날짜 형식: {value}")
+
+
+def is_due(interval_minutes: int, now: datetime) -> bool:
+    interval_minutes = max(int(interval_minutes), 5)
+    minute_of_day = now.hour * 60 + now.minute
+    return (minute_of_day % interval_minutes) < 5
+
+
+def planned_dates(target, now: datetime):
+    all_dates = resolve_target_range(target)
+    if len(all_dates) <= 1:
+        return all_dates
+
+    strategy = target.get("scan_strategy", {})
+    priority_range = strategy.get("priority_range") or {}
+    priority_dates = all_dates
+    if priority_range:
+        p_start = str(priority_range.get("start", all_dates[0]))
+        p_end = str(priority_range.get("end", all_dates[-1]))
+        priority_dates = [d for d in all_dates if p_start <= d <= p_end]
+
+    fast_mode_from = str(strategy.get("fast_mode_from", all_dates[0]))
+    today_ymd = now.strftime("%Y%m%d")
+
+    if today_ymd < fast_mode_from:
+        preopen_interval = int(strategy.get("preopen_interval_minutes", 360))
+        return priority_dates if is_due(preopen_interval, now) else []
+
+    selected = set()
+    priority_interval = int(strategy.get("priority_interval_minutes", 15))
+    full_interval = int(strategy.get("full_interval_minutes", 120))
+
+    if is_due(priority_interval, now):
+        selected.update(priority_dates)
+    if is_due(full_interval, now):
+        selected.update(all_dates)
+
+    return sorted(selected)
 
 
 def fetch_schedule(theater_code: str, play_ymd: str, timeout: int):
@@ -61,7 +120,7 @@ def fetch_schedule(theater_code: str, play_ymd: str, timeout: int):
         "Content-Type": "application/json; charset=UTF-8",
         "Origin": "https://m.cgv.co.kr",
         "Referer": "https://m.cgv.co.kr/",
-        "User-Agent": "cgv-alert/1.0 (+GitHub Actions; personal notification project)",
+        "User-Agent": "cgv-alert/1.1 (+GitHub Actions; personal notification project)",
     }
 
     try:
@@ -120,6 +179,23 @@ def as_int(value, default=0):
         return default
 
 
+def normalize_title(text: str) -> str:
+    return re.sub(r"[^0-9a-zA-Z가-힣]", "", str(text)).casefold()
+
+
+def movie_matches(movie_name: str, target) -> bool:
+    aliases = target.get("movie_aliases", [])
+    if aliases:
+        normalized_name = normalize_title(movie_name)
+        return any(normalize_title(alias) in normalized_name for alias in aliases)
+
+    keywords = target.get("movie_keywords", [])
+    if not keywords:
+        return True
+    lowered = movie_name.casefold()
+    return any(str(keyword).casefold() in lowered for keyword in keywords)
+
+
 def contains_any(text: str, keywords) -> bool:
     if not keywords:
         return True
@@ -139,7 +215,6 @@ def session_key(theater_code: str, play_ymd: str, row: dict) -> str:
 
 
 def filter_sessions(rows, target, play_ymd):
-    movie_keywords = target.get("movie_keywords", [])
     screen_keywords = target.get("screen_keywords", [])
     require_sale_open = bool(target.get("require_sale_open", True))
     min_remaining = as_int(target.get("min_remaining_seats", 0), 0)
@@ -152,7 +227,7 @@ def filter_sessions(rows, target, play_ymd):
             for field in ("ScreenNm", "MovieAttrNm", "ScreenRatingCd")
         )
 
-        if not contains_any(movie_name, movie_keywords):
+        if not movie_matches(movie_name, target):
             continue
         if not contains_any(screen_text, screen_keywords):
             continue
@@ -189,10 +264,10 @@ def build_message(target, play_ymd, sessions):
     theater = target.get("theater_name") or f"CGV {target['theater_code']}"
 
     lines = [
-        "CGV 예매 감지",
-        f"조건: {label}",
+        "🎬 CGV 예매 오픈 감지",
+        f"영화: {label}",
         f"극장: {theater}",
-        f"날짜: {date_text}",
+        f"가장 빠른 확인 날짜: {date_text}",
         "",
     ]
 
@@ -278,8 +353,8 @@ def send_notifications(message: str) -> bool:
 
 def run_self_test(timeout: int):
     today = datetime.now(KST).strftime("%Y%m%d")
-    rows = fetch_schedule("0056", today, timeout)
-    print(f"CGV 공개 시간표 API 자체점검 완료: {len(rows)}개 회차 응답")
+    rows = fetch_schedule("0128", today, timeout)
+    print(f"CGV 울산삼산 공개 시간표 API 자체점검 완료: {len(rows)}개 회차 응답")
 
 
 def run_checker():
@@ -290,31 +365,77 @@ def run_checker():
 
     timeout = as_int(config.get("request", {}).get("timeout_seconds", 15), 15)
     targets = [target for target in config.get("targets", []) if target.get("enabled", False)]
-
     if not targets:
-        print("활성화된 감시 조건이 없습니다. config.json에서 enabled를 true로 바꾸면 감시를 시작합니다.")
+        print("활성화된 감시 조건이 없습니다.")
         return
 
-    state_changed = False
+    now = datetime.now(KST)
+    target_by_id = {}
+    scheduled = defaultdict(lambda: defaultdict(list))
 
     for target in targets:
         target_id = str(target.get("id") or target.get("label") or target.get("theater_code"))
+        target_by_id[target_id] = target
         theater_code = str(target["theater_code"]).strip()
-        play_ymd = resolve_date(target.get("date", "today"))
+        dates = planned_dates(target, now)
+        for play_ymd in dates:
+            scheduled[theater_code][play_ymd].append(target_id)
 
-        print(f"[{target_id}] 극장 {theater_code}, 날짜 {play_ymd} 확인")
-        rows = fetch_schedule(theater_code, play_ymd, timeout)
-        matched = filter_sessions(rows, target, play_ymd)
+    if not scheduled:
+        print("이번 5분 실행은 CGV 조회 차례가 아닙니다. 불필요한 반복 요청을 건너뜁니다.")
+        return
 
+    cache = {}
+
+    def get_rows(theater_code, play_ymd):
+        key = (theater_code, play_ymd)
+        if key not in cache:
+            print(f"극장 {theater_code}, 날짜 {play_ymd} 확인")
+            cache[key] = fetch_schedule(theater_code, play_ymd, timeout)
+        return cache[key]
+
+    found = defaultdict(dict)
+    for theater_code, dates in scheduled.items():
+        for play_ymd, target_ids in sorted(dates.items()):
+            rows = get_rows(theater_code, play_ymd)
+            for target_id in target_ids:
+                matched = filter_sessions(rows, target_by_id[target_id], play_ymd)
+                if matched:
+                    found[target_id][play_ymd] = matched
+
+    # 후보가 잡히면 그 날짜보다 앞선 전체 범위를 즉시 확인해서
+    # 알림에 표시되는 날짜가 실제 감시 범위 내 가장 빠른 날짜인지 보장한다.
+    for target_id, by_date in list(found.items()):
+        if not by_date:
+            continue
+        target = target_by_id[target_id]
+        theater_code = str(target["theater_code"]).strip()
+        candidate = min(by_date)
+        earlier_dates = [d for d in resolve_target_range(target) if d < candidate]
+        for play_ymd in earlier_dates:
+            rows = get_rows(theater_code, play_ymd)
+            matched = filter_sessions(rows, target, play_ymd)
+            if matched:
+                by_date[play_ymd] = matched
+
+    state_changed = False
+
+    for target_id, target in target_by_id.items():
+        by_date = found.get(target_id, {})
+        if not by_date:
+            print(f"[{target_id}] 예매 가능한 대상 회차 없음")
+            continue
+
+        earliest_date = min(by_date)
+        matched = by_date[earliest_date]
         seen = set(state["seen"].get(target_id, []))
         new_sessions = [row for row in matched if row["_key"] not in seen]
-
-        print(f"[{target_id}] 전체 {len(rows)}개 / 조건 일치 {len(matched)}개 / 신규 {len(new_sessions)}개")
+        print(f"[{target_id}] 가장 빠른 날짜 {earliest_date} / 신규 {len(new_sessions)}개")
 
         if not new_sessions:
             continue
 
-        message = build_message(target, play_ymd, new_sessions)
+        message = build_message(target, earliest_date, new_sessions)
         print(message)
 
         if send_notifications(message):
