@@ -1,0 +1,19 @@
+{
+  "targets": [
+    {
+      "id": "example",
+      "enabled": false,
+      "label": "예시 감시 조건",
+      "theater_code": "0056",
+      "theater_name": "CGV 강남",
+      "date": "today",
+      "movie_keywords": ["영화 제목"],
+      "screen_keywords": [],
+      "require_sale_open": true,
+      "min_remaining_seats": 1
+    }
+  ],
+  "request": {
+    "timeout_seconds": 15
+  }
+}
