@@ -214,7 +214,7 @@ def extract_sessions(body_text: str, target, play_ymd: str):
         if sessions:
             break
 
-    sessions.sort(key=lambda row: (row.get("ScreenNm", ""), row["PlayStartTm"]))
+    sessions.sort(key=lambda row: (row["PlayStartTm"], row.get("ScreenNm", "")))
     return sessions
 
 
@@ -225,38 +225,87 @@ def pretty_time(value) -> str:
     return str(value or "-")
 
 
-def build_message(target, play_ymd, sessions, new_count=None):
-    date_text = datetime.strptime(play_ymd, "%Y%m%d").strftime("%Y-%m-%d")
+def build_hierarchical_message(notification_items):
     checked_at = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")
+    hierarchy = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    new_keys = set()
 
-    grouped = defaultdict(list)
-    for row in sessions:
-        screen_name = row.get("ScreenNm") or "상영관 정보 확인 필요"
-        grouped[screen_name].append(pretty_time(row.get("PlayStartTm")))
+    for item in notification_items:
+        target = item["target"]
+        movie_name = target.get("label", target["id"])
+        theater_name = target.get("theater_name", "CGV")
+        new_keys.update(item["new_keys"])
+
+        for play_ymd, sessions in item["by_date"].items():
+            hierarchy[movie_name][theater_name][play_ymd].extend(sessions)
 
     lines = [
         "🎬 CGV 예매 오픈 감지",
+        f"확인시각: {checked_at}",
         "",
-        f"영화: {target.get('label', target['id'])}",
-        f"극장: {target.get('theater_name', 'CGV')}",
-        f"날짜: {date_text}",
-        f"현재 확인된 회차: {len(sessions)}개",
     ]
-    if new_count is not None:
-        lines.append(f"이번에 새로 감지된 회차: {new_count}개")
-    lines.extend([f"확인시각: {checked_at}", ""])
 
-    for screen_name in sorted(grouped):
-        times = sorted(set(grouped[screen_name]))
-        lines.append(f"상영관: {screen_name}")
-        lines.append(f"시간: {', '.join(times)}")
+    for movie_name in sorted(hierarchy):
+        lines.append(f"■ 영화: {movie_name}")
+
+        for theater_name in sorted(hierarchy[movie_name]):
+            lines.append(f"  └ 극장: {theater_name}")
+
+            for play_ymd in sorted(hierarchy[movie_name][theater_name]):
+                date_text = datetime.strptime(play_ymd, "%Y%m%d").strftime("%Y-%m-%d")
+                sessions = hierarchy[movie_name][theater_name][play_ymd]
+
+                unique = {}
+                for row in sessions:
+                    unique[row["_key"]] = row
+                ordered = sorted(
+                    unique.values(),
+                    key=lambda row: (row.get("PlayStartTm", ""), row.get("ScreenNm", "")),
+                )
+
+                lines.append(f"     └ 날짜: {date_text} ({len(ordered)}회차)")
+                for row in ordered:
+                    mark = " 🆕" if row["_key"] in new_keys else ""
+                    lines.append(
+                        f"        {pretty_time(row.get('PlayStartTm'))} · "
+                        f"{row.get('ScreenNm') or '상영관 정보 확인 필요'}{mark}"
+                    )
+            lines.append("")
         lines.append("")
 
     lines.extend([
-        "※ 위 내용은 알림 발송 시점에 확인된 현재 정보입니다.",
+        "※ 알림 발송 시점에 확인된 현재 정보입니다.",
         "예매: https://cgv.co.kr/cnm/movieBook/cinema",
     ])
-    return "\n".join(lines)
+    return "\n".join(lines).strip()
+
+
+def split_discord_message(message: str, limit=1900):
+    if len(message) <= limit:
+        return [message]
+
+    chunks = []
+    current = []
+    current_len = 0
+    for line in message.splitlines():
+        line_len = len(line) + 1
+        if current and current_len + line_len > limit:
+            chunks.append("\n".join(current))
+            current = []
+            current_len = 0
+        if len(line) > limit:
+            if current:
+                chunks.append("\n".join(current))
+                current = []
+                current_len = 0
+            chunks.append(line[:limit])
+            continue
+        current.append(line)
+        current_len += line_len
+
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
 
 
 def send_discord(message: str) -> bool:
@@ -264,12 +313,17 @@ def send_discord(message: str) -> bool:
     if not webhook:
         print("DISCORD_WEBHOOK_URL Secret이 아직 없어 실제 알림은 보내지 않았습니다.")
         return False
-    try:
-        response = requests.post(webhook, json={"content": message[:1900]}, timeout=15)
-    except requests.RequestException as exc:
-        raise RuntimeError(f"Discord 전송 실패 ({type(exc).__name__})") from None
-    if response.status_code not in {200, 204}:
-        raise RuntimeError(f"Discord 전송 실패 (HTTP {response.status_code})")
+
+    chunks = split_discord_message(message)
+    for index, chunk in enumerate(chunks, start=1):
+        if len(chunks) > 1:
+            chunk = f"[{index}/{len(chunks)}]\n{chunk}"
+        try:
+            response = requests.post(webhook, json={"content": chunk}, timeout=15)
+        except requests.RequestException as exc:
+            raise RuntimeError(f"Discord 전송 실패 ({type(exc).__name__})") from None
+        if response.status_code not in {200, 204}:
+            raise RuntimeError(f"Discord 전송 실패 (HTTP {response.status_code})")
     print("Discord 알림 전송 완료")
     return True
 
@@ -342,29 +396,48 @@ def run_checker():
                 if sessions:
                     by_date[earlier] = sessions
 
-        state_changed = False
+        notification_items = []
         for target_id, target in target_by_id.items():
             by_date = found.get(target_id, {})
             if not by_date:
                 print(f"[{target_id}] 예매 가능한 대상 회차 없음")
                 continue
 
-            earliest = min(by_date)
-            sessions = by_date[earliest]
             seen = set(state["seen"].get(target_id, []))
-            new_sessions = [row for row in sessions if row["_key"] not in seen]
-            print(f"[{target_id}] 가장 빠른 날짜 {earliest}, 신규 {len(new_sessions)}개")
+            all_sessions = [
+                row
+                for play_ymd in sorted(by_date)
+                for row in by_date[play_ymd]
+            ]
+            new_sessions = [row for row in all_sessions if row["_key"] not in seen]
+            print(
+                f"[{target_id}] 확인 날짜 {len(by_date)}개, "
+                f"현재 {len(all_sessions)}개, 신규 {len(new_sessions)}개"
+            )
             if not new_sessions:
                 continue
 
-            message = build_message(target, earliest, sessions, new_count=len(new_sessions))
-            print(message)
-            if send_discord(message):
-                seen.update(row["_key"] for row in sessions)
-                state["seen"][target_id] = sorted(seen)[-1000:]
-                state_changed = True
+            notification_items.append(
+                {
+                    "target_id": target_id,
+                    "target": target,
+                    "by_date": by_date,
+                    "new_keys": {row["_key"] for row in new_sessions},
+                }
+            )
 
-        if state_changed:
+        if not notification_items:
+            return
+
+        message = build_hierarchical_message(notification_items)
+        print(message)
+        if send_discord(message):
+            for item in notification_items:
+                target_id = item["target_id"]
+                seen = set(state["seen"].get(target_id, []))
+                for sessions in item["by_date"].values():
+                    seen.update(row["_key"] for row in sessions)
+                state["seen"][target_id] = sorted(seen)[-1000:]
             save_state(state)
             print("중복 알림 방지 상태를 저장했습니다.")
     finally:
