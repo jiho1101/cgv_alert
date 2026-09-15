@@ -57,6 +57,25 @@
         "priority_interval_minutes": 15,
         "full_interval_minutes": 120
       }
+    },
+    {
+      "id": "movie-20260928-ulsan-samsan",
+      "enabled": true,
+      "label": "\uc554\uc0b4\uc790(\ub4e4)",
+      "theater_code": "0128",
+      "theater_name": "CGV 울산삼산",
+      "date_range": {
+        "start": "20260928",
+        "end": "20260928"
+      },
+      "movie_aliases": [
+        "\uc554\uc0b4\uc790(\ub4e4)",
+        "\uc554\uc0b4\uc790\ub4e4",
+        "\uc554\uc0b4\uc790"
+      ],
+      "screen_keywords": [],
+      "require_sale_open": true,
+      "min_remaining_seats": 1
     }
   ],
   "request": {
