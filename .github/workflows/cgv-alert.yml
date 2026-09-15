@@ -41,6 +41,25 @@ jobs:
       - name: Check Python syntax
         run: python -m py_compile checker.py
 
+      - name: Discord webhook test
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[discord-test]')
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL secret is missing"
+            exit 1
+          fi
+          status=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -H "Content-Type: application/json" \
+            -d '{"content":"✅ CGV 알리미 테스트 성공 — Discord Webhook이 정상 연결되었습니다."}' \
+            "$DISCORD_WEBHOOK_URL")
+          if [ "$status" != "204" ] && [ "$status" != "200" ]; then
+            echo "Discord test failed with HTTP $status"
+            exit 1
+          fi
+          echo "Discord test message sent successfully"
+
       - name: Self-test CGV public timetable API
         if: github.event_name == 'push'
         run: python checker.py --self-test
