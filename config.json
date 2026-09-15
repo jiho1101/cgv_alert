@@ -61,13 +61,25 @@
       "min_remaining_seats": 1,
       "scan_strategy": {
         "priority_range": {
-          "start": "20261210",
-          "end": "20261221"
+          "start": "20261218",
+          "end": "20261218"
         },
         "fast_mode_from": "20261201",
         "preopen_interval_minutes": 360,
-        "priority_interval_minutes": 15,
-        "full_interval_minutes": 120
+        "priority_interval_minutes": 5,
+        "full_interval_minutes": 120,
+        "preopen_stages": [
+          {
+            "from": "20260915",
+            "until": "20261115",
+            "interval_minutes": 360
+          },
+          {
+            "from": "20261116",
+            "until": "20261130",
+            "interval_minutes": 30
+          }
+        ]
       }
     },
     {
