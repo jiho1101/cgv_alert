@@ -1,16 +1,62 @@
 {
   "targets": [
     {
-      "id": "example",
-      "enabled": false,
-      "label": "예시 감시 조건",
-      "theater_code": "0056",
-      "theater_name": "CGV 강남",
-      "date": "today",
-      "movie_keywords": ["영화 제목"],
+      "id": "avengers-doomsday-ulsan-samsan",
+      "enabled": true,
+      "label": "어벤져스: 둠스데이",
+      "theater_code": "0128",
+      "theater_name": "CGV 울산삼산",
+      "date_range": {
+        "start": "20261201",
+        "end": "20261231"
+      },
+      "movie_aliases": [
+        "어벤져스: 둠스데이",
+        "어벤져스 둠스데이",
+        "둠스데이"
+      ],
       "screen_keywords": [],
       "require_sale_open": true,
-      "min_remaining_seats": 1
+      "min_remaining_seats": 1,
+      "scan_strategy": {
+        "priority_range": {
+          "start": "20261210",
+          "end": "20261221"
+        },
+        "fast_mode_from": "20261201",
+        "preopen_interval_minutes": 360,
+        "priority_interval_minutes": 15,
+        "full_interval_minutes": 120
+      }
+    },
+    {
+      "id": "dune-part-three-ulsan-samsan",
+      "enabled": true,
+      "label": "듄: 파트 3",
+      "theater_code": "0128",
+      "theater_name": "CGV 울산삼산",
+      "date_range": {
+        "start": "20261201",
+        "end": "20261231"
+      },
+      "movie_aliases": [
+        "듄: 파트 3",
+        "듄 파트 3",
+        "듄파트3"
+      ],
+      "screen_keywords": [],
+      "require_sale_open": true,
+      "min_remaining_seats": 1,
+      "scan_strategy": {
+        "priority_range": {
+          "start": "20261210",
+          "end": "20261221"
+        },
+        "fast_mode_from": "20261201",
+        "preopen_interval_minutes": 360,
+        "priority_interval_minutes": 15,
+        "full_interval_minutes": 120
+      }
     }
   ],
   "request": {
