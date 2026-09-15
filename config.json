@@ -23,7 +23,7 @@
           "start": "20261218",
           "end": "20261218"
         },
-        "fast_mode_from": "20261201",
+        "fast_mode_from": "20261118",
         "preopen_interval_minutes": 360,
         "priority_interval_minutes": 5,
         "full_interval_minutes": 120,
@@ -35,7 +35,7 @@
           },
           {
             "from": "20261116",
-            "until": "20261130",
+            "until": "20261117",
             "interval_minutes": 30
           }
         ]
@@ -64,7 +64,7 @@
           "start": "20261218",
           "end": "20261218"
         },
-        "fast_mode_from": "20261201",
+        "fast_mode_from": "20261118",
         "preopen_interval_minutes": 360,
         "priority_interval_minutes": 5,
         "full_interval_minutes": 120,
@@ -76,7 +76,7 @@
           },
           {
             "from": "20261116",
-            "until": "20261130",
+            "until": "20261117",
             "interval_minutes": 30
           }
         ]
