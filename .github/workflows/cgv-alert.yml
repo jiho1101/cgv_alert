@@ -41,6 +41,38 @@ jobs:
       - name: Check Python syntax
         run: python -m py_compile checker.py
 
+      - name: Apply staged monitoring intervals
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          path = "config.json"
+          with open(path, "r", encoding="utf-8") as f:
+              config = json.load(f)
+
+          today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d")
+          changed = []
+          for target in config.get("targets", []):
+              strategy = target.get("scan_strategy") or {}
+              stages = strategy.get("preopen_stages") or []
+              for stage in stages:
+                  start = str(stage.get("from", "00000000"))
+                  end = str(stage.get("until", "99999999"))
+                  if start <= today <= end:
+                      interval = int(stage["interval_minutes"])
+                      strategy["preopen_interval_minutes"] = interval
+                      changed.append(f"{target.get('id')}: {interval}분")
+                      break
+
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(config, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+
+          print("현재 단계:", ", ".join(changed) if changed else "fast mode 또는 기본 설정")
+          PY
+
       - name: Self-test CGV public timetable API
         if: github.event_name == 'push'
         run: python checker.py --self-test
@@ -66,6 +98,12 @@ jobs:
           import os
           import requests
 
+          def short_date(value):
+              value = str(value or "")
+              if len(value) == 8 and value.isdigit():
+                  return f"{int(value[4:6])}/{int(value[6:8])}"
+              return value or "-"
+
           with open("config.json", "r", encoding="utf-8") as f:
               config = json.load(f)
 
@@ -84,11 +122,28 @@ jobs:
 
               strategy = target.get("scan_strategy") or {}
               if strategy:
-                  interval_text = (
-                      f"사전 {strategy.get('preopen_interval_minutes', 360)}분 / "
-                      f"우선기간 {strategy.get('priority_interval_minutes', 15)}분 / "
-                      f"전체 {strategy.get('full_interval_minutes', 120)}분"
-                  )
+                  stages = strategy.get("preopen_stages") or []
+                  if stages:
+                      parts = []
+                      for stage in stages:
+                          parts.append(
+                              f"{short_date(stage.get('from'))}~{short_date(stage.get('until'))} "
+                              f"{stage.get('interval_minutes')}분"
+                          )
+                      parts.append(
+                          f"{short_date(strategy.get('fast_mode_from'))}부터 우선회차 "
+                          f"{strategy.get('priority_interval_minutes', 15)}분"
+                      )
+                      parts.append(
+                          f"전체범위 {strategy.get('full_interval_minutes', 120)}분"
+                      )
+                      interval_text = " / ".join(parts)
+                  else:
+                      interval_text = (
+                          f"사전 {strategy.get('preopen_interval_minutes', 360)}분 / "
+                          f"우선기간 {strategy.get('priority_interval_minutes', 15)}분 / "
+                          f"전체 {strategy.get('full_interval_minutes', 120)}분"
+                      )
               else:
                   interval_text = "5분"
 
