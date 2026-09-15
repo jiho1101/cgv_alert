@@ -52,6 +52,85 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
+      - name: Send active target summary
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if git diff --quiet -- state.json; then
+            echo "No alert was sent; target summary skipped"
+            exit 0
+          fi
+          python - <<'PY'
+          import json
+          import os
+          import requests
+
+          with open("config.json", "r", encoding="utf-8") as f:
+              config = json.load(f)
+
+          targets = [t for t in config.get("targets", []) if t.get("enabled", False)]
+          lines = ["📡 현재 활성 감시 타겟", ""]
+
+          for index, target in enumerate(targets, start=1):
+              date_range = target.get("date_range") or {}
+              if date_range:
+                  date_text = f"{date_range.get('start')} ~ {date_range.get('end')}"
+              else:
+                  date_text = str(target.get("date", "-"))
+
+              screens = target.get("screen_keywords") or []
+              screen_text = ", ".join(screens) if screens else "전체 상영관"
+
+              strategy = target.get("scan_strategy") or {}
+              if strategy:
+                  interval_text = (
+                      f"사전 {strategy.get('preopen_interval_minutes', 360)}분 / "
+                      f"우선기간 {strategy.get('priority_interval_minutes', 15)}분 / "
+                      f"전체 {strategy.get('full_interval_minutes', 120)}분"
+                  )
+              else:
+                  interval_text = "5분"
+
+              lines.extend([
+                  f"[{index}] {target.get('label', target.get('id', '-'))}",
+                  f"ID: {target.get('id', '-')}",
+                  f"극장: {target.get('theater_name', 'CGV')}",
+                  f"날짜: {date_text}",
+                  f"상영관: {screen_text}",
+                  "시간: 전체 시간",
+                  f"감시주기: {interval_text}",
+                  "",
+              ])
+
+          lines.append("수정할 때 위 ID를 말해주면 해당 타겟을 정확히 변경할 수 있습니다.")
+          message = "\n".join(lines).strip()
+          webhook = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+          if not webhook:
+              raise SystemExit("DISCORD_WEBHOOK_URL secret is missing")
+
+          chunks = []
+          current = []
+          current_len = 0
+          for line in message.splitlines():
+              size = len(line) + 1
+              if current and current_len + size > 1900:
+                  chunks.append("\n".join(current))
+                  current = []
+                  current_len = 0
+              current.append(line)
+              current_len += size
+          if current:
+              chunks.append("\n".join(current))
+
+          for chunk in chunks:
+              response = requests.post(webhook, json={"content": chunk}, timeout=15)
+              if response.status_code not in {200, 204}:
+                  raise SystemExit(f"Discord target summary failed: HTTP {response.status_code}")
+
+          print("Active target summary sent")
+          PY
+
       - name: Save notification state
         run: |
           if git diff --quiet -- state.json; then
