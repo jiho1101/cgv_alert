@@ -116,11 +116,16 @@ def fetch_schedule(theater_code: str, play_ymd: str, timeout: int):
         "strRankType": "MOVIE",
     }
     headers = {
+        "Cache-Control": "no-cache",
         "Accept": "application/json",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
         "Content-Type": "application/json; charset=UTF-8",
+        "Host": "m.cgv.co.kr",
         "Origin": "https://m.cgv.co.kr",
-        "Referer": "https://m.cgv.co.kr/",
-        "User-Agent": "cgv-alert/1.1 (+GitHub Actions; personal notification project)",
+        "Referer": "https://m.cgv.co.kr/WebApp/Reservation/QuickResult.aspx",
+        "X-Requested-With": "XMLHttpRequest",
+        "Cookie": "URL_PREV_COMMON=https%253a%252f%252fm.cgv.co.kr%252fWebApp%252fReservation%252fQuickResult.aspx",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
     }
 
     try:
@@ -137,7 +142,8 @@ def fetch_schedule(theater_code: str, play_ymd: str, timeout: int):
         if isinstance(data, str):
             data = json.loads(data)
     except (ValueError, TypeError, json.JSONDecodeError):
-        raise RuntimeError("CGV 응답을 JSON으로 해석하지 못했습니다") from None
+        content_type = response.headers.get("Content-Type", "unknown").split(";", 1)[0]
+        raise RuntimeError(f"CGV 응답을 JSON으로 해석하지 못했습니다 (Content-Type: {content_type})") from None
 
     if isinstance(data, dict):
         result_code = str(data.get("ResultCode", ""))
@@ -403,8 +409,6 @@ def run_checker():
                 if matched:
                     found[target_id][play_ymd] = matched
 
-    # 후보가 잡히면 그 날짜보다 앞선 전체 범위를 즉시 확인해서
-    # 알림에 표시되는 날짜가 실제 감시 범위 내 가장 빠른 날짜인지 보장한다.
     for target_id, by_date in list(found.items()):
         if not by_date:
             continue
