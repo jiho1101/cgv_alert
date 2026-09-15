@@ -24,9 +24,21 @@
           "end": "20261218"
         },
         "fast_mode_from": "20261201",
-        "preopen_interval_minutes": 5,
+        "preopen_interval_minutes": 360,
         "priority_interval_minutes": 5,
-        "full_interval_minutes": 120
+        "full_interval_minutes": 120,
+        "preopen_stages": [
+          {
+            "from": "20260915",
+            "until": "20261115",
+            "interval_minutes": 360
+          },
+          {
+            "from": "20261116",
+            "until": "20261130",
+            "interval_minutes": 30
+          }
+        ]
       }
     },
     {
