@@ -328,6 +328,98 @@ def send_discord(message: str) -> bool:
     return True
 
 
+def build_alert_embeds(notification_items):
+    checked_at = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")
+    embeds = []
+
+    for item in notification_items:
+        target = item["target"]
+        movie_name = target.get("label", target["id"])
+        theater_name = target.get("theater_name", "CGV")
+        new_keys = item["new_keys"]
+        new_count = len(new_keys)
+        pending_fields = []
+
+        for play_ymd in sorted(item["by_date"]):
+            date_text = datetime.strptime(play_ymd, "%Y%m%d").strftime("%Y-%m-%d")
+            unique = {}
+            for row in item["by_date"][play_ymd]:
+                unique[row["_key"]] = row
+            ordered = sorted(
+                unique.values(),
+                key=lambda row: (row.get("PlayStartTm", ""), row.get("ScreenNm", "")),
+            )
+
+            session_lines = []
+            for row in ordered:
+                mark = "🆕 " if row["_key"] in new_keys else ""
+                session_lines.append(
+                    f"{mark}`{pretty_time(row.get('PlayStartTm'))}` · "
+                    f"{row.get('ScreenNm') or '상영관 정보 확인 필요'}"
+                )
+
+            value = "\n".join(session_lines) or "회차 정보 없음"
+            while value:
+                chunk = value[:950]
+                value = value[950:]
+                pending_fields.append({
+                    "name": f"📅 {date_text} · {len(ordered)}회차",
+                    "value": chunk,
+                    "inline": False,
+                })
+
+        current_fields = []
+        current_chars = 0
+        part = 1
+        for field in pending_fields:
+            field_chars = len(field["name"]) + len(field["value"])
+            if current_fields and (len(current_fields) >= 20 or current_chars + field_chars > 4500):
+                embeds.append({
+                    "title": f"🎬 {movie_name}" + (f" · {part}" if part > 1 else ""),
+                    "url": BOOKING_URL,
+                    "description": f"**극장** {theater_name}\n**신규 회차** {new_count}개",
+                    "fields": current_fields,
+                    "footer": {"text": f"CGV 예매 오픈 감지 · {checked_at}"},
+                })
+                current_fields = []
+                current_chars = 0
+                part += 1
+            current_fields.append(field)
+            current_chars += field_chars
+
+        if current_fields or not pending_fields:
+            embeds.append({
+                "title": f"🎬 {movie_name}" + (f" · {part}" if part > 1 else ""),
+                "url": BOOKING_URL,
+                "description": f"**극장** {theater_name}\n**신규 회차** {new_count}개",
+                "fields": current_fields,
+                "footer": {"text": f"CGV 예매 오픈 감지 · {checked_at}"},
+            })
+
+    return embeds
+
+
+def send_discord_embeds(embeds) -> bool:
+    webhook = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+    if not webhook:
+        print("DISCORD_WEBHOOK_URL Secret이 아직 없어 실제 알림은 보내지 않았습니다.")
+        return False
+
+    for index, embed in enumerate(embeds):
+        payload = {"embeds": [embed]}
+        if index == 0:
+            payload["content"] = "🎟️ **CGV 예매 오픈 감지**"
+        try:
+            response = requests.post(webhook, json=payload, timeout=15)
+        except requests.RequestException as exc:
+            raise RuntimeError(f"Discord 전송 실패 ({type(exc).__name__})") from None
+        if response.status_code not in {200, 204}:
+            raise RuntimeError(f"Discord 전송 실패 (HTTP {response.status_code})")
+
+    print("Discord Embed 알림 전송 완료")
+    return True
+
+
 def run_self_test(timeout: int):
     browser = CgvBrowser(timeout=timeout)
     try:
@@ -431,7 +523,8 @@ def run_checker():
 
         message = build_hierarchical_message(notification_items)
         print(message)
-        if send_discord(message):
+        embeds = build_alert_embeds(notification_items)
+        if send_discord_embeds(embeds):
             for item in notification_items:
                 target_id = item["target_id"]
                 seen = set(state["seen"].get(target_id, []))
