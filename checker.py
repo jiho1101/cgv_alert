@@ -184,7 +184,7 @@ def extract_sessions(body_text: str, target, play_ymd: str):
         return []
 
     sessions = []
-    seen_times = set()
+    seen_sessions = set()
     for title_index in title_indexes:
         chunk_end = min(len(lines), title_index + 70)
         for i in range(title_index + 1, chunk_end):
@@ -194,22 +194,27 @@ def extract_sessions(body_text: str, target, play_ymd: str):
                 if hour_int > 29:
                     continue
                 display = f"{hour_int:02d}:{minute}"
-                if display in seen_times:
+                screen_name = find_screen_name(lines, i)
+                session_identity = (screen_name, display)
+                if session_identity in seen_sessions:
                     continue
-                seen_times.add(display)
+                seen_sessions.add(session_identity)
                 sessions.append(
                     {
                         "MovieNmKor": target.get("label", "영화"),
                         "PlayStartTm": display.replace(":", ""),
                         "PlayYmd": play_ymd,
-                        "ScreenNm": find_screen_name(lines, i),
-                        "_key": f"{target['theater_code']}|{play_ymd}|{target['id']}|{display}",
+                        "ScreenNm": screen_name,
+                        "_key": (
+                            f"{target['theater_code']}|{play_ymd}|{target['id']}|"
+                            f"{screen_name}|{display}"
+                        ),
                     }
                 )
         if sessions:
             break
 
-    sessions.sort(key=lambda row: row["PlayStartTm"])
+    sessions.sort(key=lambda row: (row.get("ScreenNm", ""), row["PlayStartTm"]))
     return sessions
 
 
@@ -220,18 +225,37 @@ def pretty_time(value) -> str:
     return str(value or "-")
 
 
-def build_message(target, play_ymd, sessions):
+def build_message(target, play_ymd, sessions, new_count=None):
     date_text = datetime.strptime(play_ymd, "%Y%m%d").strftime("%Y-%m-%d")
+    checked_at = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")
+
+    grouped = defaultdict(list)
+    for row in sessions:
+        screen_name = row.get("ScreenNm") or "상영관 정보 확인 필요"
+        grouped[screen_name].append(pretty_time(row.get("PlayStartTm")))
+
     lines = [
         "🎬 CGV 예매 오픈 감지",
+        "",
         f"영화: {target.get('label', target['id'])}",
         f"극장: {target.get('theater_name', 'CGV')}",
-        f"가장 빠른 확인 날짜: {date_text}",
-        "",
+        f"날짜: {date_text}",
+        f"현재 확인된 회차: {len(sessions)}개",
     ]
-    for row in sessions[:12]:
-        lines.append(f"• {pretty_time(row.get('PlayStartTm'))} · {row.get('ScreenNm', '상영관 확인 필요')}")
-    lines.extend(["", "예매: https://cgv.co.kr/cnm/movieBook/cinema"])
+    if new_count is not None:
+        lines.append(f"이번에 새로 감지된 회차: {new_count}개")
+    lines.extend([f"확인시각: {checked_at}", ""])
+
+    for screen_name in sorted(grouped):
+        times = sorted(set(grouped[screen_name]))
+        lines.append(f"상영관: {screen_name}")
+        lines.append(f"시간: {', '.join(times)}")
+        lines.append("")
+
+    lines.extend([
+        "※ 위 내용은 알림 발송 시점에 확인된 현재 정보입니다.",
+        "예매: https://cgv.co.kr/cnm/movieBook/cinema",
+    ])
     return "\n".join(lines)
 
 
@@ -308,7 +332,7 @@ def run_checker():
                     if sessions:
                         found[target_id][play_ymd] = sessions
 
-        # 후보가 생기면 그보다 앞선 날짜를 즉시 확인해 감시 범위 내 최조 날짜를 확정한다.
+        # 후보가 생기면 그보다 앞선 날짜를 즉시 확인해 감시 범위 내 최초 날짜를 확정한다.
         for target_id, by_date in list(found.items()):
             target = target_by_id[target_id]
             candidate = min(by_date)
@@ -333,10 +357,10 @@ def run_checker():
             if not new_sessions:
                 continue
 
-            message = build_message(target, earliest, new_sessions)
+            message = build_message(target, earliest, sessions, new_count=len(new_sessions))
             print(message)
             if send_discord(message):
-                seen.update(row["_key"] for row in new_sessions)
+                seen.update(row["_key"] for row in sessions)
                 state["seen"][target_id] = sorted(seen)[-1000:]
                 state_changed = True
 
