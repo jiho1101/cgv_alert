@@ -1,0 +1,76 @@
+name: CGV Temporary 5-Min Watch
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/cgv-temp-watch.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cgv-alert
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check Python syntax
+        run: python -m py_compile checker.py
+
+      - name: Watch CGV every 5 minutes
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for i in $(seq 1 64); do
+            started=$(date +%s)
+            echo "===== 5-minute watch check $i/64 : $(date -u '+%Y-%m-%d %H:%M:%S UTC') ====="
+
+            if ! python checker.py; then
+              echo "Checker failed on this cycle; continuing to the next 5-minute cycle."
+            fi
+
+            if ! git diff --quiet -- state.json; then
+              git add state.json
+              git commit -m "chore: update CGV alert state [skip ci]"
+              git pull --rebase origin main
+              git push
+            fi
+
+            if [ "$i" -eq 64 ]; then
+              break
+            fi
+
+            finished=$(date +%s)
+            elapsed=$((finished - started))
+            wait=$((300 - elapsed))
+            if [ "$wait" -gt 0 ]; then
+              echo "Sleeping $wait seconds to keep an approximately 5-minute interval."
+              sleep "$wait"
+            else
+              echo "This check took ${elapsed}s, so the next cycle starts immediately."
+            fi
+          done
