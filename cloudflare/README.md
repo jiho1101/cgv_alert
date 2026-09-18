@@ -23,3 +23,16 @@ That asks Cloudflare Cron to invoke the Worker every five minutes.
 ## Flow
 
 Cloudflare Cron -> Worker scheduled() -> GitHub workflow_dispatch -> CGV Alert workflow -> checker.py -> Discord
+
+
+## Final cleanup after Cloudflare verification
+
+After Cloudflare Cron has successfully triggered the GitHub workflow several times in a row:
+
+1. Remove the GitHub Actions `schedule: */5 * * * *` trigger from `.github/workflows/cgv-alert.yml`.
+2. Keep `workflow_dispatch` because Cloudflare uses it to start the checker.
+3. Remove `.github/workflows/cgv-temp-watch.yml`.
+4. Keep GitHub Actions enabled because the checker still runs there.
+5. Verify there are no duplicate CGV Alert runs after cleanup.
+
+Do not perform this cleanup before Cloudflare has been verified working.
