@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: cgv-alert
+  group: cgv-alert-main
   cancel-in-progress: false
 
 jobs:
