@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: cgv-alert
+  group: cgv-temp-watch
   cancel-in-progress: false
 
 jobs:
