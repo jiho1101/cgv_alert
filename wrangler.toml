@@ -1,0 +1,6 @@
+name = "cgv-alert-trigger"
+main = "cloudflare/worker.js"
+compatibility_date = "2026-09-18"
+
+[triggers]
+crons = ["*/5 * * * *"]
