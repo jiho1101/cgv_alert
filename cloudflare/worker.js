@@ -3,7 +3,7 @@ const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const CONFIG_WORKFLOW_FILE = "cgv-config.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "2";
+const COMMAND_VERSION = "3";
 
 const DISCORD_COMMANDS = [
   {
