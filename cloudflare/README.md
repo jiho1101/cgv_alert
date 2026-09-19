@@ -37,6 +37,9 @@ The Worker supports:
   last successful CGV read, recent error, and active target count.
 - `/감시목록`: movie, target ID, theater, date, current interval,
   health status, and last successful check time.
+- `/즉시확인`: ignore normal scan intervals, force an immediate check of
+  all active monitoring targets and their configured dates, then send a
+  completion summary back to Discord. Administrator only, 60-second cooldown.
 - `/도움말`: show command usage.
 
 Monitoring targets are intentionally managed through GitHub/ChatGPT rather
@@ -80,9 +83,10 @@ Set the Discord application's Interactions Endpoint URL to:
 
 Discord verifies this endpoint using the application's Public Key.
 
-The Worker registers the global slash commands automatically after
-`DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN`, and the `DB` binding are present.
-Registration is versioned so it is not repeated every five minutes.
+The Worker learns the Discord server ID from a valid server interaction and
+registers slash commands as guild commands for fast updates. Any old global
+commands are cleared to avoid duplicate command entries. Registration is
+versioned so it is not repeated every five minutes.
 
 ## Schedule
 
