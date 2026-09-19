@@ -82,7 +82,7 @@ async function verifyDiscordRequest(request, body, publicKeyHex) {
   }
 }
 
-async function triggerGitHub(env) {
+async function triggerGitHub(env, source = "cron") {
   if (!env.GITHUB_TOKEN) {
     throw new Error("GITHUB_TOKEN secret is missing");
   }
@@ -98,7 +98,7 @@ async function triggerGitHub(env) {
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "cgv-alert-cloudflare-trigger",
     },
-    body: JSON.stringify({ ref: GITHUB_REF }),
+    body: JSON.stringify({ ref: GITHUB_REF, inputs: { source } }),
   });
 
   if (response.status !== 204) {
@@ -523,9 +523,9 @@ async function handleDiscordInteraction(request, env) {
         );
       }
 
-      await triggerGitHub(env);
+      await triggerGitHub(env, "discord_manual");
       return ephemeralContent(
-        "🔎 즉시 확인을 요청했습니다. GitHub Actions가 CGV를 확인합니다.",
+        "🔎 즉시 확인을 요청했습니다. 완료되면 Discord로 결과를 다시 알려드립니다.",
       );
     }
 
