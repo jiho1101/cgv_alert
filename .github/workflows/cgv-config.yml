@@ -1,0 +1,184 @@
+name: CGV Target Admin
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "add or delete"
+        required: true
+        type: string
+      label:
+        description: "Movie label for add"
+        required: false
+        type: string
+      date:
+        description: "YYYYMMDD for add"
+        required: false
+        type: string
+      screen:
+        description: "Optional screen keyword"
+        required: false
+        type: string
+      aliases:
+        description: "Optional comma-separated aliases"
+        required: false
+        type: string
+      target:
+        description: "Target id or exact movie label for delete"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cgv-alert-main
+  cancel-in-progress: false
+
+jobs:
+  update-targets:
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update config
+        env:
+          ACTION: ${{ inputs.action }}
+          LABEL: ${{ inputs.label }}
+          DATE: ${{ inputs.date }}
+          SCREEN: ${{ inputs.screen }}
+          ALIASES: ${{ inputs.aliases }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from datetime import datetime
+
+          path = "config.json"
+
+          with open(path, "r", encoding="utf-8") as f:
+              config = json.load(f)
+
+          targets = config.setdefault("targets", [])
+          action = os.environ.get("ACTION", "").strip()
+          label = os.environ.get("LABEL", "").strip()
+          date = os.environ.get("DATE", "").strip()
+          screen = os.environ.get("SCREEN", "").strip()
+          aliases_raw = os.environ.get("ALIASES", "").strip()
+          target_query = os.environ.get("TARGET", "").strip()
+
+          def normalize(value):
+              return re.sub(r"[^0-9a-zA-Z가-힣]", "", str(value)).casefold()
+
+          if action == "add":
+              if not label:
+                  raise SystemExit("영화명이 비어 있습니다.")
+              if not re.fullmatch(r"\d{8}", date):
+                  raise SystemExit("날짜는 YYYYMMDD 8자리여야 합니다.")
+              try:
+                  datetime.strptime(date, "%Y%m%d")
+              except ValueError:
+                  raise SystemExit("유효하지 않은 날짜입니다.")
+
+              same = [
+                  t for t in targets
+                  if normalize(t.get("label")) == normalize(label)
+                  and str((t.get("date_range") or {}).get("start", t.get("date", ""))) == date
+                  and str((t.get("date_range") or {}).get("end", t.get("date", ""))) == date
+              ]
+              if same:
+                  raise SystemExit("같은 영화와 날짜의 감시 대상이 이미 있습니다.")
+
+              raw_aliases = [label]
+              raw_aliases.extend(
+                  item.strip()
+                  for item in aliases_raw.split(",")
+                  if item.strip()
+              )
+              aliases = []
+              seen_aliases = set()
+              for item in raw_aliases:
+                  key = normalize(item)
+                  if key and key not in seen_aliases:
+                      seen_aliases.add(key)
+                      aliases.append(item)
+
+              digest = hashlib.sha1(
+                  f"{label}|{date}".encode("utf-8")
+              ).hexdigest()[:10]
+
+              targets.append(
+                  {
+                      "id": f"discord-{date}-{digest}-ulsan-samsan",
+                      "enabled": True,
+                      "label": label,
+                      "theater_code": "0128",
+                      "theater_name": "CGV 울산삼산",
+                      "date_range": {
+                          "start": date,
+                          "end": date,
+                      },
+                      "movie_aliases": aliases,
+                      "screen_keywords": [screen] if screen else [],
+                      "require_sale_open": True,
+                      "min_remaining_seats": 1,
+                  }
+              )
+              print(f"감시 추가: {label} / {date}")
+
+          elif action == "delete":
+              if not target_query:
+                  raise SystemExit("삭제 대상이 비어 있습니다.")
+
+              exact_id = [
+                  t for t in targets
+                  if str(t.get("id", "")) == target_query
+              ]
+              matches = exact_id or [
+                  t for t in targets
+                  if normalize(t.get("label")) == normalize(target_query)
+              ]
+
+              if not matches:
+                  raise SystemExit("일치하는 감시 대상을 찾지 못했습니다.")
+              if len(matches) > 1:
+                  ids = ", ".join(str(t.get("id")) for t in matches)
+                  raise SystemExit(
+                      "같은 영화명이 여러 개입니다. /감시목록의 ID를 사용하세요: "
+                      + ids
+                  )
+
+              remove_id = str(matches[0].get("id"))
+              remove_label = str(matches[0].get("label", remove_id))
+              config["targets"] = [
+                  t for t in targets
+                  if str(t.get("id")) != remove_id
+              ]
+              print(f"감시 삭제: {remove_label} ({remove_id})")
+
+          else:
+              raise SystemExit(f"지원하지 않는 action: {action}")
+
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(config, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          PY
+
+      - name: Commit target change
+        run: |
+          if git diff --quiet -- config.json; then
+            echo "No config changes"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config.json
+          git commit -m "chore: update CGV targets via Discord [skip ci]"
+          git pull --rebase origin main
+          git push
