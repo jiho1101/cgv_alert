@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "8";
+const COMMAND_VERSION = "9";
 
 const DISCORD_COMMANDS = [
   {
@@ -199,6 +199,33 @@ async function recordCron(env) {
   }
 }
 
+async function clearGlobalDiscordCommands(env) {
+  const response = await fetch(
+    `https://discord.com/api/v10/applications/${env.DISCORD_APPLICATION_ID}/commands`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([]),
+    },
+  );
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `Discord global command cleanup failed: HTTP ${response.status} ${body.slice(0, 1200)}`,
+    );
+  }
+
+  await putState(env, "discord_commands_global_cleared", {
+    version: COMMAND_VERSION,
+    cleared_at: new Date().toISOString(),
+  });
+  console.log("Discord global slash commands cleared");
+}
+
 async function registerDiscordCommands(env, guildId = null) {
   const endpoint = guildId
     ? `https://discord.com/api/v10/applications/${env.DISCORD_APPLICATION_ID}/guilds/${guildId}/commands`
@@ -280,7 +307,16 @@ async function ensureCommandsRegistered(env) {
     };
   }
 
-  return registerDiscordCommands(env, guildId);
+  const result = await registerDiscordCommands(env, guildId);
+
+  if (guildId) {
+    const cleared = await getState(env, "discord_commands_global_cleared");
+    if (cleared?.value?.version !== COMMAND_VERSION) {
+      await clearGlobalDiscordCommands(env);
+    }
+  }
+
+  return result;
 }
 
 async function rememberGuildAndRegister(env, interaction) {
@@ -302,6 +338,11 @@ async function rememberGuildAndRegister(env, interaction) {
     );
     if (current?.value?.version !== COMMAND_VERSION) {
       await registerDiscordCommands(env, guildId);
+    }
+
+    const cleared = await getState(env, "discord_commands_global_cleared");
+    if (cleared?.value?.version !== COMMAND_VERSION) {
+      await clearGlobalDiscordCommands(env);
     }
   } catch (error) {
     console.error("Failed to learn/register Discord guild commands", error);
