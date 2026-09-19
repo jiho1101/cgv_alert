@@ -37,8 +37,6 @@ The Worker supports:
   last successful CGV read, recent error, and active target count.
 - `/감시목록`: movie, target ID, theater, date, current interval,
   health status, and last successful check time.
-- `/즉시확인`: dispatch one immediate CGV check. Administrator only,
-  with a 60-second cooldown.
 - `/도움말`: show command usage.
 
 Monitoring targets are intentionally managed through GitHub/ChatGPT rather
