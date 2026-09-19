@@ -19,6 +19,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 CONFIG_PATH = Path("config.json")
 STATE_PATH = Path("state.json")
+RUNTIME_STATUS_PATH = Path("runtime_status.json")
 KST = ZoneInfo("Asia/Seoul")
 BOOKING_URL = "https://cgv.co.kr/cnm/movieBook/cinema"
 
@@ -138,6 +139,130 @@ def planned_dates(target, now: datetime):
     if is_due(int(strategy.get("full_interval_minutes", 120)), now):
         selected.update(all_dates)
     return sorted(selected)
+
+
+def format_ymd(value: str) -> str:
+    value = str(value or "")
+    if len(value) == 8 and value.isdigit():
+        return f"{value[:4]}-{value[4:6]}-{value[6:8]}"
+    return value or "-"
+
+
+def target_date_text(target) -> str:
+    dates = resolve_target_range(target)
+    if not dates:
+        return "-"
+    if len(dates) == 1:
+        return format_ymd(dates[0])
+    return f"{format_ymd(dates[0])} ~ {format_ymd(dates[-1])}"
+
+
+def current_interval_text(target, now: datetime) -> str:
+    strategy = target.get("scan_strategy") or {}
+    if not strategy:
+        return "5분"
+
+    today = now.strftime("%Y%m%d")
+    for stage in strategy.get("preopen_stages") or []:
+        start = str(stage.get("from", "00000000"))
+        end = str(stage.get("until", "99999999"))
+        if start <= today <= end:
+            return f"{int(stage.get('interval_minutes', 360))}분"
+
+    fast_from = str(strategy.get("fast_mode_from", "99999999"))
+    if today < fast_from:
+        return f"{int(strategy.get('preopen_interval_minutes', 360))}분"
+
+    priority = int(strategy.get("priority_interval_minutes", 15))
+    full = int(strategy.get("full_interval_minutes", 120))
+    return f"우선 {priority}분 / 전체 {full}분"
+
+
+def build_runtime_snapshot(config, state, targets, now: datetime, page_results):
+    pages = state.setdefault("health", {}).setdefault("pages", {})
+    target_items = []
+    health_levels = {"normal": 0, "warning": 1, "error": 2}
+    overall = "normal"
+    recent_error = None
+    any_success = False
+
+    for target in targets:
+        target_id = str(target["id"])
+        theater_code = str(target["theater_code"])
+        target_dates = set(resolve_target_range(target))
+
+        matching_results = []
+        for page_id, result in page_results.items():
+            parts = page_id.split("|", 1)
+            if len(parts) != 2:
+                continue
+            if parts[0] == theater_code and parts[1] in target_dates:
+                matching_results.append(result)
+
+        matching_health = []
+        for page_id, entry in pages.items():
+            parts = page_id.split("|", 1)
+            if len(parts) != 2:
+                continue
+            if parts[0] == theater_code and parts[1] in target_dates:
+                matching_health.append(entry)
+
+        success_now = any(result.get("ok") for result in matching_results)
+        if success_now:
+            any_success = True
+
+        failed_now = next(
+            (result for result in matching_results if not result.get("ok")),
+            None,
+        )
+        alerted = any(entry.get("alerted") for entry in matching_health)
+
+        if alerted:
+            health_status = "error"
+        elif failed_now or matching_health:
+            health_status = "warning"
+        else:
+            health_status = "normal"
+
+        if health_levels[health_status] > health_levels[overall]:
+            overall = health_status
+
+        last_error = None
+        if failed_now:
+            last_error = failed_now.get("error")
+        elif matching_health:
+            last_error = matching_health[0].get("last_error")
+
+        if last_error and recent_error is None:
+            recent_error = last_error
+
+        target_items.append(
+            {
+                "id": target_id,
+                "label": target.get("label", target_id),
+                "theater_name": target.get("theater_name", "CGV"),
+                "date_text": target_date_text(target),
+                "interval_text": current_interval_text(target, now),
+                "health_status": health_status,
+                "last_success_at": now.isoformat() if success_now else None,
+                "last_error": last_error,
+            }
+        )
+
+    return {
+        "last_run_at": now.isoformat(),
+        "last_cgv_success_at": now.isoformat() if any_success else None,
+        "health_summary": overall,
+        "recent_error": recent_error,
+        "active_count": len(target_items),
+        "targets": target_items,
+    }
+
+
+def write_runtime_status(snapshot):
+    with RUNTIME_STATUS_PATH.open("w", encoding="utf-8") as f:
+        json.dump(snapshot, f, ensure_ascii=False, indent=2)
+        f.write("\n")
 
 
 def normalize(text: str) -> str:
@@ -623,6 +748,9 @@ def run_checker():
     targets = [target for target in config.get("targets", []) if target.get("enabled", False)]
     if not targets:
         print("활성화된 감시 조건이 없습니다.")
+        write_runtime_status(
+            build_runtime_snapshot(config, state, targets, now, {})
+        )
         return
 
     target_by_id = {str(t["id"]): t for t in targets}
@@ -633,6 +761,9 @@ def run_checker():
 
     if not scheduled:
         print("이번 5분 실행은 CGV 조회 차례가 아니므로 외부 요청을 건너뜁니다.")
+        write_runtime_status(
+            build_runtime_snapshot(config, state, targets, now, {})
+        )
         return
 
     browser = CgvBrowser(timeout=timeout)
@@ -696,6 +827,10 @@ def run_checker():
         if update_page_health(state, page_results, now):
             save_state(state)
 
+        write_runtime_status(
+            build_runtime_snapshot(config, state, targets, now, page_results)
+        )
+
         notification_items = []
         for target_id, target in target_by_id.items():
             by_date = found.get(target_id, {})
@@ -758,6 +893,15 @@ def main():
             run_checker()
     except Exception as exc:
         print(f"오류: {exc}", file=sys.stderr)
+        write_runtime_status(
+            {
+                "last_run_at": datetime.now(KST).isoformat(),
+                "health_summary": "error",
+                "recent_error": str(exc),
+                "targets": [],
+                "preserve_targets": True,
+            }
+        )
         raise SystemExit(1)
 
 
