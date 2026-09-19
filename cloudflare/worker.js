@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "5";
+const COMMAND_VERSION = "6";
 
 const DISCORD_COMMANDS = [
   {
@@ -15,13 +15,6 @@ const DISCORD_COMMANDS = [
   {
     name: "감시목록",
     description: "현재 감시 중인 영화와 주기를 확인합니다.",
-    type: 1,
-    contexts: [0],
-    integration_types: [0],
-  },
-  {
-    name: "즉시확인",
-    description: "CGV 감시를 지금 즉시 한 번 실행합니다. (관리자)",
     type: 1,
     contexts: [0],
     integration_types: [0],
@@ -82,7 +75,7 @@ async function verifyDiscordRequest(request, body, publicKeyHex) {
   }
 }
 
-async function triggerGitHub(env, source = "cron") {
+async function triggerGitHub(env) {
   if (!env.GITHUB_TOKEN) {
     throw new Error("GITHUB_TOKEN secret is missing");
   }
@@ -98,7 +91,7 @@ async function triggerGitHub(env, source = "cron") {
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "cgv-alert-cloudflare-trigger",
     },
-    body: JSON.stringify({ ref: GITHUB_REF, inputs: { source } }),
+    body: JSON.stringify({ ref: GITHUB_REF }),
   });
 
   if (response.status !== 204) {
@@ -109,34 +102,6 @@ async function triggerGitHub(env, source = "cron") {
   }
 
   console.log("CGV Alert workflow dispatched successfully");
-}
-
-function hasAdministratorPermission(interaction) {
-  const raw = interaction.member?.permissions;
-  if (!raw) return false;
-  try {
-    return (BigInt(raw) & 8n) === 8n;
-  } catch {
-    return false;
-  }
-}
-
-async function claimCooldown(env, key, seconds) {
-  const row = await getState(env, `cooldown:${key}`);
-  const previous = Date.parse(row?.value?.at || "");
-  const now = Date.now();
-
-  if (Number.isFinite(previous)) {
-    const remainingMs = seconds * 1000 - (now - previous);
-    if (remainingMs > 0) {
-      return Math.ceil(remainingMs / 1000);
-    }
-  }
-
-  await putState(env, `cooldown:${key}`, {
-    at: new Date(now).toISOString(),
-  });
-  return 0;
 }
 
 function ephemeralContent(content) {
@@ -436,10 +401,9 @@ function buildHelpEmbed() {
     description: [
       "**/상태** — 시스템, Cron, GitHub, CGV 조회 상태",
       "**/감시목록** — 현재 영화/날짜/주기/ID 확인",
-      "**/즉시확인** — 지금 CGV 확인 1회 실행 (관리자, 60초 쿨다운)",
     ].join("\n"),
     footer: {
-      text: "관리 명령은 서버 Administrator 권한이 있는 사용자만 실행 가능",
+      text: "CGV Alert",
     },
   };
 }
@@ -509,24 +473,6 @@ async function handleDiscordInteraction(request, env) {
           flags: 64,
         },
       });
-    }
-
-    if (command === "즉시확인") {
-      if (!hasAdministratorPermission(interaction)) {
-        return ephemeralContent("이 명령어는 서버 관리자만 사용할 수 있습니다.");
-      }
-
-      const remaining = await claimCooldown(env, "manual-check", 60);
-      if (remaining > 0) {
-        return ephemeralContent(
-          `이미 즉시 확인을 요청했습니다. ${remaining}초 뒤 다시 사용할 수 있습니다.`,
-        );
-      }
-
-      await triggerGitHub(env, "discord_manual");
-      return ephemeralContent(
-        "🔎 즉시 확인을 요청했습니다. 완료되면 Discord로 결과를 다시 알려드립니다.",
-      );
     }
 
     return ephemeralContent("알 수 없는 명령어입니다.");
