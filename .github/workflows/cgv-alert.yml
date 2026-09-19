@@ -2,6 +2,12 @@ name: CGV Alert
 
 on:
   workflow_dispatch:
+    inputs:
+      source:
+        description: "Who requested this run"
+        required: false
+        default: "manual"
+        type: string
   push:
     branches:
       - main
@@ -21,7 +27,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
@@ -81,6 +87,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          FORCE_ALL_CGV_DATES: ${{ github.event_name == 'workflow_dispatch' && inputs.source == 'discord_manual' && '1' || '0' }}
 
       - name: Report runtime status to Cloudflare
         if: always()
@@ -133,6 +140,114 @@ jobs:
                   print("Cloudflare 상태 동기화 완료")
           except requests.RequestException as exc:
               print(f"Cloudflare 상태 동기화 경고: {type(exc).__name__}: {exc}")
+          PY
+
+      - name: Notify Discord when instant check finishes
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.source == 'discord_manual' }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          import requests
+
+          webhook = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+          if not webhook:
+              print("DISCORD_WEBHOOK_URL secret is missing; skipping completion message.")
+              raise SystemExit(0)
+
+          path = Path("runtime_status.json")
+          if path.exists():
+              data = json.loads(path.read_text(encoding="utf-8"))
+          else:
+              data = {
+                  "health_summary": "error",
+                  "recent_error": "runtime_status.json이 생성되지 않았습니다.",
+                  "active_count": 0,
+                  "targets": [],
+              }
+
+          health = data.get("health_summary", "normal")
+          if health == "error":
+              label = "🔴 오류"
+              color = 0xE74C3C
+          elif health == "warning":
+              label = "🟡 일부 확인 필요"
+              color = 0xF1C40F
+          else:
+              label = "🟢 정상 완료"
+              color = 0x2ECC71
+
+          now = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S KST")
+          recent_error = data.get("recent_error") or "없음"
+          targets = data.get("targets") or []
+          active_count = data.get("active_count", len(targets))
+
+          result_lines = []
+          for target in targets:
+              target_health = target.get("health_status", "normal")
+              icon = (
+                  "🔴" if target_health == "error"
+                  else "🟡" if target_health == "warning"
+                  else "🟢"
+              )
+              sessions = int(target.get("available_session_count") or 0)
+              session_text = (
+                  f"현재 예매 회차 {sessions}개"
+                  if sessions
+                  else "예매 회차 미감지"
+              )
+              result_lines.append(
+                  f"{icon} **{target.get('label', target.get('id', '영화'))}** — {session_text}"
+              )
+
+          result_text = "\n".join(result_lines) or "활성 감시 대상이 없습니다."
+
+          payload = {
+              "embeds": [{
+                  "title": "🔎 CGV 즉시확인 완료",
+                  "description": f"**{label}**",
+                  "color": color,
+                  "fields": [
+                      {"name": "완료 시각", "value": now, "inline": True},
+                      {"name": "활성 감시", "value": f"{active_count}개", "inline": True},
+                      {
+                          "name": "조회 방식",
+                          "value": "주기 무시 · 활성 감시 대상의 전체 설정 날짜 강제 조회",
+                          "inline": False,
+                      },
+                      {
+                          "name": "감시 결과",
+                          "value": result_text[:1024],
+                          "inline": False,
+                      },
+                      {"name": "최근 오류", "value": str(recent_error)[:1000], "inline": False},
+                  ],
+                  "footer": {
+                      "text": "새 예매 오픈이 감지되면 기존 예매 오픈 알림이 별도로 전송됩니다."
+                  },
+              }]
+          }
+
+          try:
+              response = requests.post(webhook, json=payload, timeout=15)
+              if response.status_code not in {200, 204}:
+                  print(
+                      "Discord completion notice failed:",
+                      response.status_code,
+                      response.text[:500],
+                  )
+              else:
+                  print("Discord instant-check completion notice sent")
+          except requests.RequestException as exc:
+              print(
+                  f"Discord completion notice warning: {type(exc).__name__}: {exc}"
+              )
           PY
 
       - name: Save monitoring state and target cleanup
