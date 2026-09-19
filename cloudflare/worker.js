@@ -725,6 +725,7 @@ export default {
       return jsonResponse({
         ok: true,
         service: "cgv-alert-trigger",
+        version: COMMAND_VERSION,
         now: new Date().toISOString(),
       });
     }
