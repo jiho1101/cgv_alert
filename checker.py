@@ -36,6 +36,12 @@ def save_state(state):
         f.write("\n")
 
 
+def save_config(config):
+    with CONFIG_PATH.open("w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+
+
 def parse_ymd(value: str):
     return datetime.strptime(str(value), "%Y%m%d").date()
 
@@ -58,6 +64,48 @@ def resolve_target_range(target):
     if date_range:
         return daterange(date_range["start"], date_range["end"])
     return [str(target["date"])]
+
+
+def target_end_ymd(target):
+    date_range = target.get("date_range") or {}
+    if date_range:
+        return str(date_range.get("end", ""))
+    return str(target.get("date", ""))
+
+
+def prune_expired_targets(config, state, today_ymd: str):
+    removed_ids = []
+    kept = []
+    for target in config.get("targets", []):
+        end_ymd = target_end_ymd(target)
+        if end_ymd and end_ymd < today_ymd:
+            removed_ids.append(str(target.get("id", "")))
+            print(
+                f"[자동정리] 감시 종료 대상 삭제: "
+                f"{target.get('label', target.get('id', 'unknown'))} ({end_ymd})"
+            )
+            continue
+        kept.append(target)
+
+    config_changed = len(kept) != len(config.get("targets", []))
+    if config_changed:
+        config["targets"] = kept
+
+    state_changed = False
+    seen = state.setdefault("seen", {})
+    for target_id in removed_ids:
+        if target_id and target_id in seen:
+            seen.pop(target_id, None)
+            state_changed = True
+
+    pages = state.setdefault("health", {}).setdefault("pages", {})
+    for page_id in list(pages):
+        parts = page_id.split("|", 1)
+        if len(parts) == 2 and parts[1] < today_ymd:
+            pages.pop(page_id, None)
+            state_changed = True
+
+    return config_changed, state_changed
 
 
 def is_due(interval_minutes: int, now: datetime) -> bool:
@@ -354,6 +402,80 @@ def send_discord(message: str) -> bool:
     return True
 
 
+def send_health_message(message: str) -> bool:
+    try:
+        return send_discord(message)
+    except RuntimeError as exc:
+        print(f"경고: 감시 상태 Discord 알림 전송 실패: {exc}")
+        return False
+
+
+def update_page_health(state, page_results, now: datetime) -> bool:
+    pages = state.setdefault("health", {}).setdefault("pages", {})
+    changed = False
+    alert_after = timedelta(minutes=30)
+
+    for page_id, result in page_results.items():
+        entry = pages.get(page_id)
+
+        if result["ok"]:
+            if not entry:
+                continue
+
+            if entry.get("alerted"):
+                first_failure_at = entry.get("first_failure_at", "-")
+                message = (
+                    "✅ **CGV 감시 복구**\n"
+                    f"- 극장: {result['theater_name']}\n"
+                    f"- 날짜: {result['play_ymd']}\n"
+                    f"- 장애 시작: {first_failure_at}\n"
+                    f"- 복구 확인: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
+                )
+                if not send_health_message(message):
+                    continue
+
+            pages.pop(page_id, None)
+            changed = True
+            continue
+
+        if not entry:
+            entry = {
+                "first_failure_at": now.isoformat(),
+                "alerted": False,
+                "theater_name": result["theater_name"],
+                "play_ymd": result["play_ymd"],
+                "last_error": result["error"],
+            }
+            pages[page_id] = entry
+            changed = True
+        elif entry.get("last_error") != result["error"]:
+            entry["last_error"] = result["error"]
+            changed = True
+
+        try:
+            first_failure = datetime.fromisoformat(entry["first_failure_at"])
+        except (KeyError, TypeError, ValueError):
+            entry["first_failure_at"] = now.isoformat()
+            first_failure = now
+            changed = True
+
+        if now - first_failure >= alert_after and not entry.get("alerted", False):
+            message = (
+                "⚠️ **CGV 감시 이상**\n"
+                f"- 극장: {result['theater_name']}\n"
+                f"- 날짜: {result['play_ymd']}\n"
+                "- 상태: 30분 이상 정상 조회 실패\n"
+                f"- 최근 오류: {result['error']}\n"
+                f"- 확인 시각: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
+            )
+            if send_health_message(message):
+                entry["alerted"] = True
+                entry["alerted_at"] = now.isoformat()
+                changed = True
+
+    return changed
+
+
 def build_alert_embeds(notification_items):
     checked_at = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")
     embeds = []
@@ -463,6 +585,16 @@ def run_checker():
     state = load_json(STATE_PATH, {"version": 1, "seen": {}})
     state.setdefault("version", 1)
     state.setdefault("seen", {})
+    state.setdefault("health", {}).setdefault("pages", {})
+
+    now = datetime.now(KST)
+    config_changed, state_changed = prune_expired_targets(
+        config, state, now.strftime("%Y%m%d")
+    )
+    if config_changed:
+        save_config(config)
+    if state_changed:
+        save_state(state)
 
     timeout = int(config.get("request", {}).get("timeout_seconds", 15))
     targets = [target for target in config.get("targets", []) if target.get("enabled", False)]
@@ -470,7 +602,6 @@ def run_checker():
         print("활성화된 감시 조건이 없습니다.")
         return
 
-    now = datetime.now(KST)
     target_by_id = {str(t["id"]): t for t in targets}
     scheduled = defaultdict(lambda: defaultdict(set))
     for target in targets:
@@ -483,30 +614,37 @@ def run_checker():
 
     browser = CgvBrowser(timeout=timeout)
     page_cache = {}
+    page_results = {}
     found = defaultdict(dict)
 
     try:
         def get_text(target, play_ymd):
             key = (str(target["theater_code"]), play_ymd)
+            page_id = f"{target['theater_code']}|{play_ymd}"
             if key not in page_cache:
                 print(f"[{target['theater_name']}] {play_ymd} 확인")
                 try:
                     page_cache[key] = browser.fetch_text(
                         str(target["theater_code"]), page_site_name(target), play_ymd
                     )
+                    page_results[page_id] = {
+                        "ok": True,
+                        "theater_name": target["theater_name"],
+                        "play_ymd": play_ymd,
+                    }
                 except RuntimeError as exc:
                     message = str(exc)
-                    transient = (
-                        "CGV 예매 페이지 로딩 시간 초과" in message
-                        or "CGV 예매 페이지 확인 실패" in message
-                    )
-                    if not transient:
-                        raise
                     print(
                         f"경고: [{target['theater_name']}] {play_ymd} "
-                        f"일시 오류로 이번 회차만 건너뜁니다: {message}"
+                        f"조회 실패로 이번 회차만 건너뜁니다: {message}"
                     )
                     page_cache[key] = None
+                    page_results[page_id] = {
+                        "ok": False,
+                        "theater_name": target["theater_name"],
+                        "play_ymd": play_ymd,
+                        "error": message,
+                    }
             return page_cache[key]
 
         for theater_code, dates in scheduled.items():
@@ -531,6 +669,9 @@ def run_checker():
                 sessions = extract_sessions(text, target, earlier)
                 if sessions:
                     by_date[earlier] = sessions
+
+        if update_page_health(state, page_results, now):
+            save_state(state)
 
         notification_items = []
         for target_id, target in target_by_id.items():
