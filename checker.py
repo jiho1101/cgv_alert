@@ -115,8 +115,10 @@ def is_due(interval_minutes: int, now: datetime) -> bool:
     return (minute_of_day % interval_minutes) < 5
 
 
-def planned_dates(target, now: datetime):
+def planned_dates(target, now: datetime, force_all: bool = False):
     all_dates = resolve_target_range(target)
+    if force_all:
+        return all_dates
     if len(all_dates) <= 1:
         return all_dates
 
@@ -178,8 +180,11 @@ def current_interval_text(target, now: datetime) -> str:
     return f"우선 {priority}분 / 전체 {full}분"
 
 
-def build_runtime_snapshot(config, state, targets, now: datetime, page_results):
+def build_runtime_snapshot(
+    config, state, targets, now: datetime, page_results, found=None
+):
     pages = state.setdefault("health", {}).setdefault("pages", {})
+    found = found or {}
     target_items = []
     health_levels = {"normal": 0, "warning": 1, "error": 2}
     overall = "normal"
@@ -236,6 +241,10 @@ def build_runtime_snapshot(config, state, targets, now: datetime, page_results):
         if last_error and recent_error is None:
             recent_error = last_error
 
+        available_session_count = sum(
+            len(rows) for rows in (found.get(target_id) or {}).values()
+        )
+
         target_items.append(
             {
                 "id": target_id,
@@ -246,6 +255,7 @@ def build_runtime_snapshot(config, state, targets, now: datetime, page_results):
                 "health_status": health_status,
                 "last_success_at": now.isoformat() if success_now else None,
                 "last_error": last_error,
+                "available_session_count": available_session_count,
             }
         )
 
@@ -728,7 +738,7 @@ def run_self_test(timeout: int):
         browser.close()
 
 
-def run_checker():
+def run_checker(force_all: bool = False):
     config = load_json(CONFIG_PATH, {"targets": []})
     state = load_json(STATE_PATH, {"version": 1, "seen": {}})
     state.setdefault("version", 1)
@@ -755,8 +765,12 @@ def run_checker():
 
     target_by_id = {str(t["id"]): t for t in targets}
     scheduled = defaultdict(lambda: defaultdict(set))
+    if force_all:
+        print(
+            "즉시확인 모드: 주기를 무시하고 활성 감시 대상의 전체 날짜를 확인합니다."
+        )
     for target in targets:
-        for play_ymd in planned_dates(target, now):
+        for play_ymd in planned_dates(target, now, force_all=force_all):
             scheduled[str(target["theater_code"])][play_ymd].add(str(target["id"]))
 
     if not scheduled:
@@ -828,7 +842,9 @@ def run_checker():
             save_state(state)
 
         write_runtime_status(
-            build_runtime_snapshot(config, state, targets, now, page_results)
+            build_runtime_snapshot(
+                config, state, targets, now, page_results, found=found
+            )
         )
 
         notification_items = []
@@ -890,7 +906,13 @@ def main():
         if args.self_test:
             run_self_test(timeout)
         else:
-            run_checker()
+            force_all = os.getenv("FORCE_ALL_CGV_DATES", "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+            run_checker(force_all=force_all)
     except Exception as exc:
         print(f"오류: {exc}", file=sys.stderr)
         write_runtime_status(
