@@ -133,34 +133,60 @@ class CgvBrowser:
         except Exception:
             pass
 
-    def fetch_text(self, site_no: str, site_name: str, play_ymd: str) -> str:
-        elapsed = time.monotonic() - self.last_request_at
-        if self.last_request_at and elapsed < 1.0:
-            time.sleep(1.0 - elapsed)
-
+    def fetch_text(
+        self,
+        site_no: str,
+        site_name: str,
+        play_ymd: str,
+        attempts: int = 2,
+        retry_delay: float = 3.0,
+    ) -> str:
         url = (
             f"{BOOKING_URL}?siteNo={quote(site_no)}&siteNm={quote(site_name)}"
             f"&scnYmd={quote(play_ymd)}"
         )
-        try:
-            self.driver.get(url)
-            WebDriverWait(self.driver, self.timeout).until(
-                lambda d: len(d.find_element(By.TAG_NAME, "body").text.strip()) > 120
-            )
-            time.sleep(1.5)
-            text = self.driver.find_element(By.TAG_NAME, "body").text
-        except TimeoutException:
-            raise RuntimeError("CGV 예매 페이지 로딩 시간 초과") from None
-        except WebDriverException as exc:
-            raise RuntimeError(f"CGV 예매 페이지 확인 실패 ({type(exc).__name__})") from None
-        finally:
-            self.last_request_at = time.monotonic()
+        attempts = max(1, int(attempts))
+        last_error = None
 
-        lowered = text.casefold()
-        blocked = ["access denied", "just a moment", "비정상적인 접근", "captcha"]
-        if any(word in lowered for word in blocked):
-            raise RuntimeError("CGV가 GitHub Actions 브라우저 접속을 제한했습니다")
-        return text
+        for attempt in range(1, attempts + 1):
+            elapsed = time.monotonic() - self.last_request_at
+            if self.last_request_at and elapsed < 1.0:
+                time.sleep(1.0 - elapsed)
+
+            try:
+                self.driver.get(url)
+                WebDriverWait(self.driver, self.timeout).until(
+                    lambda d: len(d.find_element(By.TAG_NAME, "body").text.strip()) > 120
+                )
+                time.sleep(1.5)
+                text = self.driver.find_element(By.TAG_NAME, "body").text
+
+                lowered = text.casefold()
+                blocked = ["access denied", "just a moment", "비정상적인 접근", "captcha"]
+                if any(word in lowered for word in blocked):
+                    raise RuntimeError("CGV가 GitHub Actions 브라우저 접속을 제한했습니다")
+                return text
+            except TimeoutException:
+                last_error = RuntimeError("CGV 예매 페이지 로딩 시간 초과")
+            except WebDriverException as exc:
+                last_error = RuntimeError(
+                    f"CGV 예매 페이지 확인 실패 ({type(exc).__name__})"
+                )
+            finally:
+                self.last_request_at = time.monotonic()
+
+            if attempt < attempts:
+                print(
+                    f"CGV 페이지 일시 오류 - {retry_delay:g}초 후 재시도 "
+                    f"({attempt + 1}/{attempts})"
+                )
+                try:
+                    self.driver.execute_script("window.stop();")
+                except WebDriverException:
+                    pass
+                time.sleep(retry_delay)
+
+        raise last_error from None
 
 
 def find_screen_name(lines, time_index):
@@ -464,15 +490,31 @@ def run_checker():
             key = (str(target["theater_code"]), play_ymd)
             if key not in page_cache:
                 print(f"[{target['theater_name']}] {play_ymd} 확인")
-                page_cache[key] = browser.fetch_text(
-                    str(target["theater_code"]), page_site_name(target), play_ymd
-                )
+                try:
+                    page_cache[key] = browser.fetch_text(
+                        str(target["theater_code"]), page_site_name(target), play_ymd
+                    )
+                except RuntimeError as exc:
+                    message = str(exc)
+                    transient = (
+                        "CGV 예매 페이지 로딩 시간 초과" in message
+                        or "CGV 예매 페이지 확인 실패" in message
+                    )
+                    if not transient:
+                        raise
+                    print(
+                        f"경고: [{target['theater_name']}] {play_ymd} "
+                        f"일시 오류로 이번 회차만 건너뜁니다: {message}"
+                    )
+                    page_cache[key] = None
             return page_cache[key]
 
         for theater_code, dates in scheduled.items():
             for play_ymd, target_ids in sorted(dates.items()):
                 sample_target = target_by_id[next(iter(target_ids))]
                 text = get_text(sample_target, play_ymd)
+                if not text:
+                    continue
                 for target_id in target_ids:
                     sessions = extract_sessions(text, target_by_id[target_id], play_ymd)
                     if sessions:
@@ -484,6 +526,8 @@ def run_checker():
             candidate = min(by_date)
             for earlier in [d for d in resolve_target_range(target) if d < candidate]:
                 text = get_text(target, earlier)
+                if not text:
+                    continue
                 sessions = extract_sessions(text, target, earlier)
                 if sessions:
                     by_date[earlier] = sessions
