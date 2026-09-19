@@ -1,8 +1,9 @@
 const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
+const CONFIG_WORKFLOW_FILE = "cgv-config.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "1";
+const COMMAND_VERSION = "2";
 
 const DISCORD_COMMANDS = [
   {
@@ -18,6 +19,68 @@ const DISCORD_COMMANDS = [
     type: 1,
     contexts: [0],
     integration_types: [0],
+  },
+  {
+    name: "즉시확인",
+    description: "CGV 감시를 지금 즉시 한 번 실행합니다. (관리자)",
+    type: 1,
+    contexts: [0],
+    integration_types: [0],
+  },
+  {
+    name: "도움말",
+    description: "CGV Alert 명령어 사용법을 확인합니다.",
+    type: 1,
+    contexts: [0],
+    integration_types: [0],
+  },
+  {
+    name: "감시추가",
+    description: "울산삼산의 특정 영화/날짜 감시를 추가합니다. (관리자)",
+    type: 1,
+    contexts: [0],
+    integration_types: [0],
+    options: [
+      {
+        name: "영화",
+        description: "감시할 영화명",
+        type: 3,
+        required: true,
+      },
+      {
+        name: "날짜",
+        description: "상영 날짜 YYYYMMDD (예: 20261001)",
+        type: 3,
+        required: true,
+      },
+      {
+        name: "상영관",
+        description: "선택: IMAX, 4DX 등 상영관 키워드",
+        type: 3,
+        required: false,
+      },
+      {
+        name: "별칭",
+        description: "선택: 쉼표로 구분한 추가 영화명",
+        type: 3,
+        required: false,
+      },
+    ],
+  },
+  {
+    name: "감시삭제",
+    description: "감시 대상을 ID 또는 정확한 영화명으로 삭제합니다. (관리자)",
+    type: 1,
+    contexts: [0],
+    integration_types: [0],
+    options: [
+      {
+        name: "대상",
+        description: "/감시목록의 ID 또는 정확한 영화명",
+        type: 3,
+        required: true,
+      },
+    ],
   },
 ];
 
@@ -95,6 +158,75 @@ async function triggerGitHub(env) {
   }
 
   console.log("CGV Alert workflow dispatched successfully");
+}
+
+async function triggerConfigWorkflow(env, inputs) {
+  if (!env.GITHUB_TOKEN) {
+    throw new Error("GITHUB_TOKEN secret is missing");
+  }
+
+  const url =
+    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/workflows/${CONFIG_WORKFLOW_FILE}/dispatches`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "cgv-alert-cloudflare-trigger",
+    },
+    body: JSON.stringify({ ref: GITHUB_REF, inputs }),
+  });
+
+  if (response.status !== 204) {
+    const responseBody = await response.text();
+    throw new Error(
+      `GitHub config workflow dispatch failed: HTTP ${response.status} ${responseBody}`,
+    );
+  }
+}
+
+function commandOption(interaction, name) {
+  return interaction.data?.options?.find((option) => option.name === name)?.value;
+}
+
+function hasAdministratorPermission(interaction) {
+  const raw = interaction.member?.permissions;
+  if (!raw) return false;
+  try {
+    return (BigInt(raw) & 8n) === 8n;
+  } catch {
+    return false;
+  }
+}
+
+async function claimCooldown(env, key, seconds) {
+  const row = await getState(env, `cooldown:${key}`);
+  const previous = Date.parse(row?.value?.at || "");
+  const now = Date.now();
+
+  if (Number.isFinite(previous)) {
+    const remainingMs = seconds * 1000 - (now - previous);
+    if (remainingMs > 0) {
+      return Math.ceil(remainingMs / 1000);
+    }
+  }
+
+  await putState(env, `cooldown:${key}`, {
+    at: new Date(now).toISOString(),
+  });
+  return 0;
+}
+
+function ephemeralContent(content) {
+  return jsonResponse({
+    type: 4,
+    data: {
+      content,
+      flags: 64,
+    },
+  });
 }
 
 async function ensureDb(env) {
@@ -339,6 +471,7 @@ async function buildWatchList(env) {
       fields: page.map((target) => ({
         name: `${statusLabel(target.health_status)} · ${target.label}`,
         value: [
+          `**ID** \`${target.id}\``,
           `**극장** ${target.theater_name}`,
           `**날짜** ${target.date_text}`,
           `**현재 주기** ${target.interval_text}`,
@@ -352,6 +485,26 @@ async function buildWatchList(env) {
     });
   }
   return embeds;
+}
+
+function buildHelpEmbed() {
+  return {
+    title: "🧭 CGV Alert 도움말",
+    color: 0x5865f2,
+    description: [
+      "**/상태** — 시스템, Cron, GitHub, CGV 조회 상태",
+      "**/감시목록** — 현재 영화/날짜/주기/ID 확인",
+      "**/즉시확인** — 지금 CGV 확인 1회 실행 (관리자, 60초 쿨다운)",
+      "**/감시추가 영화 날짜 [상영관] [별칭]** — 울산삼산 단일 날짜 5분 감시 추가 (관리자)",
+      "**/감시삭제 대상** — ID 또는 정확한 영화명으로 삭제 (관리자)",
+      "",
+      "감시 추가 날짜 형식: YYYYMMDD",
+      "추가/삭제는 GitHub 설정 작업으로 접수되며 다음 Cron부터 반영됩니다.",
+    ].join("\n"),
+    footer: {
+      text: "관리 명령은 서버 Administrator 권한이 있는 사용자만 실행 가능",
+    },
+  };
 }
 
 async function handleDiscordInteraction(request, env) {
@@ -411,13 +564,103 @@ async function handleDiscordInteraction(request, env) {
       });
     }
 
-    return jsonResponse({
-      type: 4,
-      data: {
-        content: "알 수 없는 명령어입니다.",
-        flags: 64,
-      },
-    });
+    if (command === "도움말") {
+      return jsonResponse({
+        type: 4,
+        data: {
+          embeds: [buildHelpEmbed()],
+          flags: 64,
+        },
+      });
+    }
+
+    if (command === "즉시확인") {
+      if (!hasAdministratorPermission(interaction)) {
+        return ephemeralContent("이 명령어는 서버 관리자만 사용할 수 있습니다.");
+      }
+
+      const remaining = await claimCooldown(env, "manual-check", 60);
+      if (remaining > 0) {
+        return ephemeralContent(
+          `이미 즉시 확인을 요청했습니다. ${remaining}초 뒤 다시 사용할 수 있습니다.`,
+        );
+      }
+
+      await triggerGitHub(env);
+      return ephemeralContent(
+        "🔎 즉시 확인을 요청했습니다. GitHub Actions가 CGV를 확인합니다.",
+      );
+    }
+
+    if (command === "감시추가") {
+      if (!hasAdministratorPermission(interaction)) {
+        return ephemeralContent("이 명령어는 서버 관리자만 사용할 수 있습니다.");
+      }
+
+      const label = String(commandOption(interaction, "영화") || "").trim();
+      const date = String(commandOption(interaction, "날짜") || "").trim();
+      const screen = String(commandOption(interaction, "상영관") || "").trim();
+      const aliases = String(commandOption(interaction, "별칭") || "").trim();
+
+      if (!label || !/^\d{8}$/.test(date)) {
+        return ephemeralContent(
+          "영화명과 YYYYMMDD 형식의 날짜를 확인해 주세요.",
+        );
+      }
+
+      const remaining = await claimCooldown(env, "target-admin", 10);
+      if (remaining > 0) {
+        return ephemeralContent(
+          `설정 변경 처리 중입니다. ${remaining}초 뒤 다시 시도해 주세요.`,
+        );
+      }
+
+      await triggerConfigWorkflow(env, {
+        action: "add",
+        label,
+        date,
+        screen,
+        aliases,
+        target: "",
+      });
+
+      return ephemeralContent(
+        `➕ 감시 추가 요청을 접수했습니다.\n영화: **${label}**\n날짜: **${date}**\n극장: **CGV 울산삼산**\n\n잠시 뒤 /감시목록에서 확인할 수 있습니다.`,
+      );
+    }
+
+    if (command === "감시삭제") {
+      if (!hasAdministratorPermission(interaction)) {
+        return ephemeralContent("이 명령어는 서버 관리자만 사용할 수 있습니다.");
+      }
+
+      const target = String(commandOption(interaction, "대상") || "").trim();
+      if (!target) {
+        return ephemeralContent("삭제할 ID 또는 영화명을 입력해 주세요.");
+      }
+
+      const remaining = await claimCooldown(env, "target-admin", 10);
+      if (remaining > 0) {
+        return ephemeralContent(
+          `설정 변경 처리 중입니다. ${remaining}초 뒤 다시 시도해 주세요.`,
+        );
+      }
+
+      await triggerConfigWorkflow(env, {
+        action: "delete",
+        label: "",
+        date: "",
+        screen: "",
+        aliases: "",
+        target,
+      });
+
+      return ephemeralContent(
+        `➖ 감시 삭제 요청을 접수했습니다: **${target}**\n잠시 뒤 /감시목록에서 확인할 수 있습니다.`,
+      );
+    }
+
+    return ephemeralContent("알 수 없는 명령어입니다.");
   } catch (error) {
     console.error("Discord command failed", error);
     return jsonResponse({
