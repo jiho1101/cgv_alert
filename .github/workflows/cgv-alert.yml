@@ -82,14 +82,14 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
-      - name: Save notification state
+      - name: Save monitoring state and target cleanup
         run: |
-          if git diff --quiet -- state.json; then
-            echo "No state changes"
+          if git diff --quiet -- state.json config.json; then
+            echo "No monitoring state or target changes"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add state.json
-          git commit -m "chore: update CGV alert state [skip ci]"
+          git add state.json config.json
+          git commit -m "chore: update CGV monitoring state [skip ci]"
           git push
