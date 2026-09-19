@@ -3,7 +3,7 @@ const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const CONFIG_WORKFLOW_FILE = "cgv-config.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "3";
+const COMMAND_VERSION = "4";
 
 const DISCORD_COMMANDS = [
   {
@@ -280,16 +280,23 @@ async function recordCron(env) {
 }
 
 async function ensureCommandsRegistered(env) {
-  if (
-    !env.DB ||
-    !env.DISCORD_APPLICATION_ID ||
-    !env.DISCORD_BOT_TOKEN
-  ) {
-    return;
+  const missing = [];
+  if (!env.DB) missing.push("DB");
+  if (!env.DISCORD_APPLICATION_ID) missing.push("DISCORD_APPLICATION_ID");
+  if (!env.DISCORD_BOT_TOKEN) missing.push("DISCORD_BOT_TOKEN");
+  if (missing.length) {
+    throw new Error(`Discord command setup missing: ${missing.join(", ")}`);
   }
 
   const current = await getState(env, "discord_commands");
-  if (current?.value?.version === COMMAND_VERSION) return;
+  if (current?.value?.version === COMMAND_VERSION) {
+    return {
+      ok: true,
+      action: "already_registered",
+      version: COMMAND_VERSION,
+      count: current?.value?.count ?? null,
+    };
+  }
 
   const response = await fetch(
     `https://discord.com/api/v10/applications/${env.DISCORD_APPLICATION_ID}/commands`,
@@ -303,18 +310,33 @@ async function ensureCommandsRegistered(env) {
     },
   );
 
+  const body = await response.text();
   if (!response.ok) {
-    const body = await response.text();
     throw new Error(
-      `Discord command registration failed: HTTP ${response.status} ${body}`,
+      `Discord command registration failed: HTTP ${response.status} ${body.slice(0, 1200)}`,
     );
+  }
+
+  let registered = [];
+  try {
+    registered = JSON.parse(body);
+  } catch {
+    registered = [];
   }
 
   await putState(env, "discord_commands", {
     version: COMMAND_VERSION,
     registered_at: new Date().toISOString(),
+    count: Array.isArray(registered) ? registered.length : null,
   });
   console.log("Discord slash commands registered");
+
+  return {
+    ok: true,
+    action: "registered",
+    version: COMMAND_VERSION,
+    count: Array.isArray(registered) ? registered.length : null,
+  };
 }
 
 function mergeStatus(previous, incoming) {
@@ -722,10 +744,31 @@ export default {
     }
 
     if (request.method === "GET" && url.pathname === "/health") {
+      let discordCommandSetup;
+      let discordCommandState = null;
+
+      try {
+        discordCommandSetup = await ensureCommandsRegistered(env);
+      } catch (error) {
+        discordCommandSetup = {
+          ok: false,
+          error: String(error),
+        };
+      }
+
+      try {
+        discordCommandState =
+          (await getState(env, "discord_commands"))?.value || null;
+      } catch {
+        discordCommandState = null;
+      }
+
       return jsonResponse({
         ok: true,
         service: "cgv-alert-trigger",
         version: COMMAND_VERSION,
+        discord_commands: discordCommandSetup,
+        discord_command_state: discordCommandState,
         now: new Date().toISOString(),
       });
     }
