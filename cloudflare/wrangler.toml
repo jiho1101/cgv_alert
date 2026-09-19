@@ -1,6 +1,10 @@
 name = "cgv-alert-trigger"
 main = "worker.js"
 compatibility_date = "2026-09-18"
+keep_vars = true
+
+[vars]
+DISCORD_APPLICATION_ID = "1550913485511069757"
 
 [[d1_databases]]
 binding = "DB"
