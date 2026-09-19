@@ -2,12 +2,6 @@ name: CGV Alert
 
 on:
   workflow_dispatch:
-    inputs:
-      source:
-        description: "Who requested this run"
-        required: false
-        default: "manual"
-        type: string
   push:
     branches:
       - main
@@ -139,76 +133,6 @@ jobs:
                   print("Cloudflare 상태 동기화 완료")
           except requests.RequestException as exc:
               print(f"Cloudflare 상태 동기화 경고: {type(exc).__name__}: {exc}")
-          PY
-
-      - name: Notify Discord when instant check finishes
-        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.source == 'discord_manual' }}
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from datetime import datetime
-          from pathlib import Path
-          from zoneinfo import ZoneInfo
-
-          import requests
-
-          webhook = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
-          if not webhook:
-              print("DISCORD_WEBHOOK_URL secret is missing; skipping completion message.")
-              raise SystemExit(0)
-
-          path = Path("runtime_status.json")
-          if path.exists():
-              data = json.loads(path.read_text(encoding="utf-8"))
-          else:
-              data = {
-                  "health_summary": "error",
-                  "recent_error": "runtime_status.json이 생성되지 않았습니다.",
-                  "active_count": 0,
-              }
-
-          health = data.get("health_summary", "normal")
-          if health == "error":
-              label = "🔴 오류"
-              color = 0xE74C3C
-          elif health == "warning":
-              label = "🟡 일부 확인 필요"
-              color = 0xF1C40F
-          else:
-              label = "🟢 정상 완료"
-              color = 0x2ECC71
-
-          now = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S KST")
-          recent_error = data.get("recent_error") or "없음"
-          active_count = data.get("active_count", len(data.get("targets") or []))
-
-          payload = {
-              "embeds": [{
-                  "title": "🔎 CGV 즉시확인 완료",
-                  "description": f"**{label}**",
-                  "color": color,
-                  "fields": [
-                      {"name": "완료 시각", "value": now, "inline": True},
-                      {"name": "활성 감시", "value": f"{active_count}개", "inline": True},
-                      {"name": "최근 오류", "value": str(recent_error)[:1000], "inline": False},
-                  ],
-                  "footer": {
-                      "text": "새 예매 오픈이 감지되면 기존 예매 오픈 알림이 별도로 전송됩니다."
-                  },
-              }]
-          }
-
-          try:
-              response = requests.post(webhook, json=payload, timeout=15)
-              if response.status_code not in {200, 204}:
-                  print("Discord completion notice failed:", response.status_code, response.text[:500])
-              else:
-                  print("Discord instant-check completion notice sent")
-          except requests.RequestException as exc:
-              print(f"Discord completion notice warning: {type(exc).__name__}: {exc}")
           PY
 
       - name: Save monitoring state and target cleanup
