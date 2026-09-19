@@ -12,9 +12,9 @@ Cloudflare Cron (5 min)
   -> CGV
   -> Discord booking alert
 
-Discord /상태, /감시목록
+Discord slash commands
   -> Cloudflare Worker
-  -> D1 status snapshot
+  -> D1 status snapshot / GitHub workflow dispatch
   -> Discord response
 ```
 
@@ -35,8 +35,20 @@ The Worker supports:
 
 - `/상태`: overall service status, last Cloudflare Cron, last GitHub run,
   last successful CGV read, recent error, and active target count.
-- `/감시목록`: movie, theater, date, current interval, health status,
-  and last successful check time.
+- `/감시목록`: movie, target ID, theater, date, current interval,
+  health status, and last successful check time.
+- `/즉시확인`: dispatch one immediate CGV check. Administrator only,
+  with a 60-second cooldown.
+- `/도움말`: show command usage.
+- `/감시추가`: add an exact-date CGV Ulsan Samsan target.
+  Administrator only.
+- `/감시삭제`: delete a target by ID or exact movie label.
+  Administrator only.
+
+Target add/delete requests dispatch `.github/workflows/cgv-config.yml`. The
+Worker PAT therefore only needs Actions permission; the short admin workflow
+uses its repository `GITHUB_TOKEN` with `contents: write` to update
+`config.json`.
 
 ### Cloudflare bindings/secrets
 
@@ -76,7 +88,7 @@ Set the Discord application's Interactions Endpoint URL to:
 
 Discord verifies this endpoint using the application's Public Key.
 
-The Worker registers the two global slash commands automatically after
+The Worker registers the global slash commands automatically after
 `DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN`, and the `DB` binding are present.
 Registration is versioned so it is not repeated every five minutes.
 
