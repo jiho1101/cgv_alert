@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "7";
+const COMMAND_VERSION = "8";
 
 const DISCORD_COMMANDS = [
   {
@@ -199,36 +199,19 @@ async function recordCron(env) {
   }
 }
 
-async function ensureCommandsRegistered(env) {
-  const missing = [];
-  if (!env.DB) missing.push("DB");
-  if (!env.DISCORD_APPLICATION_ID) missing.push("DISCORD_APPLICATION_ID");
-  if (!env.DISCORD_BOT_TOKEN) missing.push("DISCORD_BOT_TOKEN");
-  if (missing.length) {
-    throw new Error(`Discord command setup missing: ${missing.join(", ")}`);
-  }
+async function registerDiscordCommands(env, guildId = null) {
+  const endpoint = guildId
+    ? `https://discord.com/api/v10/applications/${env.DISCORD_APPLICATION_ID}/guilds/${guildId}/commands`
+    : `https://discord.com/api/v10/applications/${env.DISCORD_APPLICATION_ID}/commands`;
 
-  const current = await getState(env, "discord_commands");
-  if (current?.value?.version === COMMAND_VERSION) {
-    return {
-      ok: true,
-      action: "already_registered",
-      version: COMMAND_VERSION,
-      count: current?.value?.count ?? null,
-    };
-  }
-
-  const response = await fetch(
-    `https://discord.com/api/v10/applications/${env.DISCORD_APPLICATION_ID}/commands`,
-    {
-      method: "PUT",
-      headers: {
-        Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(DISCORD_COMMANDS),
+  const response = await fetch(endpoint, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify(DISCORD_COMMANDS),
+  });
 
   const body = await response.text();
   if (!response.ok) {
@@ -244,19 +227,85 @@ async function ensureCommandsRegistered(env) {
     registered = [];
   }
 
-  await putState(env, "discord_commands", {
+  const stateKey = guildId
+    ? `discord_commands:guild:${guildId}`
+    : "discord_commands";
+
+  await putState(env, stateKey, {
     version: COMMAND_VERSION,
+    scope: guildId ? "guild" : "global",
+    guild_id: guildId || null,
     registered_at: new Date().toISOString(),
     count: Array.isArray(registered) ? registered.length : null,
   });
-  console.log("Discord slash commands registered");
+
+  console.log(
+    guildId
+      ? `Discord guild slash commands registered for ${guildId}`
+      : "Discord global slash commands registered",
+  );
 
   return {
     ok: true,
     action: "registered",
+    scope: guildId ? "guild" : "global",
     version: COMMAND_VERSION,
     count: Array.isArray(registered) ? registered.length : null,
   };
+}
+
+async function ensureCommandsRegistered(env) {
+  const missing = [];
+  if (!env.DB) missing.push("DB");
+  if (!env.DISCORD_APPLICATION_ID) missing.push("DISCORD_APPLICATION_ID");
+  if (!env.DISCORD_BOT_TOKEN) missing.push("DISCORD_BOT_TOKEN");
+  if (missing.length) {
+    throw new Error(`Discord command setup missing: ${missing.join(", ")}`);
+  }
+
+  const guildRow = await getState(env, "discord_guild");
+  const guildId = guildRow?.value?.guild_id || null;
+  const stateKey = guildId
+    ? `discord_commands:guild:${guildId}`
+    : "discord_commands";
+  const current = await getState(env, stateKey);
+
+  if (current?.value?.version === COMMAND_VERSION) {
+    return {
+      ok: true,
+      action: "already_registered",
+      scope: guildId ? "guild" : "global",
+      version: COMMAND_VERSION,
+      count: current?.value?.count ?? null,
+    };
+  }
+
+  return registerDiscordCommands(env, guildId);
+}
+
+async function rememberGuildAndRegister(env, interaction) {
+  const guildId = interaction?.guild_id;
+  if (!guildId) return;
+
+  try {
+    const existing = await getState(env, "discord_guild");
+    if (existing?.value?.guild_id !== guildId) {
+      await putState(env, "discord_guild", {
+        guild_id: guildId,
+        learned_at: new Date().toISOString(),
+      });
+    }
+
+    const current = await getState(
+      env,
+      `discord_commands:guild:${guildId}`,
+    );
+    if (current?.value?.version !== COMMAND_VERSION) {
+      await registerDiscordCommands(env, guildId);
+    }
+  } catch (error) {
+    console.error("Failed to learn/register Discord guild commands", error);
+  }
 }
 
 function mergeStatus(previous, incoming) {
@@ -444,7 +493,7 @@ function buildHelpEmbed() {
   };
 }
 
-async function handleDiscordInteraction(request, env) {
+async function handleDiscordInteraction(request, env, ctx) {
   if (!env.DISCORD_PUBLIC_KEY) {
     return new Response("DISCORD_PUBLIC_KEY secret is missing", { status: 500 });
   }
@@ -461,6 +510,10 @@ async function handleDiscordInteraction(request, env) {
   }
 
   const interaction = JSON.parse(body);
+
+  if (interaction.guild_id && ctx) {
+    ctx.waitUntil(rememberGuildAndRegister(env, interaction));
+  }
 
   if (interaction.type === 1) {
     return jsonResponse({ type: 1 });
@@ -559,14 +612,14 @@ export default {
     );
   },
 
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (
       request.method === "POST" &&
       url.pathname === "/discord/interactions"
     ) {
-      return handleDiscordInteraction(request, env);
+      return handleDiscordInteraction(request, env, ctx);
     }
 
     if (
