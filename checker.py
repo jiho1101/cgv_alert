@@ -476,6 +476,13 @@ def update_page_health(state, page_results, now: datetime) -> bool:
     return changed
 
 
+def build_booking_url(target, play_ymd: str) -> str:
+    return (
+        f"{BOOKING_URL}?siteNo={quote(str(target['theater_code']))}"
+        f"&siteNm={quote(page_site_name(target))}&scnYmd={quote(play_ymd)}"
+    )
+
+
 def build_alert_embeds(notification_items):
     checked_at = datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")
     embeds = []
@@ -485,64 +492,80 @@ def build_alert_embeds(notification_items):
         movie_name = target.get("label", target["id"])
         theater_name = target.get("theater_name", "CGV")
         new_keys = item["new_keys"]
-        new_count = len(new_keys)
-        pending_fields = []
 
         for play_ymd in sorted(item["by_date"]):
             date_text = datetime.strptime(play_ymd, "%Y%m%d").strftime("%Y-%m-%d")
             unique = {}
             for row in item["by_date"][play_ymd]:
                 unique[row["_key"]] = row
+
             ordered = sorted(
                 unique.values(),
-                key=lambda row: (row.get("PlayStartTm", ""), row.get("ScreenNm", "")),
+                key=lambda row: (
+                    row.get("ScreenNm", ""),
+                    row.get("PlayStartTm", ""),
+                ),
             )
+            new_count = sum(1 for row in ordered if row["_key"] in new_keys)
 
-            session_lines = []
+            by_screen = defaultdict(list)
             for row in ordered:
+                screen = row.get("ScreenNm") or "상영관 정보 확인 필요"
                 mark = "🆕 " if row["_key"] in new_keys else ""
-                session_lines.append(
-                    f"{mark}`{pretty_time(row.get('PlayStartTm'))}` · "
-                    f"{row.get('ScreenNm') or '상영관 정보 확인 필요'}"
+                by_screen[screen].append(
+                    f"{mark}`{pretty_time(row.get('PlayStartTm'))}`"
                 )
 
-            value = "\n".join(session_lines) or "회차 정보 없음"
-            while value:
-                chunk = value[:950]
-                value = value[950:]
-                pending_fields.append({
-                    "name": f"📅 {date_text} · {len(ordered)}회차",
-                    "value": chunk,
+            fields = []
+            for screen in sorted(by_screen):
+                value = "  ".join(by_screen[screen])
+                while value:
+                    chunk = value[:1000]
+                    value = value[1000:]
+                    fields.append({
+                        "name": f"🎥 {screen}",
+                        "value": chunk,
+                        "inline": False,
+                    })
+
+            if not fields:
+                fields = [{
+                    "name": "🎥 상영관 / 시간",
+                    "value": "회차 정보 없음",
                     "inline": False,
-                })
+                }]
 
-        current_fields = []
-        current_chars = 0
-        part = 1
-        for field in pending_fields:
-            field_chars = len(field["name"]) + len(field["value"])
-            if current_fields and (len(current_fields) >= 20 or current_chars + field_chars > 4500):
+            chunks = []
+            current = []
+            current_chars = 0
+            for field in fields:
+                size = len(field["name"]) + len(field["value"])
+                if current and (len(current) >= 20 or current_chars + size > 4200):
+                    chunks.append(current)
+                    current = []
+                    current_chars = 0
+                current.append(field)
+                current_chars += size
+            if current:
+                chunks.append(current)
+
+            for part, chunk in enumerate(chunks, start=1):
+                title_suffix = f" · {part}/{len(chunks)}" if len(chunks) > 1 else ""
                 embeds.append({
-                    "title": f"🎬 {movie_name}" + (f" · {part}" if part > 1 else ""),
-                    "url": BOOKING_URL,
-                    "description": f"**극장** {theater_name}\n**신규 회차** {new_count}개",
-                    "fields": current_fields,
-                    "footer": {"text": f"CGV 예매 오픈 감지 · {checked_at}"},
+                    "title": f"🎟️ 예매 오픈 · {movie_name}{title_suffix}",
+                    "url": build_booking_url(target, play_ymd),
+                    "description": (
+                        f"🏢 **극장**  {theater_name}\n"
+                        f"📅 **날짜**  {date_text}\n"
+                        f"✨ **신규 회차**  **{new_count}개**\n\n"
+                        "아래에서 상영관별 시간을 확인하세요. "
+                        "🆕 표시는 이번에 새로 감지된 회차입니다."
+                    ),
+                    "fields": chunk,
+                    "footer": {
+                        "text": f"CGV 예매 오픈 감지 · {checked_at} · 제목을 누르면 예매 페이지로 이동"
+                    },
                 })
-                current_fields = []
-                current_chars = 0
-                part += 1
-            current_fields.append(field)
-            current_chars += field_chars
-
-        if current_fields or not pending_fields:
-            embeds.append({
-                "title": f"🎬 {movie_name}" + (f" · {part}" if part > 1 else ""),
-                "url": BOOKING_URL,
-                "description": f"**극장** {theater_name}\n**신규 회차** {new_count}개",
-                "fields": current_fields,
-                "footer": {"text": f"CGV 예매 오픈 감지 · {checked_at}"},
-            })
 
     return embeds
 
