@@ -2,5 +2,10 @@ name = "cgv-alert-trigger"
 main = "worker.js"
 compatibility_date = "2026-09-18"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "cgv-alert-status"
+database_id = "da21f615-7792-4a57-a612-890198e606f0"
+
 [triggers]
 crons = ["*/5 * * * *"]
