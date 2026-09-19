@@ -1,38 +1,106 @@
-# CGV Alert Cloudflare Trigger
+# CGV Alert Cloudflare Trigger + Discord Commands
 
-This Worker is only a timer/trigger. The actual CGV Selenium checker continues to run in GitHub Actions.
+This Worker is the control layer for the CGV alert system.
 
-## Required secret
+Current flow:
+
+```
+Cloudflare Cron (5 min)
+  -> GitHub workflow_dispatch
+  -> GitHub Actions
+  -> checker.py
+  -> CGV
+  -> Discord booking alert
+
+Discord /상태, /감시목록
+  -> Cloudflare Worker
+  -> D1 status snapshot
+  -> Discord response
+```
+
+## Existing required secret
 
 Create a Cloudflare Worker secret named:
 
 `GITHUB_TOKEN`
 
-Use a GitHub fine-grained personal access token restricted to the `jiho1101/cgv_alert` repository with **Actions: Read and write** permission.
+Use a GitHub fine-grained personal access token restricted to the
+`jiho1101/cgv_alert` repository with **Actions: Read and write** permission.
 
 Do not commit the token into this repository.
 
+## Discord command setup
+
+The Worker supports:
+
+- `/상태`: overall service status, last Cloudflare Cron, last GitHub run,
+  last successful CGV read, recent error, and active target count.
+- `/감시목록`: movie, theater, date, current interval, health status,
+  and last successful check time.
+
+### Cloudflare bindings/secrets
+
+Create a D1 database and bind it to the Worker with variable name:
+
+`DB`
+
+The Worker creates its small `app_state` table automatically.
+
+Add these Worker secrets/variables:
+
+- `DISCORD_PUBLIC_KEY` — Discord application Public Key
+- `DISCORD_APPLICATION_ID` — Discord application ID
+- `DISCORD_BOT_TOKEN` — Discord bot token
+- `STATUS_API_TOKEN` — a random shared secret used only for GitHub -> Worker status updates
+
+Keep the existing `GITHUB_TOKEN`.
+
+### GitHub secret
+
+Create one repository secret with the exact same value as the Cloudflare
+`STATUS_API_TOKEN`:
+
+`STATUS_API_TOKEN`
+
+The GitHub workflow posts `runtime_status.json` to:
+
+`https://cgv-alert-trigger.choi1101jh.workers.dev/api/status`
+
+The runtime status file is ignored by Git and is not committed.
+
+### Discord Interactions URL
+
+Set the Discord application's Interactions Endpoint URL to:
+
+`https://cgv-alert-trigger.choi1101jh.workers.dev/discord/interactions`
+
+Discord verifies this endpoint using the application's Public Key.
+
+The Worker registers the two global slash commands automatically after
+`DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN`, and the `DB` binding are present.
+Registration is versioned so it is not repeated every five minutes.
+
 ## Schedule
 
-The Worker is configured for:
+The Worker uses:
 
 `*/5 * * * *`
 
-That asks Cloudflare Cron to invoke the Worker every five minutes.
+Cloudflare invokes the Worker every five minutes.
 
-## Flow
+## Security
 
-Cloudflare Cron -> Worker scheduled() -> GitHub workflow_dispatch -> CGV Alert workflow -> checker.py -> Discord
+Never commit:
 
+- GitHub PATs
+- Discord bot tokens
+- Discord webhook URLs
+- STATUS_API_TOKEN
 
-## Final cleanup after Cloudflare verification
+Store them only in GitHub Secrets or Cloudflare Worker Secrets.
 
-After Cloudflare Cron has successfully triggered the GitHub workflow several times in a row:
+## Completed migration
 
-1. Remove the GitHub Actions `schedule: */5 * * * *` trigger from `.github/workflows/cgv-alert.yml`.
-2. Keep `workflow_dispatch` because Cloudflare uses it to start the checker.
-3. Remove `.github/workflows/cgv-temp-watch.yml`.
-4. Keep GitHub Actions enabled because the checker still runs there.
-5. Verify there are no duplicate CGV Alert runs after cleanup.
-
-Do not perform this cleanup before Cloudflare has been verified working.
+The old GitHub-native scheduled trigger and temporary five-minute watcher
+have already been removed. `workflow_dispatch` remains because Cloudflare
+uses it to start the checker.
