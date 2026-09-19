@@ -82,6 +82,59 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
+      - name: Report runtime status to Cloudflare
+        if: always()
+        env:
+          STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
+          STATUS_API_URL: "https://cgv-alert-trigger.choi1101jh.workers.dev/api/status"
+        run: |
+          if [ -z "$STATUS_API_TOKEN" ]; then
+            echo "STATUS_API_TOKEN secret is not configured yet; skipping status sync."
+            exit 0
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          import requests
+
+          path = Path("runtime_status.json")
+          if path.exists():
+              payload = json.loads(path.read_text(encoding="utf-8"))
+          else:
+              payload = {
+                  "last_run_at": datetime.now(ZoneInfo("Asia/Seoul")).isoformat(),
+                  "health_summary": "error",
+                  "recent_error": "runtime_status.json이 생성되지 않았습니다.",
+                  "targets": [],
+                  "preserve_targets": True,
+              }
+
+          try:
+              response = requests.post(
+                  os.environ["STATUS_API_URL"],
+                  json=payload,
+                  headers={
+                      "Authorization": f"Bearer {os.environ['STATUS_API_TOKEN']}"
+                  },
+                  timeout=15,
+              )
+              if response.status_code not in {200, 204}:
+                  print(
+                      "Cloudflare 상태 동기화 경고:",
+                      response.status_code,
+                      response.text[:500],
+                  )
+              else:
+                  print("Cloudflare 상태 동기화 완료")
+          except requests.RequestException as exc:
+              print(f"Cloudflare 상태 동기화 경고: {type(exc).__name__}: {exc}")
+          PY
+
       - name: Save monitoring state and target cleanup
         run: |
           if git diff --quiet -- state.json config.json; then
