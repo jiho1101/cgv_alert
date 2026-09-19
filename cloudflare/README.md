@@ -40,15 +40,9 @@ The Worker supports:
 - `/즉시확인`: dispatch one immediate CGV check. Administrator only,
   with a 60-second cooldown.
 - `/도움말`: show command usage.
-- `/감시추가`: add an exact-date CGV Ulsan Samsan target.
-  Administrator only.
-- `/감시삭제`: delete a target by ID or exact movie label.
-  Administrator only.
 
-Target add/delete requests dispatch `.github/workflows/cgv-config.yml`. The
-Worker PAT therefore only needs Actions permission; the short admin workflow
-uses its repository `GITHUB_TOKEN` with `contents: write` to update
-`config.json`.
+Monitoring targets are intentionally managed through GitHub/ChatGPT rather
+than Discord write commands.
 
 ### Cloudflare bindings/secrets
 
