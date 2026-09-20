@@ -7,6 +7,13 @@
         "last_error": "CGV 예매 페이지 로딩 시간 초과",
         "play_ymd": "20260923",
         "theater_name": "CGV 울산삼산"
+      },
+      "0128|20260928": {
+        "alerted": false,
+        "first_failure_at": "2026-09-21T07:20:54.608483+09:00",
+        "last_error": "CGV 예매 페이지 로딩 시간 초과",
+        "play_ymd": "20260928",
+        "theater_name": "CGV 울산삼산"
       }
     }
   },
