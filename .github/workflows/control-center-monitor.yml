@@ -1,0 +1,256 @@
+name: Control Center Monitor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: control-center-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check services and notify on state change
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime, timezone
+
+          SERVICES = {
+              "Control Center": "https://control-center.choi1101jh.workers.dev/monitor/ping",
+              "CGV Alert": "https://cgv-alert-trigger.choi1101jh.workers.dev/health",
+              "Instagram Auto Operator": "https://instagram-auto-operator.choi1101jh.workers.dev/",
+          }
+
+          ISSUE_TITLE = "[Monitor] Control Center incident"
+          token = os.environ["GH_TOKEN"]
+          repo = os.environ["GH_REPOSITORY"]
+          webhook = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+          run_url = os.environ.get("RUN_URL", "")
+          now = datetime.now(timezone.utc).isoformat()
+
+          def request(url, *, method="GET", payload=None, headers=None, timeout=12):
+              data = None
+              final_headers = {
+                  "User-Agent": "jiho-control-center-monitor",
+                  "Accept": "application/vnd.github+json, application/json, text/plain, */*",
+              }
+              if headers:
+                  final_headers.update(headers)
+              if payload is not None:
+                  data = json.dumps(payload).encode("utf-8")
+                  final_headers["Content-Type"] = "application/json"
+              req = urllib.request.Request(
+                  url,
+                  data=data,
+                  method=method,
+                  headers=final_headers,
+              )
+              with urllib.request.urlopen(req, timeout=timeout) as res:
+                  body = res.read().decode("utf-8", errors="replace")
+                  return res.status, body
+
+          def github(path, *, method="GET", payload=None):
+              status, body = request(
+                  f"https://api.github.com/repos/{repo}{path}",
+                  method=method,
+                  payload=payload,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              return status, json.loads(body) if body else None
+
+          def check_service(name, url):
+              try:
+                  status, body = request(url)
+                  ok = 200 <= status < 400
+
+                  if ok and name in {"Control Center", "CGV Alert"}:
+                      try:
+                          parsed = json.loads(body)
+                          ok = parsed.get("ok") is True
+                      except Exception:
+                          ok = False
+
+                  return {
+                      "name": name,
+                      "url": url,
+                      "ok": ok,
+                      "status": status,
+                      "error": None if ok else f"HTTP {status}",
+                  }
+              except urllib.error.HTTPError as exc:
+                  return {
+                      "name": name,
+                      "url": url,
+                      "ok": False,
+                      "status": exc.code,
+                      "error": f"HTTP {exc.code}",
+                  }
+              except Exception as exc:
+                  return {
+                      "name": name,
+                      "url": url,
+                      "ok": False,
+                      "status": None,
+                      "error": f"{type(exc).__name__}: {exc}",
+                  }
+
+          def discord(title, description, color):
+              if not webhook:
+                  print("DISCORD_WEBHOOK_URL is not configured; Discord notice skipped.")
+                  return
+              payload = {
+                  "username": "Control Center",
+                  "embeds": [{
+                      "title": title,
+                      "description": description[:4000],
+                      "color": color,
+                      "timestamp": now,
+                      "footer": {"text": "Control Center automatic monitor"},
+                  }],
+              }
+              try:
+                  request(
+                      webhook,
+                      method="POST",
+                      payload=payload,
+                      headers={"Accept": "application/json"},
+                  )
+                  print("Discord notice sent.")
+              except Exception as exc:
+                  print(f"Discord notice failed: {type(exc).__name__}: {exc}")
+
+          results = [check_service(name, url) for name, url in SERVICES.items()]
+          failures = [item for item in results if not item["ok"]]
+
+          print(json.dumps(results, ensure_ascii=False, indent=2))
+
+          _, issues = github("/issues?state=open&per_page=100")
+          incident = next(
+              (
+                  issue
+                  for issue in issues
+                  if "pull_request" not in issue and issue.get("title") == ISSUE_TITLE
+              ),
+              None,
+          )
+
+          def failure_signature(items):
+              return "|".join(
+                  sorted(
+                      f"{item['name']}:{item['status']}:{item['error']}"
+                      for item in items
+                  )
+              )
+
+          def incident_body(items):
+              lines = [
+                  "자동 모니터가 서비스 이상을 감지했습니다.",
+                  "",
+                  f"- 감지 시각(UTC): {now}",
+                  f"- 검사 실행: {run_url}",
+                  "",
+                  "### 실패한 서비스",
+              ]
+              for item in items:
+                  lines.append(
+                      f"- **{item['name']}** — {item['error']} — {item['url']}"
+                  )
+              sig = failure_signature(items)
+              lines.extend([
+                  "",
+                  f"<!-- monitor-signature:{sig} -->",
+                  "",
+                  "서비스가 모두 정상으로 돌아오면 이 이슈는 자동으로 닫힙니다.",
+              ])
+              return "\n".join(lines)
+
+          if failures:
+              body = incident_body(failures)
+              signature = failure_signature(failures)
+
+              if incident is None:
+                  _, created = github(
+                      "/issues",
+                      method="POST",
+                      payload={"title": ISSUE_TITLE, "body": body},
+                  )
+                  issue_url = created.get("html_url", "")
+                  details = "\n".join(
+                      f"• {item['name']}: {item['error']}" for item in failures
+                  )
+                  discord(
+                      "🔴 Control Center 장애 감지",
+                      f"{details}\n\n{issue_url or run_url}",
+                      0xE74C3C,
+                  )
+                  print("New incident opened.")
+              else:
+                  previous = incident.get("body") or ""
+                  marker = f"<!-- monitor-signature:{signature} -->"
+                  if marker not in previous:
+                      github(
+                          f"/issues/{incident['number']}",
+                          method="PATCH",
+                          payload={"body": body},
+                      )
+                      details = "\n".join(
+                          f"• {item['name']}: {item['error']}" for item in failures
+                      )
+                      discord(
+                          "🟠 Control Center 장애 상태 변경",
+                          f"{details}\n\n{incident.get('html_url', run_url)}",
+                          0xF39C12,
+                      )
+                      print("Incident updated.")
+                  else:
+                      print("Incident unchanged; duplicate notice suppressed.")
+
+              raise SystemExit(1)
+
+          if incident is not None:
+              github(
+                  f"/issues/{incident['number']}/comments",
+                  method="POST",
+                  payload={
+                      "body": (
+                          f"✅ 모든 모니터링 대상이 정상으로 복구되었습니다.\n\n"
+                          f"- 복구 확인 시각(UTC): {now}\n"
+                          f"- 검사 실행: {run_url}"
+                      )
+                  },
+              )
+              github(
+                  f"/issues/{incident['number']}",
+                  method="PATCH",
+                  payload={"state": "closed"},
+              )
+              discord(
+                  "🟢 Control Center 복구",
+                  f"모니터링 대상이 모두 정상으로 돌아왔습니다.\n\n{incident.get('html_url', run_url)}",
+                  0x2ECC71,
+              )
+              print("Incident closed after recovery.")
+          else:
+              print("All monitored services are healthy.")
+          PY
