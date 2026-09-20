@@ -1,14 +1,6 @@
 {
   "health": {
-    "pages": {
-      "0128|20260923": {
-        "alerted": false,
-        "first_failure_at": "2026-09-20T18:36:03.474903+09:00",
-        "last_error": "CGV 예매 페이지 로딩 시간 초과",
-        "play_ymd": "20260923",
-        "theater_name": "CGV 울산삼산"
-      }
-    }
+    "pages": {}
   },
   "seen": {
     "avengers-endgame-encore-20260923-ulsan-samsan": [
