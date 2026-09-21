@@ -299,6 +299,20 @@ def page_site_name(target):
     return name.removeprefix("CGV ").strip()
 
 
+def summarize_cgv_error(value, limit=160) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "응답 내용 없음"
+
+    lowered = text.casefold()
+    if "<!doctype html" in lowered or "<html" in lowered:
+        return "CGV가 HTML 오류/차단 페이지를 반환함"
+
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:limit] or "응답 내용 없음"
+
+
 class CgvBrowser:
     def __init__(self, timeout=15):
         options = Options()
@@ -419,9 +433,16 @@ class CgvBrowser:
 
                 if not result.get("ok"):
                     status = result.get("status", 0)
-                    detail = result.get("error") or body[:120]
+                    if int(status or 0) == 403:
+                        raise RuntimeError(
+                            "CGV 상영정보 API 접근 거부 (HTTP 403)"
+                        )
+                    detail = summarize_cgv_error(
+                        result.get("error") or body
+                    )
                     raise RuntimeError(
-                        f"CGV 상영정보 API 조회 실패 (HTTP {status}: {detail})"
+                        f"CGV 상영정보 API 조회 실패 "
+                        f"(HTTP {status}: {detail})"
                     )
 
                 try:
@@ -828,18 +849,21 @@ def update_page_health(state, page_results, now: datetime) -> bool:
 
     for page_id, result in page_results.items():
         entry = pages.get(page_id)
+        fully_healthy = result.get("ok") and not result.get("degraded")
+        degraded = result.get("ok") and result.get("degraded")
 
-        if result["ok"]:
+        if fully_healthy:
             if not entry:
                 continue
 
             if entry.get("alerted"):
                 first_failure_at = entry.get("first_failure_at", "-")
                 message = (
-                    "✅ **CGV 감시 복구**\n"
+                    "✅ **CGV 감시 완전 복구**\n"
                     f"- 극장: {result['theater_name']}\n"
                     f"- 날짜: {result['play_ymd']}\n"
                     f"- 장애 시작: {first_failure_at}\n"
+                    "- 상태: 1차 구조화 조회가 다시 정상 동작\n"
                     f"- 복구 확인: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
                 )
                 if not send_health_message(message):
@@ -855,13 +879,23 @@ def update_page_health(state, page_results, now: datetime) -> bool:
                 "alerted": False,
                 "theater_name": result["theater_name"],
                 "play_ymd": result["play_ymd"],
-                "last_error": result["error"],
+                "last_error": summarize_cgv_error(
+                    result.get("error") or "조회 상태 저하"
+                ),
+                "degraded": bool(degraded),
             }
             pages[page_id] = entry
             changed = True
-        elif entry.get("last_error") != result["error"]:
-            entry["last_error"] = result["error"]
-            changed = True
+        else:
+            clean_error = summarize_cgv_error(
+                result.get("error") or "조회 상태 저하"
+            )
+            if entry.get("last_error") != clean_error:
+                entry["last_error"] = clean_error
+                changed = True
+            if entry.get("degraded") != bool(degraded):
+                entry["degraded"] = bool(degraded)
+                changed = True
 
         try:
             first_failure = datetime.fromisoformat(entry["first_failure_at"])
@@ -871,12 +905,18 @@ def update_page_health(state, page_results, now: datetime) -> bool:
             changed = True
 
         if now - first_failure >= alert_after and not entry.get("alerted", False):
+            status_text = (
+                "1차 구조화 조회가 30분 이상 정상화되지 않음 "
+                "(보조 감지는 동작 중)"
+                if degraded
+                else "30분 이상 구조화 조회와 보조 감지 모두 정상 확인 실패"
+            )
             message = (
                 "⚠️ **CGV 감시 이상**\n"
                 f"- 극장: {result['theater_name']}\n"
                 f"- 날짜: {result['play_ymd']}\n"
-                "- 상태: 30분 이상 정상 조회 실패\n"
-                f"- 최근 오류: {result['error']}\n"
+                f"- 상태: {status_text}\n"
+                f"- 최근 오류: {entry['last_error']}\n"
                 f"- 확인 시각: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
             )
             if send_health_message(message):
@@ -888,61 +928,105 @@ def update_page_health(state, page_results, now: datetime) -> bool:
 
 
 def notify_failed_pages(state, page_results, now: datetime) -> bool:
-    """두 확인 경로가 모두 실패한 실행을 Discord에 즉시 알리되 스팸은 막는다."""
+    """실행 상태를 실패/부분 복구/완전 복구로 구분해 Discord에 알린다."""
     health = state.setdefault("health", {})
     failed = [
-        result for result in page_results.values()
+        result
+        for result in page_results.values()
         if not result.get("ok")
+    ]
+    degraded = [
+        result
+        for result in page_results.values()
+        if result.get("ok") and result.get("degraded")
     ]
     incident = health.get("run_warning")
     changed = False
 
-    if not failed:
-        if incident:
+    # 둘 다 실패: 즉시 경고. 같은 실패 상태가 계속되면 30분 간격으로만 재알림.
+    if failed:
+        previous_state = (incident or {}).get("state")
+        should_alert = previous_state != "failed"
+        if not should_alert and incident:
+            try:
+                last_alert = datetime.fromisoformat(
+                    incident["last_alert_at"]
+                )
+                should_alert = (
+                    now - last_alert >= timedelta(minutes=30)
+                )
+            except (KeyError, TypeError, ValueError):
+                should_alert = True
+
+        if should_alert:
+            details = []
+            for result in failed[:5]:
+                details.append(
+                    f"- {result.get('theater_name', 'CGV')} "
+                    f"{result.get('play_ymd', '-')}: "
+                    f"{summarize_cgv_error(result.get('error'))}"
+                )
+            extra = (
+                f"\n- 외 {len(failed) - 5}개 날짜"
+                if len(failed) > 5
+                else ""
+            )
             message = (
-                "✅ **CGV 조회 복구**\n"
-                "- 구조화 조회/보조 감지가 다시 정상 동작합니다.\n"
-                f"- 복구 확인: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
+                "⚠️ **CGV 이번 회차 확인 실패**\n"
+                "1차 구조화 조회와 2차 예매 페이지 보조 감지가 "
+                "모두 실패했습니다. 이를 '예매 없음'으로 처리하지 않고 "
+                "다음 5분 실행에서 다시 시도합니다.\n"
+                + "\n".join(details)
+                + extra
+                + f"\n- 확인 시각: "
+                f"{now.strftime('%Y-%m-%d %H:%M:%S KST')}"
             )
             if send_health_message(message):
-                health.pop("run_warning", None)
+                health["run_warning"] = {
+                    "state": "failed",
+                    "last_alert_at": now.isoformat(),
+                    "failed_count": len(failed),
+                }
                 changed = True
         return changed
 
-    should_alert = True
-    if incident:
-        try:
-            last_alert = datetime.fromisoformat(incident["last_alert_at"])
-            should_alert = now - last_alert >= timedelta(minutes=30)
-        except (KeyError, TypeError, ValueError):
-            should_alert = True
-
-    if should_alert:
-        details = []
-        for result in failed[:5]:
-            details.append(
-                f"- {result.get('theater_name', 'CGV')} "
-                f"{result.get('play_ymd', '-')}: "
-                f"{str(result.get('error') or '알 수 없는 오류')[:180]}"
+    # 직전에는 완전 실패했지만 이번에는 보조 감지만 성공: 부분 복구.
+    if degraded:
+        if incident and incident.get("state") == "failed":
+            details = []
+            for result in degraded[:5]:
+                details.append(
+                    f"- {result.get('theater_name', 'CGV')} "
+                    f"{result.get('play_ymd', '-')}: "
+                    "보조 감지는 동작, 1차 구조화 조회는 아직 실패"
+                )
+            message = (
+                "🟡 **CGV 부분 복구**\n"
+                "예매 페이지 보조 감지는 다시 동작하지만 "
+                "1차 구조화 조회는 아직 정상화되지 않았습니다.\n"
+                + "\n".join(details)
+                + f"\n- 확인 시각: "
+                f"{now.strftime('%Y-%m-%d %H:%M:%S KST')}"
             )
-        extra = (
-            f"\n- 외 {len(failed) - 5}개 날짜"
-            if len(failed) > 5
-            else ""
-        )
+            if send_health_message(message):
+                health["run_warning"] = {
+                    "state": "partial",
+                    "last_alert_at": now.isoformat(),
+                    "degraded_count": len(degraded),
+                }
+                changed = True
+        return changed
+
+    # 실패/부분 복구 상태 이후 구조화 조회까지 정상화된 경우만 완전 복구.
+    if incident and incident.get("state") in {"failed", "partial"}:
         message = (
-            "⚠️ **CGV 이번 회차 확인 실패**\n"
-            "구조화 데이터와 예매 페이지 보조 감지까지 모두 실패했습니다. "
-            "이 상태를 '예매 없음'으로 처리하지 않으며 다음 5분 실행에서 다시 시도합니다.\n"
-            + "\n".join(details)
-            + extra
-            + f"\n- 확인 시각: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
+            "✅ **CGV 완전 복구**\n"
+            "- 1차 구조화 조회가 다시 정상 동작합니다.\n"
+            "- 보조 감지에 의존하지 않는 정상 감시 상태입니다.\n"
+            f"- 복구 확인: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
         )
         if send_health_message(message):
-            health["run_warning"] = {
-                "last_alert_at": now.isoformat(),
-                "failed_count": len(failed),
-            }
+            health.pop("run_warning", None)
             changed = True
 
     return changed
@@ -1218,7 +1302,7 @@ def run_checker(force_all: bool = False):
                         "play_ymd": play_ymd,
                     }
                 except RuntimeError as primary_exc:
-                    primary_message = str(primary_exc)
+                    primary_message = summarize_cgv_error(primary_exc)
                     print(
                         f"경고: [{target['theater_name']}] {play_ymd} "
                         f"구조화 조회 실패. 보조 감지로 재확인: "
@@ -1251,7 +1335,8 @@ def run_checker(force_all: bool = False):
                     except RuntimeError as fallback_exc:
                         message = (
                             f"구조화 조회 실패: {primary_message}; "
-                            f"보조 감지도 실패: {fallback_exc}"
+                            "보조 감지도 실패: "
+                            f"{summarize_cgv_error(fallback_exc)}"
                         )
                         print(
                             f"경고: [{target['theater_name']}] {play_ymd} "
