@@ -74,6 +74,35 @@ def target_end_ymd(target):
     return str(target.get("date", ""))
 
 
+def migrate_state(state) -> bool:
+    """v1의 혼합 감지 기록을 v2에서 구조화/보조 기록으로 분리한다."""
+    try:
+        version = int(state.get("version", 1))
+    except (TypeError, ValueError):
+        version = 1
+
+    if version >= 2:
+        return False
+
+    seen = state.setdefault("seen", {})
+    fallback_seen = state.setdefault("fallback_seen", {})
+
+    # v1에서는 보조 감지 결과도 seen에 섞여 저장될 수 있었다.
+    # 기존 기록을 보조 후보 기록으로 옮기고, 구조화 감지는 새로 기준을 잡는다.
+    for target_id, keys in list(seen.items()):
+        merged = set(fallback_seen.get(target_id, []))
+        merged.update(keys or [])
+        fallback_seen[target_id] = sorted(merged)[-1000:]
+
+    state["seen"] = {}
+    state["version"] = 2
+    print(
+        "[상태 마이그레이션] 기존 혼합 감지 기록을 보조 후보 기록으로 "
+        "분리했습니다. 다음 정상 구조화 조회에서 실제 회차 기준을 새로 잡습니다."
+    )
+    return True
+
+
 def prune_expired_targets(config, state, today_ymd: str):
     removed_ids = []
     kept = []
@@ -1264,16 +1293,18 @@ def run_self_test(timeout: int):
 
 def run_checker(force_all: bool = False):
     config = load_json(CONFIG_PATH, {"targets": []})
-    state = load_json(STATE_PATH, {"version": 1, "seen": {}})
-    state.setdefault("version", 1)
+    state = load_json(STATE_PATH, {"version": 2, "seen": {}})
+    state.setdefault("version", 2)
     state.setdefault("seen", {})
     state.setdefault("fallback_seen", {})
     state.setdefault("health", {}).setdefault("pages", {})
 
+    migration_changed = migrate_state(state)
     now = datetime.now(KST)
     config_changed, state_changed = prune_expired_targets(
         config, state, now.strftime("%Y%m%d")
     )
+    state_changed = state_changed or migration_changed
     if config_changed:
         save_config(config)
     if state_changed:
