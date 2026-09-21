@@ -94,9 +94,13 @@ def prune_expired_targets(config, state, today_ymd: str):
 
     state_changed = False
     seen = state.setdefault("seen", {})
+    fallback_seen = state.setdefault("fallback_seen", {})
     for target_id in removed_ids:
         if target_id and target_id in seen:
             seen.pop(target_id, None)
+            state_changed = True
+        if target_id and target_id in fallback_seen:
+            fallback_seen.pop(target_id, None)
             state_changed = True
 
     pages = state.setdefault("health", {}).setdefault("pages", {})
@@ -254,6 +258,15 @@ def build_runtime_snapshot(
         available_session_count = sum(
             len(rows) for rows in (found.get(target_id) or {}).values()
         )
+        detection_mode = (
+            "failed"
+            if failed_now
+            else "fallback"
+            if degraded_now
+            else "structured"
+            if matching_results
+            else "not_checked"
+        )
 
         target_items.append(
             {
@@ -266,6 +279,7 @@ def build_runtime_snapshot(
                 "last_success_at": now.isoformat() if success_now else None,
                 "last_error": last_error,
                 "available_session_count": available_session_count,
+                "detection_mode": detection_mode,
             }
         )
 
@@ -1109,7 +1123,12 @@ def build_alert_embeds(notification_items):
             for part, chunk in enumerate(chunks, start=1):
                 title_suffix = f" · {part}/{len(chunks)}" if len(chunks) > 1 else ""
                 embeds.append({
-                    "title": f"🎟️ 예매 오픈 · {movie_name}{title_suffix}",
+                    "_fallback": fallback_used,
+                    "title": (
+                        f"⚠️ 보조 감지 후보 · {movie_name}{title_suffix}"
+                        if fallback_used
+                        else f"🎟️ 예매 오픈 · {movie_name}{title_suffix}"
+                    ),
                     "url": build_booking_url(target, play_ymd),
                     "description": (
                         f"🏢 **극장**  {theater_name}\n"
@@ -1127,7 +1146,11 @@ def build_alert_embeds(notification_items):
                     ),
                     "fields": chunk,
                     "footer": {
-                        "text": f"CGV 예매 오픈 감지 · {checked_at} · 제목을 누르면 예매 페이지로 이동"
+                        "text": (
+                            f"CGV 보조 감지 후보 · {checked_at} · 제목을 누르면 예매 페이지로 이동"
+                            if fallback_used
+                            else f"CGV 예매 오픈 감지 · {checked_at} · 제목을 누르면 예매 페이지로 이동"
+                        )
                     },
                 })
 
@@ -1140,10 +1163,20 @@ def send_discord_embeds(embeds) -> bool:
         print("DISCORD_WEBHOOK_URL Secret이 아직 없어 실제 알림은 보내지 않았습니다.")
         return False
 
+    any_fallback = any(embed.get("_fallback") for embed in embeds)
+    any_structured = any(not embed.get("_fallback") for embed in embeds)
+
     for index, embed in enumerate(embeds):
-        payload = {"embeds": [embed]}
+        payload_embed = dict(embed)
+        payload_embed.pop("_fallback", None)
+        payload = {"embeds": [payload_embed]}
         if index == 0:
-            payload["content"] = "🎟️ **CGV 예매 오픈 감지**"
+            if any_fallback and any_structured:
+                payload["content"] = "🔎 **CGV 감지 결과**"
+            elif any_fallback:
+                payload["content"] = "⚠️ **CGV 보조 감지 후보**"
+            else:
+                payload["content"] = "🎟️ **CGV 예매 오픈 감지**"
         try:
             response = requests.post(webhook, json=payload, timeout=15)
         except requests.RequestException as exc:
@@ -1234,6 +1267,7 @@ def run_checker(force_all: bool = False):
     state = load_json(STATE_PATH, {"version": 1, "seen": {}})
     state.setdefault("version", 1)
     state.setdefault("seen", {})
+    state.setdefault("fallback_seen", {})
     state.setdefault("health", {}).setdefault("pages", {})
 
     now = datetime.now(KST)
@@ -1425,15 +1459,32 @@ def run_checker(force_all: bool = False):
                 continue
 
             seen = set(state["seen"].get(target_id, []))
+            fallback_seen = set(
+                state["fallback_seen"].get(target_id, [])
+            )
             all_sessions = [
                 row
                 for play_ymd in sorted(by_date)
                 for row in by_date[play_ymd]
             ]
-            new_sessions = [row for row in all_sessions if row["_key"] not in seen]
+            new_sessions = [
+                row
+                for row in all_sessions
+                if row["_key"]
+                not in (
+                    fallback_seen
+                    if row.get("_fallback")
+                    else seen
+                )
+            ]
+            structured_count = sum(
+                1 for row in all_sessions if not row.get("_fallback")
+            )
+            fallback_count = len(all_sessions) - structured_count
             print(
                 f"[{target_id}] 확인 날짜 {len(by_date)}개, "
-                f"현재 {len(all_sessions)}개, 신규 {len(new_sessions)}개"
+                f"구조화 {structured_count}개, 보조 후보 {fallback_count}개, "
+                f"신규 {len(new_sessions)}개"
             )
             if not new_sessions:
                 continue
@@ -1457,11 +1508,24 @@ def run_checker(force_all: bool = False):
             for item in notification_items:
                 target_id = item["target_id"]
                 seen = set(state["seen"].get(target_id, []))
+                fallback_seen = set(
+                    state["fallback_seen"].get(target_id, [])
+                )
                 for sessions in item["by_date"].values():
-                    seen.update(row["_key"] for row in sessions)
+                    for row in sessions:
+                        if row.get("_fallback"):
+                            fallback_seen.add(row["_key"])
+                        else:
+                            seen.add(row["_key"])
                 state["seen"][target_id] = sorted(seen)[-1000:]
+                state["fallback_seen"][target_id] = sorted(
+                    fallback_seen
+                )[-1000:]
             save_state(state)
-            print("중복 알림 방지 상태를 저장했습니다.")
+            print(
+                "중복 알림 방지 상태를 저장했습니다. "
+                "구조화 감지와 보조 후보 기록은 서로 분리됩니다."
+            )
     finally:
         browser.close()
 
