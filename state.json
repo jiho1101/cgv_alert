@@ -1,9 +1,5 @@
 {
-  "fallback_seen": {},
-  "health": {
-    "pages": {}
-  },
-  "seen": {
+  "fallback_seen": {
     "avengers-endgame-encore-20260925-ulsan-samsan": [
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX 2D|09:00",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX 2D|12:16",
@@ -51,5 +47,15 @@
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|27:37"
     ]
   },
-  "version": 1
+  "health": {
+    "pages": {}
+  },
+  "seen": {
+    "avengers-endgame-encore-20260925-ulsan-samsan": [
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX관[10관]|09:00",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX관[10관]|16:05",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX관[10관]|23:50"
+    ]
+  },
+  "version": 2
 }
