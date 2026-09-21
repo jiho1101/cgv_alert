@@ -305,10 +305,12 @@ class CgvBrowser:
         options.page_load_strategy = "eager"
         try:
             self.driver = webdriver.Chrome(options=options)
+            self.driver.set_script_timeout(max(int(timeout) + 5, 20))
         except WebDriverException as exc:
             raise RuntimeError(f"Chrome 시작 실패 ({type(exc).__name__})") from None
         self.timeout = timeout
         self.last_request_at = 0.0
+        self.current_site = None
 
     def close(self):
         try:
@@ -316,18 +318,37 @@ class CgvBrowser:
         except Exception:
             pass
 
-    def fetch_text(
+    def _bootstrap(self, site_no: str, site_name: str, play_ymd: str):
+        site_key = (str(site_no), str(site_name))
+        if self.current_site == site_key:
+            return
+
+        url = (
+            f"{BOOKING_URL}?siteNo={quote(site_no)}&siteNm={quote(site_name)}"
+            f"&scnYmd={quote(play_ymd)}"
+        )
+        self.driver.get(url)
+        WebDriverWait(self.driver, self.timeout).until(
+            lambda d: len(d.find_element(By.TAG_NAME, "body").text.strip()) > 120
+        )
+        time.sleep(1.0)
+
+        text = self.driver.find_element(By.TAG_NAME, "body").text
+        lowered = text.casefold()
+        blocked = ["access denied", "just a moment", "비정상적인 접근", "captcha"]
+        if any(word in lowered for word in blocked):
+            raise RuntimeError("CGV가 GitHub Actions 브라우저 접속을 제한했습니다")
+
+        self.current_site = site_key
+
+    def fetch_schedule(
         self,
         site_no: str,
         site_name: str,
         play_ymd: str,
         attempts: int = 2,
         retry_delay: float = 3.0,
-    ) -> str:
-        url = (
-            f"{BOOKING_URL}?siteNo={quote(site_no)}&siteNm={quote(site_name)}"
-            f"&scnYmd={quote(play_ymd)}"
-        )
+    ) -> list:
         attempts = max(1, int(attempts))
         last_error = None
 
@@ -337,32 +358,100 @@ class CgvBrowser:
                 time.sleep(1.0 - elapsed)
 
             try:
-                self.driver.get(url)
-                WebDriverWait(self.driver, self.timeout).until(
-                    lambda d: len(d.find_element(By.TAG_NAME, "body").text.strip()) > 120
-                )
-                time.sleep(1.5)
-                text = self.driver.find_element(By.TAG_NAME, "body").text
+                self._bootstrap(site_no, site_name, play_ymd)
 
-                lowered = text.casefold()
+                result = self.driver.execute_async_script(
+                    """
+                    const siteNo = arguments[0];
+                    const playYmd = arguments[1];
+                    const done = arguments[arguments.length - 1];
+                    const url =
+                      "/api/v1/booking/searchMovScnInfo" +
+                      "?coCd=A420" +
+                      "&siteNo=" + encodeURIComponent(siteNo) +
+                      "&scnYmd=" + encodeURIComponent(playYmd) +
+                      "&rtctlScopCd=08";
+
+                    fetch(url, {
+                      method: "GET",
+                      credentials: "include",
+                      headers: { "Accept": "application/json" },
+                    })
+                      .then(async (response) => {
+                        const text = await response.text();
+                        done({
+                          ok: response.ok,
+                          status: response.status,
+                          text,
+                        });
+                      })
+                      .catch((error) => {
+                        done({
+                          ok: false,
+                          status: 0,
+                          text: "",
+                          error: String(error),
+                        });
+                      });
+                    """,
+                    str(site_no),
+                    str(play_ymd),
+                )
+
+                if not isinstance(result, dict):
+                    raise RuntimeError("CGV 상영정보 API 응답을 받지 못했습니다")
+
+                body = str(result.get("text") or "")
+                lowered = body.casefold()
                 blocked = ["access denied", "just a moment", "비정상적인 접근", "captcha"]
                 if any(word in lowered for word in blocked):
                     raise RuntimeError("CGV가 GitHub Actions 브라우저 접속을 제한했습니다")
-                return text
+
+                if not result.get("ok"):
+                    status = result.get("status", 0)
+                    detail = result.get("error") or body[:120]
+                    raise RuntimeError(
+                        f"CGV 상영정보 API 조회 실패 (HTTP {status}: {detail})"
+                    )
+
+                try:
+                    payload = json.loads(body)
+                except json.JSONDecodeError:
+                    raise RuntimeError("CGV 상영정보 API가 JSON이 아닌 응답을 반환했습니다") from None
+
+                if not isinstance(payload, dict):
+                    raise RuntimeError("CGV 상영정보 API 응답 구조가 예상과 다릅니다")
+
+                status_code = payload.get("statusCode")
+                if status_code not in (None, 0, "0"):
+                    raise RuntimeError(
+                        f"CGV 상영정보 API 오류 (statusCode={status_code})"
+                    )
+
+                rows = payload.get("data")
+                if rows is None:
+                    return []
+                if not isinstance(rows, list):
+                    raise RuntimeError("CGV 상영정보 API data 구조가 예상과 다릅니다")
+
+                return rows
             except TimeoutException:
-                last_error = RuntimeError("CGV 예매 페이지 로딩 시간 초과")
+                last_error = RuntimeError("CGV 상영정보 API 응답 시간 초과")
             except WebDriverException as exc:
                 last_error = RuntimeError(
-                    f"CGV 예매 페이지 확인 실패 ({type(exc).__name__})"
+                    f"CGV 상영정보 브라우저 조회 실패 ({type(exc).__name__})"
                 )
+            except RuntimeError as exc:
+                last_error = exc
             finally:
                 self.last_request_at = time.monotonic()
 
             if attempt < attempts:
                 print(
-                    f"CGV 페이지 일시 오류 - {retry_delay:g}초 후 재시도 "
+                    f"CGV 상영정보 일시 오류 - {retry_delay:g}초 후 재시도 "
                     f"({attempt + 1}/{attempts})"
                 )
+                self.current_site = None
                 try:
                     self.driver.execute_script("window.stop();")
                 except WebDriverException:
@@ -372,56 +461,97 @@ class CgvBrowser:
         raise last_error from None
 
 
-def find_screen_name(lines, time_index):
-    keywords = ("imax", "4dx", "screenx", "관", "cinema", "box")
-    for i in range(time_index - 1, max(-1, time_index - 9), -1):
-        candidate = lines[i].strip()
-        lowered = candidate.casefold()
-        if any(keyword in lowered for keyword in keywords) and not re.search(r"\d{1,2}:\d{2}", candidate):
-            return candidate[:80]
-    return "상영관 정보 확인 필요"
+def _safe_int(value, default=0):
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return default
 
 
-def extract_sessions(body_text: str, target, play_ymd: str):
-    lines = [line.strip() for line in body_text.splitlines() if line.strip()]
+def extract_sessions(api_rows: list, target, play_ymd: str):
     aliases = target_aliases(target)
-    title_indexes = [
-        i for i, line in enumerate(lines)
-        if any(alias and alias in normalize(line) for alias in aliases)
+    screen_keywords = [
+        normalize(keyword)
+        for keyword in (target.get("screen_keywords") or [])
+        if str(keyword).strip()
     ]
-    if not title_indexes:
-        return []
+    min_remaining = max(_safe_int(target.get("min_remaining_seats"), 0), 0)
 
     sessions = []
     seen_sessions = set()
-    for title_index in title_indexes:
-        chunk_end = min(len(lines), title_index + 70)
-        for i in range(title_index + 1, chunk_end):
-            matches = re.findall(r"(?<!\d)([0-2]?\d):([0-5]\d)(?!\d)", lines[i])
-            for hour, minute in matches:
-                hour_int = int(hour)
-                if hour_int > 29:
-                    continue
-                display = f"{hour_int:02d}:{minute}"
-                screen_name = find_screen_name(lines, i)
-                session_identity = (screen_name, display)
-                if session_identity in seen_sessions:
-                    continue
-                seen_sessions.add(session_identity)
-                sessions.append(
-                    {
-                        "MovieNmKor": target.get("label", "영화"),
-                        "PlayStartTm": display.replace(":", ""),
-                        "PlayYmd": play_ymd,
-                        "ScreenNm": screen_name,
-                        "_key": (
-                            f"{target['theater_code']}|{play_ymd}|{target['id']}|"
-                            f"{screen_name}|{display}"
-                        ),
-                    }
+
+    for row in api_rows:
+        if not isinstance(row, dict):
+            continue
+
+        row_date = str(row.get("scnYmd") or "")
+        if row_date and row_date != str(play_ymd):
+            continue
+
+        movie_name = str(row.get("movNm") or "")
+        product_name = str(row.get("expoProdNm") or "")
+        movie_norm = normalize(movie_name)
+        product_norm = normalize(product_name)
+
+        if not any(
+            alias
+            and (
+                alias == movie_norm
+                or (product_norm and (alias == product_norm or product_norm.startswith(alias)))
+            )
+            for alias in aliases
+        ):
+            continue
+
+        screen_name = str(row.get("scnsNm") or row.get("scnsEnm") or "").strip()
+        if not screen_name:
+            continue
+
+        if screen_keywords:
+            screen_haystack = normalize(
+                " ".join(
+                    [
+                        screen_name,
+                        str(row.get("scnsEnm") or ""),
+                        product_name,
+                    ]
                 )
-        if sessions:
-            break
+            )
+            if not any(keyword in screen_haystack for keyword in screen_keywords):
+                continue
+
+        remaining = _safe_int(row.get("frSeatCnt"), 0)
+        if min_remaining and remaining < min_remaining:
+            continue
+
+        start_raw = str(row.get("scnsrtTm") or "").replace(":", "").strip()
+        if not start_raw.isdigit() or len(start_raw) not in (3, 4):
+            continue
+        start_raw = start_raw.zfill(4)
+        hour = _safe_int(start_raw[:2], -1)
+        minute = _safe_int(start_raw[2:], -1)
+        if hour < 0 or hour > 29 or minute < 0 or minute > 59:
+            continue
+
+        display = f"{hour:02d}:{minute:02d}"
+        session_identity = (screen_name, display)
+        if session_identity in seen_sessions:
+            continue
+        seen_sessions.add(session_identity)
+
+        sessions.append(
+            {
+                "MovieNmKor": movie_name or target.get("label", "영화"),
+                "PlayStartTm": start_raw,
+                "PlayYmd": str(play_ymd),
+                "ScreenNm": screen_name,
+                "RemainingSeats": remaining,
+                "_key": (
+                    f"{target['theater_code']}|{play_ymd}|{target['id']}|"
+                    f"{screen_name}|{display}"
+                ),
+            }
+        )
 
     sessions.sort(key=lambda row: (row["PlayStartTm"], row.get("ScreenNm", "")))
     return sessions
@@ -727,13 +857,44 @@ def send_discord_embeds(embeds) -> bool:
 
 
 def run_self_test(timeout: int):
+    sample_target = {
+        "id": "self-test",
+        "label": "테스트 영화",
+        "theater_code": "0128",
+        "movie_aliases": ["테스트 영화"],
+        "screen_keywords": [],
+        "min_remaining_seats": 1,
+    }
+    sample_rows = [
+        {
+            "scnYmd": "20990101",
+            "movNm": "테스트 영화",
+            "scnsNm": "1관",
+            "scnsrtTm": "1230",
+            "frSeatCnt": "10",
+        },
+        {
+            "scnYmd": "20990101",
+            "movNm": "다른 영화",
+            "scnsNm": "2관",
+            "scnsrtTm": "1300",
+            "frSeatCnt": "10",
+        },
+    ]
+    parsed = extract_sessions(sample_rows, sample_target, "20990101")
+    if len(parsed) != 1 or parsed[0]["ScreenNm"] != "1관":
+        raise RuntimeError("CGV 구조화 파서 자체점검 실패")
+
     browser = CgvBrowser(timeout=timeout)
     try:
         today = datetime.now(KST).strftime("%Y%m%d")
-        text = browser.fetch_text("0128", "울산삼산", today)
-        if len(text.strip()) < 120:
-            raise RuntimeError("CGV 예매 페이지 내용이 비어 있습니다")
-        print(f"CGV 울산삼산 브라우저 자체점검 완료: 본문 {len(text)}자")
+        rows = browser.fetch_schedule("0128", "울산삼산", today)
+        if not isinstance(rows, list):
+            raise RuntimeError("CGV 상영정보 API 결과가 리스트가 아닙니다")
+        print(
+            f"CGV 울산삼산 구조화 API 자체점검 완료: "
+            f"{today} 응답 {len(rows)}개"
+        )
     finally:
         browser.close()
 
@@ -786,13 +947,13 @@ def run_checker(force_all: bool = False):
     found = defaultdict(dict)
 
     try:
-        def get_text(target, play_ymd):
+        def get_rows(target, play_ymd):
             key = (str(target["theater_code"]), play_ymd)
             page_id = f"{target['theater_code']}|{play_ymd}"
             if key not in page_cache:
-                print(f"[{target['theater_name']}] {play_ymd} 확인")
+                print(f"[{target['theater_name']}] {play_ymd} 구조화 상영정보 확인")
                 try:
-                    page_cache[key] = browser.fetch_text(
+                    page_cache[key] = browser.fetch_schedule(
                         str(target["theater_code"]), page_site_name(target), play_ymd
                     )
                     page_results[page_id] = {
@@ -818,11 +979,11 @@ def run_checker(force_all: bool = False):
         for theater_code, dates in scheduled.items():
             for play_ymd, target_ids in sorted(dates.items()):
                 sample_target = target_by_id[next(iter(target_ids))]
-                text = get_text(sample_target, play_ymd)
-                if not text:
+                rows = get_rows(sample_target, play_ymd)
+                if rows is None:
                     continue
                 for target_id in target_ids:
-                    sessions = extract_sessions(text, target_by_id[target_id], play_ymd)
+                    sessions = extract_sessions(rows, target_by_id[target_id], play_ymd)
                     if sessions:
                         found[target_id][play_ymd] = sessions
 
@@ -831,10 +992,10 @@ def run_checker(force_all: bool = False):
             target = target_by_id[target_id]
             candidate = min(by_date)
             for earlier in [d for d in resolve_target_range(target) if d < candidate]:
-                text = get_text(target, earlier)
-                if not text:
+                rows = get_rows(target, earlier)
+                if rows is None:
                     continue
-                sessions = extract_sessions(text, target, earlier)
+                sessions = extract_sessions(rows, target, earlier)
                 if sessions:
                     by_date[earlier] = sessions
 
