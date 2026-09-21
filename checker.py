@@ -220,11 +220,19 @@ def build_runtime_snapshot(
             (result for result in matching_results if not result.get("ok")),
             None,
         )
+        degraded_now = next(
+            (
+                result
+                for result in matching_results
+                if result.get("ok") and result.get("degraded")
+            ),
+            None,
+        )
         alerted = any(entry.get("alerted") for entry in matching_health)
 
         if alerted:
             health_status = "error"
-        elif failed_now or matching_health:
+        elif failed_now or degraded_now or matching_health:
             health_status = "warning"
         else:
             health_status = "normal"
@@ -235,6 +243,8 @@ def build_runtime_snapshot(
         last_error = None
         if failed_now:
             last_error = failed_now.get("error")
+        elif degraded_now:
+            last_error = degraded_now.get("error")
         elif matching_health:
             last_error = matching_health[0].get("last_error")
 
@@ -460,6 +470,72 @@ class CgvBrowser:
 
         raise last_error from None
 
+    def fetch_text_fallback(
+        self,
+        site_no: str,
+        site_name: str,
+        play_ymd: str,
+        attempts: int = 2,
+        retry_delay: float = 3.0,
+    ) -> str:
+        """구조화 API가 실패했을 때만 쓰는 보조 경로.
+
+        예매 페이지 본문을 읽어 기존 텍스트 파서로 한 번 더 확인한다.
+        오탐 가능성은 있으므로 fallback 결과에는 별도 표시를 붙인다.
+        """
+        url = (
+            f"{BOOKING_URL}?siteNo={quote(site_no)}&siteNm={quote(site_name)}"
+            f"&scnYmd={quote(play_ymd)}"
+        )
+        attempts = max(1, int(attempts))
+        last_error = None
+
+        for attempt in range(1, attempts + 1):
+            elapsed = time.monotonic() - self.last_request_at
+            if self.last_request_at and elapsed < 1.0:
+                time.sleep(1.0 - elapsed)
+
+            try:
+                self.driver.get(url)
+                WebDriverWait(self.driver, self.timeout).until(
+                    lambda d: len(
+                        d.find_element(By.TAG_NAME, "body").text.strip()
+                    ) > 120
+                )
+                time.sleep(1.5)
+                text = self.driver.find_element(By.TAG_NAME, "body").text
+                lowered = text.casefold()
+                blocked = [
+                    "access denied",
+                    "just a moment",
+                    "비정상적인 접근",
+                    "captcha",
+                ]
+                if any(word in lowered for word in blocked):
+                    raise RuntimeError(
+                        "CGV가 GitHub Actions 브라우저 접속을 제한했습니다"
+                    )
+                return text
+            except TimeoutException:
+                last_error = RuntimeError("CGV 예매 페이지 보조 확인 시간 초과")
+            except WebDriverException as exc:
+                last_error = RuntimeError(
+                    f"CGV 예매 페이지 보조 확인 실패 ({type(exc).__name__})"
+                )
+            except RuntimeError as exc:
+                last_error = exc
+            finally:
+                self.last_request_at = time.monotonic()
+
+            if attempt < attempts:
+                print(
+                    f"CGV 보조 확인 일시 오류 - {retry_delay:g}초 후 재시도 "
+                    f"({attempt + 1}/{attempts})"
+                )
+                time.sleep(retry_delay)
+
+        raise last_error from None
+
 
 def _safe_int(value, default=0):
     try:
@@ -554,6 +630,76 @@ def extract_sessions(api_rows: list, target, play_ymd: str):
         )
 
     sessions.sort(key=lambda row: (row["PlayStartTm"], row.get("ScreenNm", "")))
+    return sessions
+
+
+def find_screen_name_fallback(lines, time_index):
+    keywords = ("imax", "4dx", "screenx", "관", "cinema", "box")
+    for i in range(time_index - 1, max(-1, time_index - 9), -1):
+        candidate = lines[i].strip()
+        lowered = candidate.casefold()
+        if (
+            any(keyword in lowered for keyword in keywords)
+            and not re.search(r"\d{1,2}:\d{2}", candidate)
+        ):
+            return candidate[:80]
+    return "상영관 정보 확인 필요"
+
+
+def extract_sessions_fallback(body_text: str, target, play_ymd: str):
+    """API 장애 때만 사용하는 보조 텍스트 파서.
+
+    놓치는 것보다 확인 가능한 알림을 우선하기 위한 안전망이다.
+    결과 행에 _fallback=True를 붙여 Discord에서 검증 필요 표시를 한다.
+    """
+    lines = [line.strip() for line in body_text.splitlines() if line.strip()]
+    aliases = target_aliases(target)
+    title_indexes = [
+        i
+        for i, line in enumerate(lines)
+        if any(alias and alias in normalize(line) for alias in aliases)
+    ]
+    if not title_indexes:
+        return []
+
+    sessions = []
+    seen_sessions = set()
+    for title_index in title_indexes:
+        chunk_end = min(len(lines), title_index + 70)
+        for i in range(title_index + 1, chunk_end):
+            matches = re.findall(
+                r"(?<!\d)([0-2]?\d):([0-5]\d)(?!\d)",
+                lines[i],
+            )
+            for hour, minute in matches:
+                hour_int = int(hour)
+                if hour_int > 29:
+                    continue
+                display = f"{hour_int:02d}:{minute}"
+                screen_name = find_screen_name_fallback(lines, i)
+                session_identity = (screen_name, display)
+                if session_identity in seen_sessions:
+                    continue
+                seen_sessions.add(session_identity)
+                sessions.append(
+                    {
+                        "MovieNmKor": target.get("label", "영화"),
+                        "PlayStartTm": display.replace(":", ""),
+                        "PlayYmd": str(play_ymd),
+                        "ScreenNm": screen_name,
+                        "_fallback": True,
+                        "_key": (
+                            f"{target['theater_code']}|{play_ymd}|{target['id']}|"
+                            f"{screen_name}|{display}"
+                        ),
+                    }
+                )
+        if sessions:
+            break
+
+    sessions.sort(
+        key=lambda row: (row["PlayStartTm"], row.get("ScreenNm", ""))
+    )
     return sessions
 
 
@@ -772,6 +918,7 @@ def build_alert_embeds(notification_items):
                 ),
             )
             new_count = sum(1 for row in ordered if row["_key"] in new_keys)
+            fallback_used = any(row.get("_fallback") for row in ordered)
 
             by_screen = defaultdict(list)
             for row in ordered:
@@ -822,8 +969,15 @@ def build_alert_embeds(notification_items):
                     "description": (
                         f"🏢 **극장**  {theater_name}\n"
                         f"📅 **날짜**  {date_text}\n"
-                        f"✨ **신규 회차**  **{new_count}개**\n\n"
-                        "아래에서 상영관별 시간을 확인하세요. "
+                        f"✨ **신규 회차**  **{new_count}개**\n"
+                        + (
+                            "⚠️ **보조 감지 사용** — 구조화 데이터 조회가 실패해 "
+                            "CGV 예매 페이지 텍스트로 재확인했습니다. "
+                            "오탐 가능성이 있으니 앱/웹에서 한 번 확인하세요.\n"
+                            if fallback_used
+                            else ""
+                        )
+                        + "\n아래에서 상영관별 시간을 확인하세요. "
                         "🆕 표시는 이번에 새로 감지된 회차입니다."
                     ),
                     "fields": chunk,
@@ -884,6 +1038,20 @@ def run_self_test(timeout: int):
     parsed = extract_sessions(sample_rows, sample_target, "20990101")
     if len(parsed) != 1 or parsed[0]["ScreenNm"] != "1관":
         raise RuntimeError("CGV 구조화 파서 자체점검 실패")
+
+    fallback_text = """
+    테스트 영화
+    1관
+    12:30
+    다른 영화
+    2관
+    13:00
+    """
+    fallback_parsed = extract_sessions_fallback(
+        fallback_text, sample_target, "20990101"
+    )
+    if not fallback_parsed or not fallback_parsed[0].get("_fallback"):
+        raise RuntimeError("CGV 보조 파서 자체점검 실패")
 
     browser = CgvBrowser(timeout=timeout)
     try:
@@ -947,43 +1115,95 @@ def run_checker(force_all: bool = False):
     found = defaultdict(dict)
 
     try:
-        def get_rows(target, play_ymd):
+        def get_source(target, play_ymd):
             key = (str(target["theater_code"]), play_ymd)
             page_id = f"{target['theater_code']}|{play_ymd}"
             if key not in page_cache:
-                print(f"[{target['theater_name']}] {play_ymd} 구조화 상영정보 확인")
+                print(
+                    f"[{target['theater_name']}] {play_ymd} "
+                    "구조화 상영정보 확인"
+                )
                 try:
-                    page_cache[key] = browser.fetch_schedule(
-                        str(target["theater_code"]), page_site_name(target), play_ymd
+                    rows = browser.fetch_schedule(
+                        str(target["theater_code"]),
+                        page_site_name(target),
+                        play_ymd,
                     )
+                    page_cache[key] = {
+                        "mode": "api",
+                        "data": rows,
+                    }
                     page_results[page_id] = {
                         "ok": True,
+                        "degraded": False,
                         "theater_name": target["theater_name"],
                         "play_ymd": play_ymd,
                     }
-                except RuntimeError as exc:
-                    message = str(exc)
+                except RuntimeError as primary_exc:
+                    primary_message = str(primary_exc)
                     print(
                         f"경고: [{target['theater_name']}] {play_ymd} "
-                        f"조회 실패로 이번 회차만 건너뜁니다: {message}"
+                        f"구조화 조회 실패. 보조 감지로 재확인: "
+                        f"{primary_message}"
                     )
-                    page_cache[key] = None
-                    page_results[page_id] = {
-                        "ok": False,
-                        "theater_name": target["theater_name"],
-                        "play_ymd": play_ymd,
-                        "error": message,
-                    }
+                    try:
+                        text = browser.fetch_text_fallback(
+                            str(target["theater_code"]),
+                            page_site_name(target),
+                            play_ymd,
+                        )
+                        page_cache[key] = {
+                            "mode": "fallback",
+                            "data": text,
+                        }
+                        page_results[page_id] = {
+                            "ok": True,
+                            "degraded": True,
+                            "theater_name": target["theater_name"],
+                            "play_ymd": play_ymd,
+                            "error": (
+                                "구조화 조회 실패 후 보조 감지 사용: "
+                                f"{primary_message}"
+                            ),
+                        }
+                        print(
+                            f"[{target['theater_name']}] {play_ymd} "
+                            "보조 감지로 확인 계속"
+                        )
+                    except RuntimeError as fallback_exc:
+                        message = (
+                            f"구조화 조회 실패: {primary_message}; "
+                            f"보조 감지도 실패: {fallback_exc}"
+                        )
+                        print(
+                            f"경고: [{target['theater_name']}] {play_ymd} "
+                            f"두 확인 경로 모두 실패: {message}"
+                        )
+                        page_cache[key] = None
+                        page_results[page_id] = {
+                            "ok": False,
+                            "theater_name": target["theater_name"],
+                            "play_ymd": play_ymd,
+                            "error": message,
+                        }
             return page_cache[key]
 
         for theater_code, dates in scheduled.items():
             for play_ymd, target_ids in sorted(dates.items()):
                 sample_target = target_by_id[next(iter(target_ids))]
-                rows = get_rows(sample_target, play_ymd)
-                if rows is None:
+                source = get_source(sample_target, play_ymd)
+                if source is None:
                     continue
                 for target_id in target_ids:
-                    sessions = extract_sessions(rows, target_by_id[target_id], play_ymd)
+                    target = target_by_id[target_id]
+                    if source["mode"] == "api":
+                        sessions = extract_sessions(
+                            source["data"], target, play_ymd
+                        )
+                    else:
+                        sessions = extract_sessions_fallback(
+                            source["data"], target, play_ymd
+                        )
                     if sessions:
                         found[target_id][play_ymd] = sessions
 
@@ -992,12 +1212,31 @@ def run_checker(force_all: bool = False):
             target = target_by_id[target_id]
             candidate = min(by_date)
             for earlier in [d for d in resolve_target_range(target) if d < candidate]:
-                rows = get_rows(target, earlier)
-                if rows is None:
+                source = get_source(target, earlier)
+                if source is None:
                     continue
-                sessions = extract_sessions(rows, target, earlier)
+                if source["mode"] == "api":
+                    sessions = extract_sessions(
+                        source["data"], target, earlier
+                    )
+                else:
+                    sessions = extract_sessions_fallback(
+                        source["data"], target, earlier
+                    )
                 if sessions:
                     by_date[earlier] = sessions
+
+        failed_pages = [
+            result for result in page_results.values()
+            if not result.get("ok")
+        ]
+        if failed_pages:
+            first = failed_pages[0]
+            print(
+                "주의: 이번 실행에서 두 확인 경로가 모두 실패한 날짜가 "
+                f"{len(failed_pages)}개 있습니다. 다음 5분 실행에서 다시 시도합니다. "
+                f"첫 오류: {first.get('error')}"
+            )
 
         if update_page_health(state, page_results, now):
             save_state(state)
