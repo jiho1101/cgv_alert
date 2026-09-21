@@ -947,7 +947,18 @@ def update_page_health(state, page_results, now: datetime) -> bool:
             first_failure = now
             changed = True
 
-        if now - first_failure >= alert_after and not entry.get("alerted", False):
+        run_incident = state.setdefault("health", {}).get("run_warning") or {}
+        outage_already_alerted = (
+            not degraded
+            and run_incident.get("alerted")
+            and run_incident.get("state") in {"failed", "partial"}
+        )
+
+        if (
+            now - first_failure >= alert_after
+            and not entry.get("alerted", False)
+            and not outage_already_alerted
+        ):
             status_text = (
                 "1차 구조화 조회가 30분 이상 정상화되지 않음 "
                 "(보조 감지는 동작 중)"
@@ -971,7 +982,7 @@ def update_page_health(state, page_results, now: datetime) -> bool:
 
 
 def notify_failed_pages(state, page_results, now: datetime) -> bool:
-    """실행 상태를 실패/부분 복구/완전 복구로 구분해 Discord에 알린다."""
+    """짧은 1회성 오류는 조용히 넘기고, 지속 장애만 Discord에 알린다."""
     health = state.setdefault("health", {})
     failed = [
         result
@@ -986,22 +997,31 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
     incident = health.get("run_warning")
     changed = False
 
-    # 둘 다 실패: 즉시 경고. 같은 실패 상태가 계속되면 30분 간격으로만 재알림.
+    # 둘 다 실패한 실행이 2회 연속(약 10분) 이어질 때만 장애 알림.
     if failed:
-        previous_state = (incident or {}).get("state")
-        should_alert = previous_state != "failed"
-        if not should_alert and incident:
-            try:
-                last_alert = datetime.fromisoformat(
-                    incident["last_alert_at"]
-                )
-                should_alert = (
-                    now - last_alert >= timedelta(minutes=30)
-                )
-            except (KeyError, TypeError, ValueError):
-                should_alert = True
+        if not incident:
+            health["run_warning"] = {
+                "state": "pending_failure",
+                "failure_streak": 1,
+                "first_failure_at": now.isoformat(),
+                "last_failure_at": now.isoformat(),
+                "alerted": False,
+            }
+            print(
+                "CGV 일시 확인 실패 1회: 다음 5분 실행에서 재확인 후 "
+                "지속될 때만 Discord에 알립니다."
+            )
+            return True
 
-        if should_alert:
+        if incident.get("state") == "pending_failure":
+            streak = int(incident.get("failure_streak", 1)) + 1
+            incident["failure_streak"] = streak
+            incident["last_failure_at"] = now.isoformat()
+            changed = True
+
+            if streak < 2:
+                return changed
+
             details = []
             for result in failed[:5]:
                 details.append(
@@ -1015,27 +1035,49 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
                 else ""
             )
             message = (
-                "⚠️ **CGV 이번 회차 확인 실패**\n"
-                "1차 구조화 조회와 2차 예매 페이지 보조 감지가 "
-                "모두 실패했습니다. 이를 '예매 없음'으로 처리하지 않고 "
-                "다음 5분 실행에서 다시 시도합니다.\n"
+                "⚠️ **CGV 확인 장애 지속**\n"
+                "두 번 연속(약 10분) 구조화 조회와 보조 감지가 모두 "
+                "실패했습니다. 이를 '예매 없음'으로 처리하지 않고 "
+                "5분마다 계속 재시도합니다.\n"
                 + "\n".join(details)
                 + extra
+                + f"\n- 장애 시작: "
+                f"{incident.get('first_failure_at', '-')}"
                 + f"\n- 확인 시각: "
                 f"{now.strftime('%Y-%m-%d %H:%M:%S KST')}"
             )
             if send_health_message(message):
-                health["run_warning"] = {
-                    "state": "failed",
-                    "last_alert_at": now.isoformat(),
-                    "failed_count": len(failed),
-                }
+                incident["state"] = "failed"
+                incident["alerted"] = True
+                incident["alerted_at"] = now.isoformat()
+                incident["healthy_streak"] = 0
                 changed = True
+            return changed
+
+        # 이미 알려진 같은 장애는 30분마다 반복 알림하지 않는다.
+        # 부분 복구 뒤 다시 완전 실패해도 같은 장애로 보고 상태만 갱신한다.
+        if incident.get("state") in {"failed", "partial"}:
+            if incident.get("state") != "failed":
+                incident["state"] = "failed"
+                changed = True
+            incident["last_failure_at"] = now.isoformat()
+            incident["healthy_streak"] = 0
+            return True
+
         return changed
 
-    # 직전에는 완전 실패했지만 이번에는 보조 감지만 성공: 부분 복구.
+    # 첫 실패 뒤 다음 실행에서 보조 감지라도 살아났다면 알림 없이 해제.
     if degraded:
-        if incident and incident.get("state") == "failed":
+        if incident and incident.get("state") == "pending_failure":
+            health.pop("run_warning", None)
+            print(
+                "직전 1회성 실패 후 보조 감지가 동작해 장애 알림 없이 "
+                "상태를 해제합니다."
+            )
+            return True
+
+        # 실제 장애 알림을 보낸 뒤 보조 감지만 살아났을 때만 부분 복구 1회 알림.
+        if incident and incident.get("state") == "failed" and incident.get("alerted"):
             details = []
             for result in degraded[:5]:
                 details.append(
@@ -1052,19 +1094,37 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
                 f"{now.strftime('%Y-%m-%d %H:%M:%S KST')}"
             )
             if send_health_message(message):
-                health["run_warning"] = {
-                    "state": "partial",
-                    "last_alert_at": now.isoformat(),
-                    "degraded_count": len(degraded),
-                }
+                incident["state"] = "partial"
+                incident["healthy_streak"] = 0
+                incident["last_partial_at"] = now.isoformat()
                 changed = True
         return changed
 
-    # 실패/부분 복구 상태 이후 구조화 조회까지 정상화된 경우만 완전 복구.
-    if incident and incident.get("state") in {"failed", "partial"}:
+    # 정상 구조화 조회.
+    if incident and incident.get("state") == "pending_failure":
+        health.pop("run_warning", None)
+        print(
+            "직전 1회성 실패가 다음 실행에서 정상화되어 "
+            "Discord 알림 없이 종료합니다."
+        )
+        return True
+
+    # 실제 장애를 알린 경우에는 정상 구조화 조회 2회 연속 확인 후 완전 복구.
+    if incident and incident.get("state") in {"failed", "partial"} and incident.get("alerted"):
+        healthy_streak = int(incident.get("healthy_streak", 0)) + 1
+        incident["healthy_streak"] = healthy_streak
+        changed = True
+
+        if healthy_streak < 2:
+            print(
+                "CGV 구조화 조회 1회 정상: 다음 5분 실행까지 정상인지 "
+                "확인한 뒤 복구 알림을 보냅니다."
+            )
+            return changed
+
         message = (
             "✅ **CGV 완전 복구**\n"
-            "- 1차 구조화 조회가 다시 정상 동작합니다.\n"
+            "- 1차 구조화 조회가 2회 연속 정상 동작했습니다.\n"
             "- 보조 감지에 의존하지 않는 정상 감시 상태입니다.\n"
             f"- 복구 확인: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
         )
