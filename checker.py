@@ -887,6 +887,67 @@ def update_page_health(state, page_results, now: datetime) -> bool:
     return changed
 
 
+def notify_failed_pages(state, page_results, now: datetime) -> bool:
+    """두 확인 경로가 모두 실패한 실행을 Discord에 즉시 알리되 스팸은 막는다."""
+    health = state.setdefault("health", {})
+    failed = [
+        result for result in page_results.values()
+        if not result.get("ok")
+    ]
+    incident = health.get("run_warning")
+    changed = False
+
+    if not failed:
+        if incident:
+            message = (
+                "✅ **CGV 조회 복구**\n"
+                "- 구조화 조회/보조 감지가 다시 정상 동작합니다.\n"
+                f"- 복구 확인: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
+            )
+            if send_health_message(message):
+                health.pop("run_warning", None)
+                changed = True
+        return changed
+
+    should_alert = True
+    if incident:
+        try:
+            last_alert = datetime.fromisoformat(incident["last_alert_at"])
+            should_alert = now - last_alert >= timedelta(minutes=30)
+        except (KeyError, TypeError, ValueError):
+            should_alert = True
+
+    if should_alert:
+        details = []
+        for result in failed[:5]:
+            details.append(
+                f"- {result.get('theater_name', 'CGV')} "
+                f"{result.get('play_ymd', '-')}: "
+                f"{str(result.get('error') or '알 수 없는 오류')[:180]}"
+            )
+        extra = (
+            f"\n- 외 {len(failed) - 5}개 날짜"
+            if len(failed) > 5
+            else ""
+        )
+        message = (
+            "⚠️ **CGV 이번 회차 확인 실패**\n"
+            "구조화 데이터와 예매 페이지 보조 감지까지 모두 실패했습니다. "
+            "이 상태를 '예매 없음'으로 처리하지 않으며 다음 5분 실행에서 다시 시도합니다.\n"
+            + "\n".join(details)
+            + extra
+            + f"\n- 확인 시각: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
+        )
+        if send_health_message(message):
+            health["run_warning"] = {
+                "last_alert_at": now.isoformat(),
+                "failed_count": len(failed),
+            }
+            changed = True
+
+    return changed
+
+
 def build_booking_url(target, play_ymd: str) -> str:
     return (
         f"{BOOKING_URL}?siteNo={quote(str(target['theater_code']))}"
@@ -1238,7 +1299,14 @@ def run_checker(force_all: bool = False):
                 f"첫 오류: {first.get('error')}"
             )
 
-        if update_page_health(state, page_results, now):
+        health_changed = notify_failed_pages(
+            state, page_results, now
+        )
+        health_changed = (
+            update_page_health(state, page_results, now)
+            or health_changed
+        )
+        if health_changed:
             save_state(state)
 
         write_runtime_status(
