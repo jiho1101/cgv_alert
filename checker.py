@@ -1117,13 +1117,30 @@ def run_self_test(timeout: int):
     browser = CgvBrowser(timeout=timeout)
     try:
         today = datetime.now(KST).strftime("%Y%m%d")
-        rows = browser.fetch_schedule("0128", "울산삼산", today)
-        if not isinstance(rows, list):
-            raise RuntimeError("CGV 상영정보 API 결과가 리스트가 아닙니다")
-        print(
-            f"CGV 울산삼산 구조화 API 자체점검 완료: "
-            f"{today} 응답 {len(rows)}개"
-        )
+        try:
+            rows = browser.fetch_schedule("0128", "울산삼산", today)
+            if not isinstance(rows, list):
+                raise RuntimeError("CGV 상영정보 API 결과가 리스트가 아닙니다")
+            print(
+                f"CGV 울산삼산 구조화 API 자체점검 완료: "
+                f"{today} 응답 {len(rows)}개"
+            )
+        except RuntimeError as primary_exc:
+            print(
+                "구조화 API 자체점검 실패. 보조 경로 자체점검으로 전환: "
+                f"{primary_exc}"
+            )
+            text = browser.fetch_text_fallback(
+                "0128", "울산삼산", today
+            )
+            if len(text.strip()) < 120:
+                raise RuntimeError(
+                    "CGV 구조화 API와 보조 예매 페이지 자체점검 모두 실패"
+                )
+            print(
+                f"CGV 울산삼산 보조 경로 자체점검 완료: "
+                f"본문 {len(text)}자"
+            )
     finally:
         browser.close()
 
