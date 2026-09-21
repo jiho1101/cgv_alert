@@ -102,14 +102,14 @@
       "min_remaining_seats": 1
     },
     {
-      "id": "avengers-endgame-encore-20260923-ulsan-samsan",
+      "id": "avengers-endgame-encore-20260925-ulsan-samsan",
       "enabled": true,
       "label": "어벤져스: 엔드게임 앙코르",
       "theater_code": "0128",
       "theater_name": "CGV 울산삼산",
       "date_range": {
-        "start": "20260923",
-        "end": "20260923"
+        "start": "20260925",
+        "end": "20260925"
       },
       "movie_aliases": [
         "어벤져스: 엔드게임 앙코르",
