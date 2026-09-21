@@ -1,6 +1,18 @@
 {
   "health": {
-    "pages": {}
+    "pages": {
+      "0128|20260925": {
+        "alerted": false,
+        "first_failure_at": "2026-09-21T20:45:25.091545+09:00",
+        "last_error": "구조화 조회 실패: CGV 상영정보 API 조회 실패 (HTTP 403: \n<!DOCTYPE html>\n<html>\n  <head>\n    <meta charset=\"utf-8\">\n    <style>/* container */\n.container [id=\"contentArea\"] {\n ); 보조 감지도 실패: CGV 예매 페이지 보조 확인 시간 초과",
+        "play_ymd": "20260925",
+        "theater_name": "CGV 울산삼산"
+      }
+    },
+    "run_warning": {
+      "failed_count": 1,
+      "last_alert_at": "2026-09-21T20:45:25.091545+09:00"
+    }
   },
   "seen": {
     "avengers-endgame-encore-20260925-ulsan-samsan": [
