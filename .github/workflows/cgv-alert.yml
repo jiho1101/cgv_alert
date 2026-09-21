@@ -33,6 +33,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Sync latest monitoring state
+        run: |
+          git fetch origin main
+          if git cat-file -e origin/main:state.json 2>/dev/null; then
+            git show origin/main:state.json > state.json
+            echo "Latest state.json synced from main"
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -268,9 +276,169 @@ jobs:
             echo "No monitoring state or target changes"
             exit 0
           fi
+
+          cp state.json /tmp/local_state.json
+          cp config.json /tmp/local_config.json
+          git show HEAD:config.json > /tmp/base_config.json
+
+          cat > /tmp/merge_monitoring.py <<'PY'
+          import json
+          from copy import deepcopy
+          from pathlib import Path
+
+          def load(path, default):
+              p = Path(path)
+              if not p.exists():
+                  return deepcopy(default)
+              return json.loads(p.read_text(encoding="utf-8"))
+
+          def save(path, data):
+              Path(path).write_text(
+                  json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                  encoding="utf-8",
+              )
+
+          def int_version(value):
+              try:
+                  return int(value)
+              except (TypeError, ValueError):
+                  return 1
+
+          def merge_key_lists(remote_map, local_map):
+              out = {}
+              for key in set(remote_map) | set(local_map):
+                  merged = set(remote_map.get(key) or [])
+                  merged.update(local_map.get(key) or [])
+                  if merged:
+                      out[key] = sorted(merged)[-1000:]
+              return out
+
+          remote_state = load("state.json", {"version": 2})
+          local_state = load("/tmp/local_state.json", {"version": 2})
+
+          remote_version = int_version(remote_state.get("version"))
+          local_version = int_version(local_state.get("version"))
+
+          if local_version >= 2 and remote_version < 2:
+              merged_state = deepcopy(local_state)
+          else:
+              merged_state = deepcopy(remote_state)
+              for key, value in local_state.items():
+                  if key not in {"seen", "fallback_seen", "health"}:
+                      merged_state[key] = deepcopy(value)
+              merged_state["version"] = max(remote_version, local_version)
+              merged_state["seen"] = merge_key_lists(
+                  remote_state.get("seen") or {},
+                  local_state.get("seen") or {},
+              )
+              merged_state["fallback_seen"] = merge_key_lists(
+                  remote_state.get("fallback_seen") or {},
+                  local_state.get("fallback_seen") or {},
+              )
+              # This run started after syncing the latest state, so its health
+              # snapshot is the newest view and already contains prior incidents.
+              merged_state["health"] = deepcopy(
+                  local_state.get("health", remote_state.get("health", {}))
+              )
+
+          save("state.json", merged_state)
+
+          base_config = load("/tmp/base_config.json", {"targets": []})
+          local_config = load("/tmp/local_config.json", {"targets": []})
+          remote_config = load("config.json", {"targets": []})
+
+          base_map = {
+              str(t.get("id")): t
+              for t in base_config.get("targets", [])
+              if t.get("id") is not None
+          }
+          local_map = {
+              str(t.get("id")): t
+              for t in local_config.get("targets", [])
+              if t.get("id") is not None
+          }
+          remote_targets = list(remote_config.get("targets", []))
+          remote_map = {
+              str(t.get("id")): t
+              for t in remote_targets
+              if t.get("id") is not None
+          }
+
+          removed_ids = set(base_map) - set(local_map)
+          changed_ids = {
+              target_id
+              for target_id in set(base_map) & set(local_map)
+              if base_map[target_id] != local_map[target_id]
+          }
+          added_ids = set(local_map) - set(base_map)
+
+          merged_targets = []
+          for target in remote_targets:
+              target_id = str(target.get("id"))
+              if target_id in removed_ids:
+                  if remote_map.get(target_id) == base_map.get(target_id):
+                      continue
+                  print(
+                      f"Config changed remotely for {target_id}; "
+                      "keeping remote target instead of auto-removing it"
+                  )
+              if target_id in changed_ids:
+                  if remote_map.get(target_id) == base_map.get(target_id):
+                      merged_targets.append(deepcopy(local_map[target_id]))
+                      continue
+                  print(
+                      f"Config changed remotely for {target_id}; "
+                      "keeping remote version"
+                  )
+              merged_targets.append(target)
+
+          present = {
+              str(t.get("id"))
+              for t in merged_targets
+              if t.get("id") is not None
+          }
+          for target_id in added_ids:
+              if target_id not in present:
+                  merged_targets.append(deepcopy(local_map[target_id]))
+
+          remote_config["targets"] = merged_targets
+
+          if local_config.get("request") != base_config.get("request"):
+              if remote_config.get("request") == base_config.get("request"):
+                  remote_config["request"] = deepcopy(local_config.get("request"))
+              else:
+                  print("Config request changed remotely; keeping remote version")
+
+          Path("config.json").write_text(
+              json.dumps(remote_config, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add state.json config.json
-          git commit -m "chore: update CGV monitoring state [skip ci]"
-          git pull --rebase origin main
-          git push
+
+          for attempt in 1 2 3; do
+            echo "State save attempt $attempt/3"
+            git fetch origin main
+            git reset --hard origin/main
+            python /tmp/merge_monitoring.py
+
+            if git diff --quiet -- state.json config.json; then
+              echo "Latest main already contains the monitoring changes"
+              exit 0
+            fi
+
+            git add state.json config.json
+            git commit -m "chore: update CGV monitoring state [skip ci]"
+
+            if git push origin HEAD:main; then
+              echo "Monitoring state saved"
+              exit 0
+            fi
+
+            echo "Main changed during save; retrying semantic merge"
+          done
+
+          echo "Failed to save monitoring state after 3 attempts"
+          exit 1
