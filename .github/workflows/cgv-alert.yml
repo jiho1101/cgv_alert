@@ -197,11 +197,23 @@ jobs:
                   else "🟢"
               )
               sessions = int(target.get("available_session_count") or 0)
-              session_text = (
-                  f"현재 예매 회차 {sessions}개"
-                  if sessions
-                  else "예매 회차 미감지"
-              )
+              mode = target.get("detection_mode", "structured")
+              if mode == "fallback":
+                  session_text = (
+                      f"보조 감지 후보 {sessions}개 · 앱/웹 확인 필요"
+                      if sessions
+                      else "보조 감지 사용 · 후보 미감지"
+                  )
+              elif mode == "failed":
+                  session_text = "이번 회차 확인 실패 · 다음 5분 재시도"
+              elif mode == "not_checked":
+                  session_text = "이번 실행에서 조회 대상 아님"
+              else:
+                  session_text = (
+                      f"현재 예매 회차 {sessions}개"
+                      if sessions
+                      else "예매 회차 미감지"
+                  )
               result_lines.append(
                   f"{icon} **{target.get('label', target.get('id', '영화'))}** — {session_text}"
               )
