@@ -15,6 +15,10 @@
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX관[10관]|23:50",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|5관 (Laser)|08:30",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|5관 (Laser)|10:49",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|5관 (Laser)|11:00",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|5관 (Laser)|13:22",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|5관 (Laser)|17:00",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|5관 (Laser)|19:22",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|5관 (Laser)|23:10",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|5관 (Laser)|25:32",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|6관 (Laser)|13:50",
@@ -37,6 +41,8 @@
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|IMAX LASER 2D|13:57",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|IMAX LASER 2D|14:20",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|IMAX LASER 2D|17:22",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|08:20",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|10:42",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|17:00",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|17:45",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|19:22",
@@ -48,7 +54,16 @@
     ]
   },
   "health": {
-    "pages": {}
+    "pages": {
+      "0128|20260925": {
+        "alerted": false,
+        "degraded": true,
+        "first_failure_at": "2026-09-22T22:25:27.976670+09:00",
+        "last_error": "구조화 조회 실패 후 보조 감지 사용: CGV 상영정보 API 응답 시간 초과",
+        "play_ymd": "20260925",
+        "theater_name": "CGV 울산삼산"
+      }
+    }
   },
   "seen": {
     "avengers-endgame-encore-20260925-ulsan-samsan": [
