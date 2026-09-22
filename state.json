@@ -54,16 +54,7 @@
     ]
   },
   "health": {
-    "pages": {
-      "0128|20260928": {
-        "alerted": false,
-        "degraded": true,
-        "first_failure_at": "2026-09-23T03:15:36.189115+09:00",
-        "last_error": "구조화 조회 실패 후 보조 감지 사용: CGV 상영정보 API 접근 거부 (HTTP 403)",
-        "play_ymd": "20260928",
-        "theater_name": "CGV 울산삼산"
-      }
-    }
+    "pages": {}
   },
   "seen": {
     "avengers-endgame-encore-20260925-ulsan-samsan": [
