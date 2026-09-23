@@ -95,23 +95,6 @@
   },
   "health": {
     "pages": {
-      "0128|20260925": {
-        "alerted": true,
-        "alerted_at": "2026-09-24T06:05:35.384668+09:00",
-        "degraded": true,
-        "first_failure_at": "2026-09-24T05:30:38.953961+09:00",
-        "last_error": "구조화 조회 실패 후 보조 감지 사용: CGV 상영정보 API 접근 거부 (HTTP 403)",
-        "play_ymd": "20260925",
-        "theater_name": "CGV 울산삼산"
-      },
-      "0128|20260928": {
-        "alerted": false,
-        "degraded": true,
-        "first_failure_at": "2026-09-24T05:55:35.483918+09:00",
-        "last_error": "구조화 조회 실패 후 보조 감지 사용: CGV 상영정보 API 접근 거부 (HTTP 403)",
-        "play_ymd": "20260928",
-        "theater_name": "CGV 울산삼산"
-      },
       "0128|20261218": {
         "alerted": false,
         "degraded": true,
