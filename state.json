@@ -57,27 +57,12 @@
     "pages": {
       "0128|20260925": {
         "alerted": false,
-        "degraded": false,
-        "first_failure_at": "2026-09-23T09:55:36.361450+09:00",
-        "last_error": "구조화 조회 실패: CGV 상영정보 API 접근 거부 (HTTP 403); 보조 감지도 실패: CGV 예매 페이지 보조 확인 시간 초과",
-        "play_ymd": "20260925",
-        "theater_name": "CGV 울산삼산"
-      },
-      "0128|20260928": {
-        "alerted": false,
         "degraded": true,
         "first_failure_at": "2026-09-23T09:55:36.361450+09:00",
-        "last_error": "구조화 조회 실패 후 보조 감지 사용: CGV 상영정보 API 응답 시간 초과",
-        "play_ymd": "20260928",
+        "last_error": "구조화 조회 실패 후 보조 감지 사용: CGV 상영정보 API 접근 거부 (HTTP 403)",
+        "play_ymd": "20260925",
         "theater_name": "CGV 울산삼산"
       }
-    },
-    "run_warning": {
-      "alerted": false,
-      "failure_streak": 1,
-      "first_failure_at": "2026-09-23T09:55:36.361450+09:00",
-      "last_failure_at": "2026-09-23T09:55:36.361450+09:00",
-      "state": "pending_failure"
     }
   },
   "seen": {
