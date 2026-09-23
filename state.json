@@ -55,22 +55,6 @@
   },
   "health": {
     "pages": {
-      "0128|20260925": {
-        "alerted": false,
-        "degraded": true,
-        "first_failure_at": "2026-09-23T13:40:35.393104+09:00",
-        "last_error": "구조화 조회 실패 후 보조 감지 사용: CGV 상영정보 API 응답 시간 초과",
-        "play_ymd": "20260925",
-        "theater_name": "CGV 울산삼산"
-      },
-      "0128|20260928": {
-        "alerted": false,
-        "degraded": true,
-        "first_failure_at": "2026-09-23T13:40:35.393104+09:00",
-        "last_error": "구조화 조회 실패 후 보조 감지 사용: CGV 상영정보 API 응답 시간 초과",
-        "play_ymd": "20260928",
-        "theater_name": "CGV 울산삼산"
-      },
       "0128|20261218": {
         "alerted": false,
         "degraded": true,
@@ -86,6 +70,14 @@
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX관[10관]|09:00",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX관[10관]|16:05",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX관[10관]|23:50"
+    ],
+    "movie-20260928-ulsan-samsan": [
+      "0128|20260928|movie-20260928-ulsan-samsan|4관 (Laser)|08:20",
+      "0128|20260928|movie-20260928-ulsan-samsan|4관 (Laser)|11:00",
+      "0128|20260928|movie-20260928-ulsan-samsan|4관 (Laser)|13:40",
+      "0128|20260928|movie-20260928-ulsan-samsan|4관 (Laser)|16:20",
+      "0128|20260928|movie-20260928-ulsan-samsan|4관 (Laser)|19:00",
+      "0128|20260928|movie-20260928-ulsan-samsan|4관 (Laser)|21:50"
     ]
   },
   "version": 2
