@@ -95,14 +95,6 @@
   },
   "health": {
     "pages": {
-      "0128|20260925": {
-        "alerted": false,
-        "degraded": true,
-        "first_failure_at": "2026-09-23T15:45:36.288524+09:00",
-        "last_error": "구조화 조회 실패 후 보조 감지 사용: CGV 상영정보 API 응답 시간 초과",
-        "play_ymd": "20260925",
-        "theater_name": "CGV 울산삼산"
-      },
       "0128|20261218": {
         "alerted": false,
         "degraded": true,
