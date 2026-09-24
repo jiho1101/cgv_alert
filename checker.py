@@ -886,251 +886,174 @@ def send_health_message(message: str) -> bool:
 
 
 def update_page_health(state, page_results, now: datetime) -> bool:
+    """페이지별 장애 알림은 전역 장기 장애 알림으로 통합한다.
+
+    예전 pages 상태가 남아 있으면 한 번만 정리하고, 이후에는 매 5분
+    상태 변화마다 state.json을 갱신하지 않는다.
+    """
     pages = state.setdefault("health", {}).setdefault("pages", {})
-    changed = False
-    alert_after = timedelta(minutes=30)
-
-    for page_id, result in page_results.items():
-        entry = pages.get(page_id)
-        fully_healthy = result.get("ok") and not result.get("degraded")
-        degraded = result.get("ok") and result.get("degraded")
-
-        if fully_healthy:
-            if not entry:
-                continue
-
-            if entry.get("alerted"):
-                first_failure_at = entry.get("first_failure_at", "-")
-                message = (
-                    "✅ **CGV 감시 완전 복구**\n"
-                    f"- 극장: {result['theater_name']}\n"
-                    f"- 날짜: {result['play_ymd']}\n"
-                    f"- 장애 시작: {first_failure_at}\n"
-                    "- 상태: 1차 구조화 조회가 다시 정상 동작\n"
-                    f"- 복구 확인: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
-                )
-                if not send_health_message(message):
-                    continue
-
-            pages.pop(page_id, None)
-            changed = True
-            continue
-
-        if not entry:
-            entry = {
-                "first_failure_at": now.isoformat(),
-                "alerted": False,
-                "theater_name": result["theater_name"],
-                "play_ymd": result["play_ymd"],
-                "last_error": summarize_cgv_error(
-                    result.get("error") or "조회 상태 저하"
-                ),
-                "degraded": bool(degraded),
-            }
-            pages[page_id] = entry
-            changed = True
-        else:
-            clean_error = summarize_cgv_error(
-                result.get("error") or "조회 상태 저하"
-            )
-            if entry.get("last_error") != clean_error:
-                entry["last_error"] = clean_error
-                changed = True
-            if entry.get("degraded") != bool(degraded):
-                entry["degraded"] = bool(degraded)
-                changed = True
-
-        try:
-            first_failure = datetime.fromisoformat(entry["first_failure_at"])
-        except (KeyError, TypeError, ValueError):
-            entry["first_failure_at"] = now.isoformat()
-            first_failure = now
-            changed = True
-
-        run_incident = state.setdefault("health", {}).get("run_warning") or {}
-        outage_already_alerted = (
-            not degraded
-            and run_incident.get("alerted")
-            and run_incident.get("state") in {"failed", "partial"}
-        )
-
-        if (
-            now - first_failure >= alert_after
-            and not entry.get("alerted", False)
-            and not outage_already_alerted
-        ):
-            status_text = (
-                "1차 구조화 조회가 30분 이상 정상화되지 않음 "
-                "(보조 감지는 동작 중)"
-                if degraded
-                else "30분 이상 구조화 조회와 보조 감지 모두 정상 확인 실패"
-            )
-            message = (
-                "⚠️ **CGV 감시 이상**\n"
-                f"- 극장: {result['theater_name']}\n"
-                f"- 날짜: {result['play_ymd']}\n"
-                f"- 상태: {status_text}\n"
-                f"- 최근 오류: {entry['last_error']}\n"
-                f"- 확인 시각: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
-            )
-            if send_health_message(message):
-                entry["alerted"] = True
-                entry["alerted_at"] = now.isoformat()
-                changed = True
-
-    return changed
+    if pages:
+        pages.clear()
+        return True
+    return False
 
 
 def notify_failed_pages(state, page_results, now: datetime) -> bool:
-    """짧은 1회성 오류는 조용히 넘기고, 지속 장애만 Discord에 알린다."""
+    """5분 감시는 유지하되, 30분 지속 장애와 15분 안정 복구만 알린다."""
     health = state.setdefault("health", {})
-    failed = [
-        result
-        for result in page_results.values()
-        if not result.get("ok")
-    ]
-    degraded = [
-        result
-        for result in page_results.values()
-        if result.get("ok") and result.get("degraded")
-    ]
     incident = health.get("run_warning")
     changed = False
 
-    # 둘 다 실패한 실행이 2회 연속(약 10분) 이어질 때만 장애 알림.
-    if failed:
-        if not incident:
-            health["run_warning"] = {
-                "state": "pending_failure",
-                "failure_streak": 1,
-                "first_failure_at": now.isoformat(),
-                "last_failure_at": now.isoformat(),
-                "alerted": False,
-            }
-            print(
-                "CGV 일시 확인 실패 1회: 다음 5분 실행에서 재확인 후 "
-                "지속될 때만 Discord에 알립니다."
-            )
-            return True
+    unhealthy_ids = {
+        page_id
+        for page_id, result in page_results.items()
+        if (not result.get("ok")) or result.get("degraded")
+    }
 
-        if incident.get("state") == "pending_failure":
-            streak = int(incident.get("failure_streak", 1)) + 1
-            incident["failure_streak"] = streak
-            incident["last_failure_at"] = now.isoformat()
-            changed = True
-
-            if streak < 2:
-                return changed
-
-            details = []
-            for result in failed[:5]:
-                details.append(
-                    f"- {result.get('theater_name', 'CGV')} "
-                    f"{result.get('play_ymd', '-')}: "
-                    f"{summarize_cgv_error(result.get('error'))}"
-                )
-            extra = (
-                f"\n- 외 {len(failed) - 5}개 날짜"
-                if len(failed) > 5
-                else ""
-            )
-            message = (
-                "⚠️ **CGV 확인 장애 지속**\n"
-                "두 번 연속(약 10분) 구조화 조회와 보조 감지가 모두 "
-                "실패했습니다. 이를 '예매 없음'으로 처리하지 않고 "
-                "5분마다 계속 재시도합니다.\n"
-                + "\n".join(details)
-                + extra
-                + f"\n- 장애 시작: "
-                f"{incident.get('first_failure_at', '-')}"
-                + f"\n- 확인 시각: "
-                f"{now.strftime('%Y-%m-%d %H:%M:%S KST')}"
-            )
-            if send_health_message(message):
-                incident["state"] = "failed"
-                incident["alerted"] = True
-                incident["alerted_at"] = now.isoformat()
-                incident["healthy_streak"] = 0
-                changed = True
-            return changed
-
-        # 이미 알려진 같은 장애는 30분마다 반복 알림하지 않는다.
-        # 부분 복구 뒤 다시 완전 실패해도 같은 장애로 보고 상태만 갱신한다.
-        if incident.get("state") in {"failed", "partial"}:
-            if incident.get("state") != "failed":
-                incident["state"] = "failed"
-                changed = True
-            incident["last_failure_at"] = now.isoformat()
-            incident["healthy_streak"] = 0
-            return True
-
-        return changed
-
-    # 첫 실패 뒤 다음 실행에서 보조 감지라도 살아났다면 알림 없이 해제.
-    if degraded:
-        if incident and incident.get("state") == "pending_failure":
-            health.pop("run_warning", None)
-            print(
-                "직전 1회성 실패 후 보조 감지가 동작해 장애 알림 없이 "
-                "상태를 해제합니다."
-            )
-            return True
-
-        # 실제 장애 알림을 보낸 뒤 보조 감지만 살아났을 때만 부분 복구 1회 알림.
-        if incident and incident.get("state") == "failed" and incident.get("alerted"):
-            details = []
-            for result in degraded[:5]:
-                details.append(
-                    f"- {result.get('theater_name', 'CGV')} "
-                    f"{result.get('play_ymd', '-')}: "
-                    "보조 감지는 동작, 1차 구조화 조회는 아직 실패"
-                )
-            message = (
-                "🟡 **CGV 부분 복구**\n"
-                "예매 페이지 보조 감지는 다시 동작하지만 "
-                "1차 구조화 조회는 아직 정상화되지 않았습니다.\n"
-                + "\n".join(details)
-                + f"\n- 확인 시각: "
-                f"{now.strftime('%Y-%m-%d %H:%M:%S KST')}"
-            )
-            if send_health_message(message):
-                incident["state"] = "partial"
-                incident["healthy_streak"] = 0
-                incident["last_partial_at"] = now.isoformat()
-                changed = True
-        return changed
-
-    # 정상 구조화 조회.
-    if incident and incident.get("state") == "pending_failure":
-        health.pop("run_warning", None)
+    # 장애가 처음 시작되면 시각/대상만 저장한다. Discord에는 아직 알리지 않는다.
+    if not incident and unhealthy_ids:
+        health["run_warning"] = {
+            "state": "pending",
+            "first_failure_at": now.isoformat(),
+            "page_ids": sorted(unhealthy_ids),
+            "alerted": False,
+        }
         print(
-            "직전 1회성 실패가 다음 실행에서 정상화되어 "
-            "Discord 알림 없이 종료합니다."
+            "CGV 조회 불안정 시작: 5분 감시는 계속하며, "
+            "30분 이상 지속될 때만 Discord 장애 알림을 보냅니다."
         )
         return True
 
-    # 실제 장애를 알린 경우에는 정상 구조화 조회 2회 연속 확인 후 완전 복구.
-    if incident and incident.get("state") in {"failed", "partial"} and incident.get("alerted"):
-        healthy_streak = int(incident.get("healthy_streak", 0)) + 1
-        incident["healthy_streak"] = healthy_streak
+    if not incident:
+        return False
+
+    tracked_ids = set(incident.get("page_ids") or [])
+    if not tracked_ids:
+        tracked_ids = set(unhealthy_ids)
+        if tracked_ids:
+            incident["page_ids"] = sorted(tracked_ids)
+            changed = True
+
+    # 새로 불안정해진 날짜도 같은 장애 구간에 포함한다.
+    new_ids = unhealthy_ids - tracked_ids
+    if new_ids:
+        tracked_ids.update(new_ids)
+        incident["page_ids"] = sorted(tracked_ids)
         changed = True
 
-        if healthy_streak < 2:
-            print(
-                "CGV 구조화 조회 1회 정상: 다음 5분 실행까지 정상인지 "
-                "확인한 뒤 복구 알림을 보냅니다."
+    # 이번 실행에서 기존 장애 대상이 하나도 조회되지 않았다면 상태를 판단하지 않는다.
+    checked_tracked = tracked_ids.intersection(page_results)
+    if tracked_ids and not checked_tracked:
+        return changed
+
+    relevant_unhealthy = {
+        page_id
+        for page_id in checked_tracked
+        if (
+            (not page_results[page_id].get("ok"))
+            or page_results[page_id].get("degraded")
+        )
+    }
+
+    if relevant_unhealthy:
+        # 복구 확인 중 다시 흔들리면 복구 타이머만 취소한다.
+        if incident.get("recovery_started_at"):
+            incident.pop("recovery_started_at", None)
+            incident["state"] = "failed" if incident.get("alerted") else "pending"
+            changed = True
+
+        try:
+            first_failure = datetime.fromisoformat(
+                incident.get("first_failure_at", "")
             )
+        except (TypeError, ValueError):
+            incident["first_failure_at"] = now.isoformat()
+            first_failure = now
+            changed = True
+
+        # 30분 전에는 계속 조용히 재시도한다.
+        if now - first_failure < timedelta(minutes=30):
             return changed
 
+        if incident.get("alerted"):
+            return changed
+
+        details = []
+        for page_id in sorted(relevant_unhealthy)[:5]:
+            result = page_results[page_id]
+            mode = (
+                "보조 감지만 동작 중"
+                if result.get("ok") and result.get("degraded")
+                else "구조화/보조 감지 모두 실패"
+            )
+            details.append(
+                f"- {result.get('theater_name', 'CGV')} "
+                f"{result.get('play_ymd', '-')}: {mode}"
+            )
+        extra = (
+            f"\n- 외 {len(relevant_unhealthy) - 5}개 날짜"
+            if len(relevant_unhealthy) > 5
+            else ""
+        )
         message = (
-            "✅ **CGV 완전 복구**\n"
-            "- 1차 구조화 조회가 2회 연속 정상 동작했습니다.\n"
-            "- 보조 감지에 의존하지 않는 정상 감시 상태입니다.\n"
-            f"- 복구 확인: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
+            "⚠️ **CGV 확인 장애 지속**\n"
+            "정상 구조화 조회가 30분 이상 안정적으로 동작하지 않았습니다. "
+            "예매 없음으로 처리하지 않으며 5분 감시는 계속 재시도합니다.\n"
+            + "\n".join(details)
+            + extra
+            + f"\n- 장애 시작: {incident.get('first_failure_at', '-')}"
+            + f"\n- 확인 시각: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
         )
         if send_health_message(message):
-            health.pop("run_warning", None)
+            incident["state"] = "failed"
+            incident["alerted"] = True
+            incident["alerted_at"] = now.isoformat()
             changed = True
+        return changed
+
+    # 일부 장애 대상이 이번 실행에 빠졌다면 아직 복구로 확정하지 않는다.
+    if tracked_ids and checked_tracked != tracked_ids:
+        return changed
+
+    # 30분 장애 알림 전 정상화된 짧은 흔들림은 Discord 알림 없이 종료.
+    if not incident.get("alerted"):
+        health.pop("run_warning", None)
+        print(
+            "CGV 일시 조회 불안정이 정상화되었습니다. "
+            "30분 미만 장애이므로 Discord 알림 없이 종료합니다."
+        )
+        return True
+
+    # 실제 장애 알림을 보낸 뒤에는 15분 동안 구조화 조회가 안정적으로
+    # 정상이어야 완전 복구 알림을 한 번만 보낸다.
+    recovery_started_at = incident.get("recovery_started_at")
+    if not recovery_started_at:
+        incident["recovery_started_at"] = now.isoformat()
+        incident["state"] = "recovering"
+        print(
+            "CGV 구조화 조회 정상화 확인 시작: "
+            "15분 동안 안정적으로 유지되면 완전 복구 알림을 보냅니다."
+        )
+        return True
+
+    try:
+        recovery_started = datetime.fromisoformat(recovery_started_at)
+    except (TypeError, ValueError):
+        incident["recovery_started_at"] = now.isoformat()
+        return True
+
+    if now - recovery_started < timedelta(minutes=15):
+        return changed
+
+    message = (
+        "✅ **CGV 완전 복구**\n"
+        "- 1차 구조화 조회가 15분 이상 안정적으로 정상 동작했습니다.\n"
+        "- 보조 감지에 의존하지 않는 정상 감시 상태입니다.\n"
+        f"- 복구 확인: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
+    )
+    if send_health_message(message):
+        health.pop("run_warning", None)
+        return True
 
     return changed
 
