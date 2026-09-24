@@ -1,6 +1,8 @@
 {
   "fallback_seen": {
     "avengers-endgame-encore-20260925-ulsan-samsan": [
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|2관 (Laser)|08:20",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|2관 (Laser)|10:42",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX 2D|09:00",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX 2D|12:16",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX 2D|12:40",
@@ -43,8 +45,10 @@
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|IMAX LASER 2D|17:22",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|08:20",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|10:42",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|15:00",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|17:00",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|17:45",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|18:02",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|19:22",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|20:47",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|상영관 정보 확인 필요|21:10",
@@ -95,6 +99,14 @@
   },
   "health": {
     "pages": {
+      "0128|20260925": {
+        "alerted": false,
+        "degraded": true,
+        "first_failure_at": "2026-09-24T14:15:37.357339+09:00",
+        "last_error": "구조화 조회 실패 후 보조 감지 사용: CGV 상영정보 API 접근 거부 (HTTP 403)",
+        "play_ymd": "20260925",
+        "theater_name": "CGV 울산삼산"
+      },
       "0128|20261218": {
         "alerted": true,
         "alerted_at": "2026-09-24T12:00:39.524169+09:00",
