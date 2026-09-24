@@ -122,11 +122,13 @@
       }
     },
     "run_warning": {
-      "alerted": false,
-      "failure_streak": 1,
+      "alerted": true,
+      "alerted_at": "2026-09-24T12:45:36.898079+09:00",
+      "failure_streak": 2,
       "first_failure_at": "2026-09-24T12:40:39.650303+09:00",
-      "last_failure_at": "2026-09-24T12:40:39.650303+09:00",
-      "state": "pending_failure"
+      "healthy_streak": 0,
+      "last_failure_at": "2026-09-24T12:45:36.898079+09:00",
+      "state": "failed"
     }
   },
   "seen": {
