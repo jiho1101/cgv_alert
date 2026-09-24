@@ -107,8 +107,7 @@
         "0128|20260925",
         "0128|20260928"
       ],
-      "recovery_started_at": "2026-09-24T16:55:36.548408+09:00",
-      "state": "recovering"
+      "state": "failed"
     }
   },
   "seen": {
