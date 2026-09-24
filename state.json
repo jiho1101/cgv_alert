@@ -100,13 +100,14 @@
   "health": {
     "pages": {},
     "run_warning": {
-      "alerted": false,
+      "alerted": true,
+      "alerted_at": "2026-09-24T15:35:36.755754+09:00",
       "first_failure_at": "2026-09-24T15:05:36.421168+09:00",
       "page_ids": [
         "0128|20260925",
         "0128|20260928"
       ],
-      "state": "pending"
+      "state": "failed"
     }
   },
   "seen": {
