@@ -96,7 +96,8 @@
   "health": {
     "pages": {
       "0128|20260925": {
-        "alerted": false,
+        "alerted": true,
+        "alerted_at": "2026-09-24T12:31:02.183928+09:00",
         "degraded": true,
         "first_failure_at": "2026-09-24T12:00:39.524169+09:00",
         "last_error": "구조화 조회 실패 후 보조 감지 사용: CGV 상영정보 API 접근 거부 (HTTP 403)",
