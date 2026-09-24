@@ -107,13 +107,15 @@
         "0128|20260925",
         "0128|20260928"
       ],
-      "state": "failed"
+      "recovery_started_at": "2026-09-24T16:45:35.810157+09:00",
+      "state": "recovering"
     }
   },
   "seen": {
     "avengers-endgame-encore-20260925-ulsan-samsan": [
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX관[10관]|09:00",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX관[10관]|16:05",
+      "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX관[10관]|20:10",
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|4DX관[10관]|23:50"
     ],
     "movie-20260928-ulsan-samsan": [
