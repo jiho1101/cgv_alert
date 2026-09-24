@@ -103,16 +103,6 @@
         "play_ymd": "20261218",
         "theater_name": "CGV 울산삼산"
       }
-    },
-    "run_warning": {
-      "alerted": true,
-      "alerted_at": "2026-09-24T07:20:35.670065+09:00",
-      "failure_streak": 2,
-      "first_failure_at": "2026-09-24T07:15:40.531260+09:00",
-      "healthy_streak": 1,
-      "last_failure_at": "2026-09-24T09:00:34.682186+09:00",
-      "last_partial_at": "2026-09-24T09:05:42.225767+09:00",
-      "state": "partial"
     }
   },
   "seen": {
