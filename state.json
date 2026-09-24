@@ -98,7 +98,15 @@
     ]
   },
   "health": {
-    "pages": {}
+    "pages": {},
+    "run_warning": {
+      "alerted": false,
+      "first_failure_at": "2026-09-24T14:45:39.740838+09:00",
+      "page_ids": [
+        "0128|20260925"
+      ],
+      "state": "pending"
+    }
   },
   "seen": {
     "avengers-endgame-encore-20260925-ulsan-samsan": [
