@@ -156,41 +156,69 @@ jobs:
       - name: Verify Cloudflare Worker runtime
         if: github.event_name == 'push'
         continue-on-error: true
+        env:
+          STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
         run: |
           python - <<'PY'
-          import json
+          import os
           import time
-          import urllib.request
 
-          url = "https://cgv-alert-trigger.choi1101jh.workers.dev/health"
-          expected_version = "13"
-          last_error = None
+          import requests
 
+          url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
+          expected_version = "14"
+          token = os.environ.get("STATUS_API_TOKEN", "").strip()
+
+          if not token:
+              print("STATUS_API_TOKEN secret is missing; runtime verification skipped.")
+              raise SystemExit(1)
+
+          last_status = None
           for attempt in range(1, 13):
               try:
-                  with urllib.request.urlopen(url, timeout=10) as response:
-                      payload = json.loads(response.read().decode("utf-8"))
+                  response = requests.post(
+                      url,
+                      headers={"Authorization": f"Bearer {token}"},
+                      json={},
+                      timeout=10,
+                  )
+                  response.raise_for_status()
+                  payload = response.json()
                   version = str(payload.get("version") or "")
                   browser_binding = bool(payload.get("browser_binding"))
+                  budget = payload.get("browser_budget") or {}
+                  used_ms = int(budget.get("used_ms") or 0)
+                  safe_limit_ms = int(budget.get("safe_limit_ms") or 0)
+                  last_status = (
+                      f"version={version}, browser_binding={browser_binding}, "
+                      f"browser_used_ms={used_ms}, safe_limit_ms={safe_limit_ms}"
+                  )
                   print(
-                      f"Cloudflare runtime 확인 {attempt}/12 · "
-                      f"version={version} · browser_binding={browser_binding}"
+                      f"Cloudflare runtime 확인 {attempt}/12 · {last_status}"
                   )
                   if version == expected_version and browser_binding:
-                      print("Cloudflare Worker v13 + Browser Run binding 확인 완료")
+                      print(
+                          "Cloudflare Worker v14 + Browser Run binding 확인 완료"
+                      )
                       raise SystemExit(0)
-              except Exception as exc:
-                  last_error = f"{type(exc).__name__}: {exc}"
+              except requests.RequestException as exc:
+                  last_status = f"{type(exc).__name__}: {exc}"
                   print(
                       f"Cloudflare runtime 확인 {attempt}/12 실패: "
-                      f"{last_error}"
+                      f"{last_status}"
+                  )
+              except (TypeError, ValueError) as exc:
+                  last_status = f"{type(exc).__name__}: {exc}"
+                  print(
+                      f"Cloudflare runtime 응답 해석 실패 {attempt}/12: "
+                      f"{last_status}"
                   )
 
               time.sleep(5)
 
           print(
               "Cloudflare runtime 검증 미완료 · "
-              f"마지막 오류/상태: {last_error or 'version/binding 불일치'}"
+              f"마지막 상태: {last_status or '알 수 없음'}"
           )
           raise SystemExit(1)
           PY

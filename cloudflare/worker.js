@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "13";
+const COMMAND_VERSION = "14";
 
 const DISCORD_COMMANDS = [
   {
@@ -543,6 +543,16 @@ async function browserBudgetState(env) {
   return { key, usedMs: Number.isFinite(usedMs) ? usedMs : 0 };
 }
 
+
+function browserBudgetText(budget) {
+  const safeLimitMs = 8 * 60 * 1000;
+  const usedMs = Math.max(0, Number(budget?.usedMs || 0));
+  const usedMin = Math.round((usedMs / 60000) * 10) / 10;
+  const remainingMin =
+    Math.round((Math.max(0, safeLimitMs - usedMs) / 60000) * 10) / 10;
+  return `${usedMin}분 사용 · 안전 한도까지 ${remainingMin}분 남음`;
+}
+
 async function handleBrowserCheck(request, env) {
   if (!authorizedStatusUpdate(request, env)) {
     return new Response("Unauthorized", { status: 401 });
@@ -665,11 +675,13 @@ function statusLabel(status) {
 }
 
 async function buildSystemStatus(env) {
-  const [statusRow, cronRow, monitoringStats] = await Promise.all([
-    getState(env, "status"),
-    getState(env, "cron"),
-    getMonitoringStats(env),
-  ]);
+  const [statusRow, cronRow, monitoringStats, browserBudget] =
+    await Promise.all([
+      getState(env, "status"),
+      getState(env, "cron"),
+      getMonitoringStats(env),
+      browserBudgetState(env),
+    ]);
 
   const status = statusRow?.value;
   const cron = cronRow?.value;
@@ -736,6 +748,11 @@ async function buildSystemStatus(env) {
       {
         name: "📊 최근 24시간 감시",
         value: monitoringStatsText(monitoringStats),
+        inline: false,
+      },
+      {
+        name: "🌐 Browser Run 비상 경로",
+        value: browserBudgetText(browserBudget),
         inline: false,
       },
       {
@@ -940,6 +957,34 @@ export default {
 
     if (
       request.method === "POST" &&
+      url.pathname === "/api/runtime-check"
+    ) {
+      if (!authorizedStatusUpdate(request, env)) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      const [browserBudget, monitoringStats] = await Promise.all([
+        browserBudgetState(env),
+        getMonitoringStats(env),
+      ]);
+      return jsonResponse({
+        ok: true,
+        version: COMMAND_VERSION,
+        browser_binding: Boolean(env.BROWSER),
+        browser_budget: {
+          used_ms: browserBudget.usedMs,
+          safe_limit_ms: 8 * 60 * 1000,
+          remaining_ms: Math.max(
+            0,
+            8 * 60 * 1000 - Number(browserBudget.usedMs || 0),
+          ),
+        },
+        monitoring_stats_24h: monitoringStats,
+        now: new Date().toISOString(),
+      });
+    }
+
+    if (
+      request.method === "POST" &&
       url.pathname === "/api/browser-check"
     ) {
       return handleBrowserCheck(request, env);
@@ -973,7 +1018,10 @@ export default {
     if (request.method === "GET" && url.pathname === "/health") {
       let discordCommandSetup;
       let discordCommandState = null;
-      const monitoringStats = await getMonitoringStats(env);
+      const [monitoringStats, browserBudget] = await Promise.all([
+        getMonitoringStats(env),
+        browserBudgetState(env),
+      ]);
 
       try {
         discordCommandSetup = await ensureCommandsRegistered(env);
@@ -996,6 +1044,10 @@ export default {
         service: "cgv-alert-trigger",
         version: COMMAND_VERSION,
         browser_binding: Boolean(env.BROWSER),
+        browser_budget: {
+          used_ms: browserBudget.usedMs,
+          safe_limit_ms: 8 * 60 * 1000,
+        },
         monitoring_stats_24h: monitoringStats,
         discord_commands: discordCommandSetup,
         discord_command_state: discordCommandState,
