@@ -1,4 +1,5 @@
 import argparse
+import base64
 import json
 import os
 import re
@@ -394,10 +395,18 @@ class CgvBrowser:
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
         )
         options.page_load_strategy = "eager"
+        options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
         try:
             self.driver = webdriver.Chrome(options=options)
             self.driver.set_script_timeout(max(int(timeout) + 5, 20))
             self.driver.set_page_load_timeout(max(int(timeout), 15))
+            self.driver.execute_cdp_cmd(
+                "Network.enable",
+                {
+                    "maxTotalBufferSize": 10_000_000,
+                    "maxResourceBufferSize": 2_000_000,
+                },
+            )
             self.driver.execute_cdp_cmd(
                 "Page.addScriptToEvaluateOnNewDocument",
                 {
@@ -491,6 +500,10 @@ class CgvBrowser:
             f"{BOOKING_URL}?siteNo={quote(site_no)}&siteNm={quote(site_name)}"
             f"&scnYmd={quote(play_ymd)}"
         )
+        try:
+            self.driver.get_log("performance")
+        except WebDriverException:
+            pass
         self.driver.get(url)
         WebDriverWait(self.driver, self.timeout).until(
             lambda d: d.execute_script("return document.readyState")
@@ -509,20 +522,140 @@ class CgvBrowser:
 
         self.current_site = site_key
 
+    def _schedule_url_matches(
+        self,
+        raw_url: str,
+        site_no: str,
+        play_ymd: str,
+    ) -> bool:
+        if "searchMovScnInfo" not in str(raw_url or ""):
+            return False
+        try:
+            query = parse_qs(urlparse(str(raw_url)).query)
+        except ValueError:
+            return False
+
+        captured_site = str((query.get("siteNo") or [""])[0])
+        captured_date = str((query.get("scnYmd") or [""])[0])
+        if captured_site and captured_site != str(site_no):
+            return False
+        if captured_date and captured_date != str(play_ymd):
+            return False
+        return True
+
+    def _parse_schedule_payload(self, body: str):
+        try:
+            payload = json.loads(str(body or ""))
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("statusCode") not in (None, 0, "0"):
+            return None
+        rows = payload.get("data")
+        return rows if isinstance(rows, list) else None
+
+    def _consume_performance_schedule(
+        self,
+        site_no: str,
+        play_ymd: str,
+    ):
+        """Chrome DevTools 네트워크 로그에서 CGV 공식 구조화 응답을 읽는다."""
+        try:
+            entries = self.driver.get_log("performance")
+        except WebDriverException:
+            return None
+
+        candidates = []
+        saw_403 = False
+
+        for entry in entries:
+            try:
+                outer = json.loads(entry.get("message") or "{}")
+                message = outer.get("message") or {}
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if message.get("method") != "Network.responseReceived":
+                continue
+
+            params = message.get("params") or {}
+            response = params.get("response") or {}
+            raw_url = str(response.get("url") or "")
+            if not self._schedule_url_matches(raw_url, site_no, play_ymd):
+                continue
+
+            status = _safe_int(response.get("status"), 0)
+            if status == 403:
+                saw_403 = True
+                continue
+            if status < 200 or status >= 300:
+                continue
+
+            request_id = str(params.get("requestId") or "")
+            if request_id:
+                candidates.append(request_id)
+
+        for request_id in reversed(candidates):
+            try:
+                response_body = self.driver.execute_cdp_cmd(
+                    "Network.getResponseBody",
+                    {"requestId": request_id},
+                )
+            except WebDriverException:
+                continue
+
+            body = str(response_body.get("body") or "")
+            if response_body.get("base64Encoded"):
+                try:
+                    body = base64.b64decode(body).decode("utf-8", errors="replace")
+                except (ValueError, UnicodeDecodeError):
+                    continue
+
+            rows = self._parse_schedule_payload(body)
+            if rows is not None:
+                print(
+                    "CGV Chrome 네트워크 구조화 응답 캡처 성공: "
+                    f"{play_ymd} 응답 {len(rows)}개"
+                )
+                return {"ok": True, "rows": rows}
+
+        if saw_403:
+            return {
+                "ok": False,
+                "status": 403,
+                "error": "CGV 공식 페이지 네트워크 요청도 HTTP 403",
+            }
+        return None
+
     def _consume_browser_schedule(
         self,
         site_no: str,
         play_ymd: str,
-        wait_seconds: float = 3.0,
+        wait_seconds: float = 6.0,
     ):
-        """CGV 공식 페이지가 직접 요청한 구조화 시간표 응답을 재사용한다.
+        """CGV 공식 페이지가 직접 요청한 구조화 시간표 응답을 2중으로 읽는다.
 
-        별도의 인증/서명 요청을 재현하지 않고, 실제 웹앱이 정상적으로 받은
-        응답만 읽는다. 응답이 없으면 기존 구조화 조회 경로로 넘어간다.
+        1) 페이지 fetch/XHR 응답 캡처
+        2) Chrome DevTools Network 응답 캡처
+
+        별도 인증이나 차단 우회는 하지 않는다. 두 공식 브라우저 경로에서
+        응답이 없을 때만 기존 구조화 조회 경로로 넘어간다.
         """
-        deadline = time.monotonic() + max(0.2, float(wait_seconds))
+        deadline = time.monotonic() + max(0.5, float(wait_seconds))
+        saw_403 = False
 
         while time.monotonic() < deadline:
+            # 먼저 Chrome 자체 네트워크 로그를 확인한다. JS 후킹보다 낮은
+            # 레벨이라 fetch/XHR 래퍼를 거치지 않는 응답도 잡을 수 있다.
+            network_result = self._consume_performance_schedule(
+                site_no, play_ymd
+            )
+            if network_result:
+                if network_result.get("ok"):
+                    return network_result
+                if _safe_int(network_result.get("status"), 0) == 403:
+                    saw_403 = True
+
             try:
                 captured = self.driver.execute_script(
                     """
@@ -539,48 +672,36 @@ class CgvBrowser:
                 if not isinstance(item, dict):
                     continue
                 raw_url = str(item.get("url") or "")
-                try:
-                    query = parse_qs(urlparse(raw_url).query)
-                except ValueError:
-                    query = {}
-
-                captured_site = str((query.get("siteNo") or [""])[0])
-                captured_date = str((query.get("scnYmd") or [""])[0])
-                if captured_site and captured_site != str(site_no):
-                    continue
-                if captured_date and captured_date != str(play_ymd):
+                if not self._schedule_url_matches(
+                    raw_url, site_no, play_ymd
+                ):
                     continue
 
                 status = _safe_int(item.get("status"), 0)
-                body = str(item.get("text") or "")
                 if status == 403:
-                    return {
-                        "ok": False,
-                        "status": 403,
-                        "error": "CGV 공식 페이지 요청도 HTTP 403",
-                    }
+                    saw_403 = True
+                    continue
                 if not item.get("ok"):
                     continue
 
-                try:
-                    payload = json.loads(body)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(payload, dict):
-                    continue
-                if payload.get("statusCode") not in (None, 0, "0"):
-                    continue
-
-                rows = payload.get("data")
-                if isinstance(rows, list):
+                rows = self._parse_schedule_payload(
+                    str(item.get("text") or "")
+                )
+                if rows is not None:
                     print(
-                        "CGV 공식 페이지 구조화 요청 캡처 성공: "
+                        "CGV 페이지 JS 구조화 응답 캡처 성공: "
                         f"{play_ymd} 응답 {len(rows)}개"
                     )
                     return {"ok": True, "rows": rows}
 
-            time.sleep(0.2)
+            time.sleep(0.25)
 
+        if saw_403:
+            return {
+                "ok": False,
+                "status": 403,
+                "error": "CGV 공식 페이지 구조화 요청 HTTP 403",
+            }
         return None
     def fetch_schedule(
         self,
