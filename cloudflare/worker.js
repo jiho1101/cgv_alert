@@ -417,9 +417,9 @@ function formatTime(value) {
 }
 
 function statusLabel(status) {
-  if (status === "error") return "🔴 이상";
-  if (status === "warning") return "🟡 일시 오류";
-  if (status === "fallback") return "🟢 보조 감시";
+  if (status === "error") return "🔴 장애 지속";
+  if (status === "warning") return "🟠 일시 확인 실패";
+  if (status === "fallback") return "🟡 보조 감시 중";
   return "🟢 정상";
 }
 
@@ -447,11 +447,11 @@ async function buildSystemStatus(env) {
     (status.targets || []).some((target) => target.detection_mode === "fallback");
   const description =
     health === "error"
-      ? "**🔴 이상**"
+      ? "**🔴 장애 지속**"
       : health === "warning"
-        ? "**🟡 일시 오류**"
+        ? "**🟠 일시 확인 실패**"
         : fallbackActive
-          ? "**🟢 정상 감시 · 보조 경로 사용**"
+          ? "**🟡 보조 감시 중**"
           : "**🟢 정상**";
 
   return {
@@ -459,7 +459,7 @@ async function buildSystemStatus(env) {
     description,
     color:
       health === "error" ? 0xe74c3c :
-      health === "warning" ? 0xf1c40f :
+      (health === "warning" || fallbackActive) ? 0xf1c40f :
       0x2ecc71,
     fields: [
       {
