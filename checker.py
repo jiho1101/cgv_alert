@@ -437,7 +437,7 @@ class CgvBrowser:
         site_no: str,
         site_name: str,
         play_ymd: str,
-        attempts: int = 2,
+        attempts: int = 1,
         retry_delay: float = 3.0,
     ) -> list:
         attempts = max(1, int(attempts))
@@ -954,7 +954,6 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
         health["run_warning"] = {
             "state": "pending",
             "first_failure_at": now.isoformat(),
-            "last_failure_at": now.isoformat(),
             "page_ids": sorted(unhealthy_ids),
             "alerted": False,
         }
@@ -974,9 +973,6 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
             tracked_ids.update(new_ids)
             incident["page_ids"] = sorted(tracked_ids)
             changed = True
-
-        incident["last_failure_at"] = now.isoformat()
-        changed = True
 
         # 복구 확인 중 다시 구조화 조회가 흔들리면 복구 타이머를 취소한다.
         if incident.get("recovery_started_at"):
@@ -1215,6 +1211,11 @@ def send_discord_embeds(embeds) -> bool:
 
 
 def run_self_test(timeout: int):
+    """네트워크를 추가로 호출하지 않는 로컬 파서 자체점검.
+
+    push 실행 직후 실제 감시 단계가 CGV를 조회하므로 self-test에서 같은
+    사이트를 한 번 더 호출하지 않는다. 배포 때 불필요한 요청과 지연을 줄인다.
+    """
     sample_target = {
         "id": "self-test",
         "label": "테스트 영화",
@@ -1257,37 +1258,7 @@ def run_self_test(timeout: int):
     if not fallback_parsed or not fallback_parsed[0].get("_fallback"):
         raise RuntimeError("CGV 보조 파서 자체점검 실패")
 
-    browser = CgvBrowser(timeout=timeout)
-    try:
-        today = datetime.now(KST).strftime("%Y%m%d")
-        try:
-            rows = browser.fetch_schedule("0128", "울산삼산", today)
-            if not isinstance(rows, list):
-                raise RuntimeError("CGV 상영정보 API 결과가 리스트가 아닙니다")
-            print(
-                f"CGV 울산삼산 구조화 API 자체점검 완료: "
-                f"{today} 응답 {len(rows)}개"
-            )
-        except RuntimeError as primary_exc:
-            print(
-                "구조화 API 자체점검 실패. 보조 경로 자체점검으로 전환: "
-                f"{primary_exc}"
-            )
-            text = browser.fetch_text_fallback(
-                "0128", "울산삼산", today
-            )
-            if len(text.strip()) < 120:
-                raise RuntimeError(
-                    "CGV 구조화 API와 보조 예매 페이지 자체점검 모두 실패"
-                )
-            print(
-                f"CGV 울산삼산 보조 경로 자체점검 완료: "
-                f"본문 {len(text)}자"
-            )
-    finally:
-        browser.close()
-
-
+    print("CGV 파서 자체점검 완료 · 추가 네트워크 요청 없음")
 def run_checker(force_all: bool = False):
     config = load_json(CONFIG_PATH, {"targets": []})
     state = load_json(STATE_PATH, {"version": 2, "seen": {}})
