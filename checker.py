@@ -968,6 +968,74 @@ class CgvBrowser:
         raise last_error from None
 
 
+def is_access_restriction_error(*values) -> bool:
+    text = " ".join(str(value or "") for value in values).casefold()
+    markers = (
+        "http 403",
+        "접근 거부",
+        "접근을 제한",
+        "access denied",
+        "captcha",
+        "just a moment",
+    )
+    return any(marker in text for marker in markers)
+
+
+def fetch_cloudflare_browser_text(
+    site_no: str,
+    site_name: str,
+    play_ymd: str,
+    timeout: int = 25,
+) -> str:
+    """GitHub 쪽 순수 네트워크 실패 때만 쓰는 비상 브라우저 확인.
+
+    명시적 HTTP 403/접근 제한을 우회하는 용도로는 호출하지 않는다.
+    """
+    endpoint = os.getenv("BROWSER_CHECK_URL", "").strip()
+    token = os.getenv("STATUS_API_TOKEN", "").strip()
+    if not endpoint or not token:
+        raise RuntimeError("Cloudflare Browser Run 비상 경로가 아직 설정되지 않았습니다")
+
+    try:
+        response = requests.post(
+            endpoint,
+            json={
+                "site_no": str(site_no),
+                "site_name": str(site_name),
+                "play_ymd": str(play_ymd),
+            },
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=max(int(timeout), 10),
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            f"Cloudflare Browser Run 호출 실패 ({type(exc).__name__})"
+        ) from None
+
+    if response.status_code == 429:
+        raise RuntimeError("Cloudflare Browser Run 일일 안전 예산에 도달했습니다")
+    if response.status_code not in {200, 204}:
+        raise RuntimeError(
+            f"Cloudflare Browser Run 확인 실패 (HTTP {response.status_code})"
+        )
+
+    try:
+        payload = response.json()
+    except ValueError:
+        raise RuntimeError("Cloudflare Browser Run 응답 형식이 올바르지 않습니다") from None
+
+    if not payload.get("ok"):
+        raise RuntimeError(
+            f"Cloudflare Browser Run 확인 실패: "
+            f"{summarize_cgv_error(payload.get('error'))}"
+        )
+
+    text = str(payload.get("text") or "")
+    if len(text.strip()) < 120:
+        raise RuntimeError("Cloudflare Browser Run 페이지 내용이 충분하지 않습니다")
+    return text
+
+
 def _safe_int(value, default=0):
     try:
         return int(str(value))
@@ -1703,22 +1771,77 @@ def run_checker(force_all: bool = False):
                             "보조 감지로 확인 계속"
                         )
                     except RuntimeError as fallback_exc:
-                        message = (
+                        fallback_message = summarize_cgv_error(fallback_exc)
+                        local_message = (
                             f"구조화 조회 실패: {primary_message}; "
-                            "보조 감지도 실패: "
-                            f"{summarize_cgv_error(fallback_exc)}"
+                            f"보조 감지도 실패: {fallback_message}"
                         )
-                        print(
-                            f"경고: [{target['theater_name']}] {play_ymd} "
-                            f"두 확인 경로 모두 실패: {message}"
-                        )
-                        page_cache[key] = None
-                        page_results[page_id] = {
-                            "ok": False,
-                            "theater_name": target["theater_name"],
-                            "play_ymd": play_ymd,
-                            "error": message,
-                        }
+
+                        # 명시적 403/접근 제한은 다른 실행환경으로 우회하지 않는다.
+                        # 순수 timeout/네트워크 오류일 때만 Cloudflare Browser Run을
+                        # 비상 확인 경로로 한 번 사용한다.
+                        if not is_access_restriction_error(
+                            primary_message, fallback_message
+                        ):
+                            try:
+                                cloudflare_text = fetch_cloudflare_browser_text(
+                                    str(target["theater_code"]),
+                                    page_site_name(target),
+                                    play_ymd,
+                                    timeout=max(timeout + 10, 25),
+                                )
+                                page_cache[key] = {
+                                    "mode": "fallback",
+                                    "data": cloudflare_text,
+                                }
+                                page_results[page_id] = {
+                                    "ok": True,
+                                    "degraded": True,
+                                    "theater_name": target["theater_name"],
+                                    "play_ymd": play_ymd,
+                                    "error": (
+                                        f"{local_message}; "
+                                        "Cloudflare Browser Run 비상 확인 사용"
+                                    ),
+                                }
+                                print(
+                                    f"[{target['theater_name']}] {play_ymd} "
+                                    "Cloudflare Browser Run 비상 확인으로 감시 계속"
+                                )
+                            except RuntimeError as cloudflare_exc:
+                                message = (
+                                    f"{local_message}; "
+                                    "Cloudflare 비상 확인도 실패: "
+                                    f"{summarize_cgv_error(cloudflare_exc)}"
+                                )
+                                print(
+                                    f"경고: [{target['theater_name']}] {play_ymd} "
+                                    f"모든 허용된 확인 경로 실패: {message}"
+                                )
+                                page_cache[key] = None
+                                page_results[page_id] = {
+                                    "ok": False,
+                                    "theater_name": target["theater_name"],
+                                    "play_ymd": play_ymd,
+                                    "error": message,
+                                }
+                        else:
+                            message = (
+                                f"{local_message}; "
+                                "명시적 접근 제한이므로 Cloudflare 비상 경로는 "
+                                "우회 용도로 사용하지 않음"
+                            )
+                            print(
+                                f"경고: [{target['theater_name']}] {play_ymd} "
+                                f"두 확인 경로 모두 실패: {message}"
+                            )
+                            page_cache[key] = None
+                            page_results[page_id] = {
+                                "ok": False,
+                                "theater_name": target["theater_name"],
+                                "play_ymd": play_ymd,
+                                "error": message,
+                            }
             return page_cache[key]
 
         for theater_code, dates in scheduled.items():

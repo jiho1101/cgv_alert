@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "11";
+const COMMAND_VERSION = "12";
 
 const DISCORD_COMMANDS = [
   {
@@ -396,6 +396,130 @@ async function saveStatus(env, incoming) {
   return merged;
 }
 
+
+function decodeHtmlEntities(text) {
+  return String(text || "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function renderedHtmlToText(html) {
+  return decodeHtmlEntities(
+    String(html || "")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(div|p|li|section|article|h[1-6]|tr)>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+  )
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n+/g, "\n")
+    .trim();
+}
+
+async function browserBudgetState(env) {
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `browser_budget:${day}`;
+  const row = await getState(env, key);
+  const usedMs = Number(row?.value?.used_ms || 0);
+  return { key, usedMs: Number.isFinite(usedMs) ? usedMs : 0 };
+}
+
+async function handleBrowserCheck(request, env) {
+  if (!authorizedStatusUpdate(request, env)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  if (!env.BROWSER) {
+    return jsonResponse(
+      { ok: false, error: "Browser Run binding is missing" },
+      503,
+    );
+  }
+
+  let input;
+  try {
+    input = await request.json();
+  } catch {
+    return jsonResponse({ ok: false, error: "Invalid JSON" }, 400);
+  }
+
+  const siteNo = String(input?.site_no || "").trim();
+  const siteName = String(input?.site_name || "").trim();
+  const playYmd = String(input?.play_ymd || "").trim();
+
+  if (!/^\d{4}$/.test(siteNo) || !/^\d{8}$/.test(playYmd)) {
+    return jsonResponse({ ok: false, error: "Invalid CGV parameters" }, 400);
+  }
+  if (!siteName || siteName.length > 60) {
+    return jsonResponse({ ok: false, error: "Invalid CGV site name" }, 400);
+  }
+
+  // Workers Free의 10분/일 한도에 닿기 전에 8분에서 안전 차단한다.
+  const budget = await browserBudgetState(env);
+  const SAFE_DAILY_BROWSER_MS = 8 * 60 * 1000;
+  if (budget.usedMs >= SAFE_DAILY_BROWSER_MS) {
+    return jsonResponse(
+      {
+        ok: false,
+        error: "Daily Browser Run safety budget reached",
+        used_ms: budget.usedMs,
+      },
+      429,
+    );
+  }
+
+  const cgvUrl =
+    "https://cgv.co.kr/cnm/movieBook/cinema" +
+    `?siteNo=${encodeURIComponent(siteNo)}` +
+    `&siteNm=${encodeURIComponent(siteName)}` +
+    `&scnYmd=${encodeURIComponent(playYmd)}`;
+
+  let rendered;
+  try {
+    rendered = await env.BROWSER.quickAction("content", {
+      url: cgvUrl,
+      gotoOptions: {
+        waitUntil: "networkidle2",
+        timeout: 15000,
+      },
+      rejectResourceTypes: ["image", "font", "media"],
+    });
+  } catch (error) {
+    return jsonResponse(
+      {
+        ok: false,
+        error: `Browser Run failed: ${String(error).slice(0, 300)}`,
+      },
+      502,
+    );
+  }
+
+  const browserMs = Number(
+    rendered?.headers?.get?.("X-Browser-Ms-Used") || 0,
+  );
+  const html = await rendered.text();
+  if (browserMs > 0 && Number.isFinite(browserMs)) {
+    await putState(env, budget.key, {
+      used_ms: budget.usedMs + browserMs,
+      last_used_ms: browserMs,
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  const text = renderedHtmlToText(html);
+  return jsonResponse({
+    ok: true,
+    source: "cloudflare_browser_run",
+    browser_ms: Number.isFinite(browserMs) ? browserMs : 0,
+    text: text.slice(0, 120000),
+  });
+}
+
 function authorizedStatusUpdate(request, env) {
   const expected = env.STATUS_API_TOKEN;
   if (!expected) return false;
@@ -693,6 +817,13 @@ export default {
       url.pathname === "/discord/interactions"
     ) {
       return handleDiscordInteraction(request, env, ctx);
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/browser-check"
+    ) {
+      return handleBrowserCheck(request, env);
     }
 
     if (

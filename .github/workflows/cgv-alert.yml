@@ -96,6 +96,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
+          BROWSER_CHECK_URL: "https://cgv-alert-trigger.choi1101jh.workers.dev/api/browser-check"
           FORCE_ALL_CGV_DATES: ${{ github.event_name == 'workflow_dispatch' && inputs.source == 'discord_manual' && '1' || '0' }}
 
       - name: Report runtime status to Cloudflare
