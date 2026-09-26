@@ -906,13 +906,15 @@ class CgvBrowser:
         site_no: str,
         site_name: str,
         play_ymd: str,
+        target_alias_map=None,
         attempts: int = 2,
         retry_delay: float = 3.0,
-    ) -> str:
-        """구조화 API가 실패했을 때만 쓰는 보조 경로.
+    ) -> dict:
+        """구조화 API가 실패했을 때만 쓰는 보수적인 보조 경로.
 
-        예매 페이지 본문을 읽어 기존 텍스트 파서로 한 번 더 확인한다.
-        오탐 가능성은 있으므로 fallback 결과에는 별도 표시를 붙인다.
+        전체 본문과 함께 각 목표 영화 제목이 들어있는 가장 작은
+        상영시간표 DOM 구역을 찾아 저장한다. 파서는 이 구역을 우선 사용하고,
+        구역을 찾지 못했을 때만 전체 본문을 더 엄격하게 검사한다.
         """
         url = (
             f"{BOOKING_URL}?siteNo={quote(site_no)}&siteNm={quote(site_name)}"
@@ -920,6 +922,7 @@ class CgvBrowser:
         )
         attempts = max(1, int(attempts))
         last_error = None
+        alias_map = target_alias_map or {}
 
         for attempt in range(1, attempts + 1):
             elapsed = time.monotonic() - self.last_request_at
@@ -946,7 +949,79 @@ class CgvBrowser:
                     raise RuntimeError(
                         "CGV가 GitHub Actions 브라우저 접속을 제한했습니다"
                     )
-                return text
+
+                regions = {}
+                if alias_map:
+                    try:
+                        regions = self.driver.execute_script(
+                            r"""
+                            const groups = arguments[0] || {};
+                            const normalize = (value) =>
+                              String(value || "")
+                                .replace(/[^0-9a-zA-Z가-힣]/g, "")
+                                .toLowerCase();
+                            const hasTime = (value) =>
+                              /(?:^|\s)(?:[0-2]?\d):[0-5]\d(?:\s|$)/.test(
+                                String(value || "")
+                              );
+                            const hasScreen = (value) =>
+                              /(IMAX|4DX|SCREENX|\d+\s*관|상영관)/i.test(
+                                String(value || "")
+                              );
+
+                            const elements = Array.from(
+                              document.querySelectorAll("body *")
+                            );
+                            const out = {};
+
+                            for (const [targetId, rawAliases] of Object.entries(groups)) {
+                              const aliases = (rawAliases || [])
+                                .map(normalize)
+                                .filter(Boolean);
+                              if (!aliases.length) continue;
+
+                              const candidates = [];
+                              for (const el of elements) {
+                                const own = String(el.innerText || "").trim();
+                                if (!own || own.length > 220) continue;
+                                const norm = normalize(own);
+                                if (!aliases.some((alias) => norm.includes(alias))) {
+                                  continue;
+                                }
+
+                                let node = el;
+                                for (let depth = 0; node && depth < 8; depth += 1) {
+                                  const block = String(node.innerText || "").trim();
+                                  if (
+                                    block.length >= 20 &&
+                                    block.length <= 5000 &&
+                                    hasTime(block) &&
+                                    hasScreen(block)
+                                  ) {
+                                    candidates.push(block);
+                                    break;
+                                  }
+                                  node = node.parentElement;
+                                }
+                              }
+
+                              if (candidates.length) {
+                                candidates.sort((a, b) => a.length - b.length);
+                                const shortest = candidates[0].length;
+                                out[targetId] = candidates
+                                  .filter((value) => value.length <= shortest * 1.8)
+                                  .slice(0, 3)
+                                  .join("\n");
+                              }
+                            }
+                            return out;
+                            """,
+                            alias_map,
+                        ) or {}
+                    except WebDriverException:
+                        regions = {}
+
+                return {"body": text, "regions": regions}
             except TimeoutException:
                 last_error = RuntimeError("CGV 예매 페이지 보조 확인 시간 초과")
             except WebDriverException as exc:
@@ -1132,24 +1207,86 @@ def extract_sessions(api_rows: list, target, play_ymd: str):
     return sessions
 
 
+def _fallback_screen_line(value: str) -> bool:
+    text = str(value or "").strip()
+    lowered = text.casefold()
+    return bool(
+        re.search(r"(?<!\d)\d{1,2}\s*관(?!람)", text)
+        or any(
+            keyword in lowered
+            for keyword in ("imax", "4dx", "screenx", "상영관")
+        )
+    )
+
+
 def find_screen_name_fallback(lines, time_index):
-    keywords = ("imax", "4dx", "screenx", "관", "cinema", "box")
     for i in range(time_index - 1, max(-1, time_index - 9), -1):
         candidate = lines[i].strip()
-        lowered = candidate.casefold()
         if (
-            any(keyword in lowered for keyword in keywords)
+            _fallback_screen_line(candidate)
             and not re.search(r"\d{1,2}:\d{2}", candidate)
         ):
             return candidate[:80]
-    return "상영관 정보 확인 필요"
+    return None
 
 
-def extract_sessions_fallback(body_text: str, target, play_ymd: str):
-    """API 장애 때만 사용하는 보조 텍스트 파서.
+def _looks_like_next_movie_block(lines, index: int, title_index: int) -> bool:
+    """전체 본문에서 다른 영화 블록의 시작을 보수적으로 추정한다."""
+    candidate = str(lines[index] or "").strip()
+    if not candidate or len(candidate) > 90:
+        return False
+    if re.search(r"\d{1,2}:\d{2}", candidate):
+        return False
+    if _fallback_screen_line(candidate):
+        return False
 
-    놓치는 것보다 확인 가능한 알림을 우선하기 위한 안전망이다.
-    결과 행에 _fallback=True를 붙여 Discord에서 검증 필요 표시를 한다.
+    # 첫 회차가 나오기 전의 장르/등급 같은 메타데이터를 영화 제목으로
+    # 오인하지 않도록, 현재 영화에서 시간 하나 이상을 본 뒤에만 경계를 만든다.
+    prior_has_time = any(
+        re.search(r"(?<!\d)([0-2]?\d):([0-5]\d)(?!\d)", line)
+        for line in lines[title_index + 1 : index]
+    )
+    if not prior_has_time:
+        return False
+
+    lowered = candidate.casefold()
+    metadata_words = (
+        "관람가",
+        "상영",
+        "예매",
+        "좌석",
+        "잔여",
+        "자막",
+        "더빙",
+        "극장",
+        "날짜",
+        "시간",
+        "전체",
+        "매진",
+    )
+    if any(word in lowered for word in metadata_words):
+        return False
+
+    lookahead = lines[index + 1 : min(len(lines), index + 10)]
+    has_screen = any(_fallback_screen_line(line) for line in lookahead)
+    has_time = any(
+        re.search(r"(?<!\d)([0-2]?\d):([0-5]\d)(?!\d)", line)
+        for line in lookahead
+    )
+    return has_screen and has_time
+
+
+def extract_sessions_fallback(
+    body_text: str,
+    target,
+    play_ymd: str,
+    scoped: bool = False,
+):
+    """API 장애 때만 사용하는 보수적인 보조 텍스트 파서.
+
+    목표 영화 DOM 구역을 좁힌 텍스트를 우선 사용한다. 전체 본문을 쓸 때는
+    제목 뒤 최대 36줄만 검사한다. 다른 영화 블록으로 보이는 구간에서
+    멈추며, 상영관까지 같이 확인할 수 없는 시간은 후보로 사용하지 않는다.
     """
     lines = [line.strip() for line in body_text.splitlines() if line.strip()]
     aliases = target_aliases(target)
@@ -1164,26 +1301,42 @@ def extract_sessions_fallback(body_text: str, target, play_ymd: str):
     sessions = []
     seen_sessions = set()
     for title_index in title_indexes:
-        chunk_end = min(len(lines), title_index + 70)
+        hard_end = min(
+            len(lines),
+            title_index + (90 if scoped else 36),
+        )
+        chunk_end = hard_end
+
+        for boundary in range(title_index + 2, hard_end):
+            if _looks_like_next_movie_block(lines, boundary, title_index):
+                chunk_end = boundary
+                break
+
         for i in range(title_index + 1, chunk_end):
             matches = re.findall(
                 r"(?<!\d)([0-2]?\d):([0-5]\d)(?!\d)",
                 lines[i],
             )
-            for hour, minute in matches:
-                hour_int = int(hour)
-                if hour_int > 29:
+            for hour_text, minute_text in matches:
+                hour = _safe_int(hour_text, -1)
+                minute = _safe_int(minute_text, -1)
+                if hour < 0 or hour > 29 or minute < 0 or minute > 59:
                     continue
-                display = f"{hour_int:02d}:{minute}"
+
                 screen_name = find_screen_name_fallback(lines, i)
+                if not screen_name:
+                    continue
+
+                display = f"{hour:02d}:{minute:02d}"
                 session_identity = (screen_name, display)
                 if session_identity in seen_sessions:
                     continue
                 seen_sessions.add(session_identity)
+
                 sessions.append(
                     {
                         "MovieNmKor": target.get("label", "영화"),
-                        "PlayStartTm": display.replace(":", ""),
+                        "PlayStartTm": f"{hour:02d}{minute:02d}",
                         "PlayYmd": str(play_ymd),
                         "ScreenNm": screen_name,
                         "_fallback": True,
@@ -1193,8 +1346,6 @@ def extract_sessions_fallback(body_text: str, target, play_ymd: str):
                         ),
                     }
                 )
-        if sessions:
-            break
 
     sessions.sort(
         key=lambda row: (row["PlayStartTm"], row.get("ScreenNm", ""))
@@ -1660,10 +1811,16 @@ def run_self_test(timeout: int):
     fallback_parsed = extract_sessions_fallback(
         fallback_text, sample_target, "20990101"
     )
-    if not fallback_parsed or not fallback_parsed[0].get("_fallback"):
-        raise RuntimeError("CGV 보조 파서 자체점검 실패")
+    if (
+        len(fallback_parsed) != 1
+        or not fallback_parsed[0].get("_fallback")
+        or fallback_parsed[0]["PlayStartTm"] != "1230"
+    ):
+        raise RuntimeError(
+            "CGV 보조 파서 자체점검 실패: 다른 영화 회차 혼입 가능성"
+        )
 
-    print("CGV 파서 자체점검 완료 · 추가 네트워크 요청 없음")
+    print("CGV 파서 자체점검 완료 · 다른 영화 회차 혼입 방지 검증 통과")
 def run_checker(force_all: bool = False):
     config = load_json(CONFIG_PATH, {"targets": []})
     state = load_json(STATE_PATH, {"version": 2, "seen": {}})
@@ -1715,7 +1872,7 @@ def run_checker(force_all: bool = False):
     found = defaultdict(dict)
 
     try:
-        def get_source(target, play_ymd):
+        def get_source(target, play_ymd, target_ids=None):
             key = (str(target["theater_code"]), play_ymd)
             page_id = f"{target['theater_code']}|{play_ymd}"
             if key not in page_cache:
@@ -1747,14 +1904,30 @@ def run_checker(force_all: bool = False):
                         f"{primary_message}"
                     )
                     try:
-                        text = browser.fetch_text_fallback(
+                        alias_ids = set(
+                            target_ids or {str(target["id"])}
+                        )
+                        alias_map = {
+                            target_id: [
+                                str(alias)
+                                for alias in (
+                                    target_by_id[target_id].get("movie_aliases")
+                                    or [target_by_id[target_id].get("label", "")]
+                                )
+                                if str(alias).strip()
+                            ]
+                            for target_id in alias_ids
+                            if target_id in target_by_id
+                        }
+                        fallback_data = browser.fetch_text_fallback(
                             str(target["theater_code"]),
                             page_site_name(target),
                             play_ymd,
+                            target_alias_map=alias_map,
                         )
                         page_cache[key] = {
                             "mode": "fallback",
-                            "data": text,
+                            "data": fallback_data,
                         }
                         page_results[page_id] = {
                             "ok": True,
@@ -1792,7 +1965,10 @@ def run_checker(force_all: bool = False):
                                 )
                                 page_cache[key] = {
                                     "mode": "fallback",
-                                    "data": cloudflare_text,
+                                    "data": {
+                                        "body": cloudflare_text,
+                                        "regions": {},
+                                    },
                                 }
                                 page_results[page_id] = {
                                     "ok": True,
@@ -1847,7 +2023,11 @@ def run_checker(force_all: bool = False):
         for theater_code, dates in scheduled.items():
             for play_ymd, target_ids in sorted(dates.items()):
                 sample_target = target_by_id[next(iter(target_ids))]
-                source = get_source(sample_target, play_ymd)
+                source = get_source(
+                    sample_target,
+                    play_ymd,
+                    target_ids=target_ids,
+                )
                 if source is None:
                     continue
                 for target_id in target_ids:
@@ -1857,8 +2037,15 @@ def run_checker(force_all: bool = False):
                             source["data"], target, play_ymd
                         )
                     else:
+                        fallback_data = source["data"] or {}
+                        regions = fallback_data.get("regions") or {}
+                        scoped_text = str(regions.get(target_id) or "")
                         sessions = extract_sessions_fallback(
-                            source["data"], target, play_ymd
+                            scoped_text
+                            or str(fallback_data.get("body") or ""),
+                            target,
+                            play_ymd,
+                            scoped=bool(scoped_text),
                         )
                     if sessions:
                         found[target_id][play_ymd] = sessions
@@ -1868,7 +2055,11 @@ def run_checker(force_all: bool = False):
             target = target_by_id[target_id]
             candidate = min(by_date)
             for earlier in [d for d in resolve_target_range(target) if d < candidate]:
-                source = get_source(target, earlier)
+                source = get_source(
+                    target,
+                    earlier,
+                    target_ids={target_id},
+                )
                 if source is None:
                     continue
                 if source["mode"] == "api":
@@ -1876,8 +2067,15 @@ def run_checker(force_all: bool = False):
                         source["data"], target, earlier
                     )
                 else:
+                    fallback_data = source["data"] or {}
+                    regions = fallback_data.get("regions") or {}
+                    scoped_text = str(regions.get(target_id) or "")
                     sessions = extract_sessions_fallback(
-                        source["data"], target, earlier
+                        scoped_text
+                        or str(fallback_data.get("body") or ""),
+                        target,
+                        earlier,
+                        scoped=bool(scoped_text),
                     )
                 if sessions:
                     by_date[earlier] = sessions
