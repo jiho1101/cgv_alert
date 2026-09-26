@@ -725,15 +725,42 @@ class CgvBrowser:
                 browser_result = self._consume_browser_schedule(
                     site_no, play_ymd
                 )
-                if browser_result:
-                    if browser_result.get("ok"):
-                        return browser_result.get("rows") or []
-                    if _safe_int(browser_result.get("status"), 0) == 403:
-                        raise RuntimeError(
-                            "CGV 상영정보 API 접근 거부 (HTTP 403)"
-                        )
+                if browser_result and browser_result.get("ok"):
+                    return browser_result.get("rows") or []
 
-                # 공식 페이지 요청을 캡처하지 못한 경우에만 기존 구조화 경로를 사용한다.
+                # 첫 로드에서 공식 구조화 응답이 안 잡힌 경우, fallback에서
+                # 나중에 페이지를 다시 여는 대신 여기서 공식 예매 페이지를
+                # 한 번만 새로 로드해 구조화 응답을 다시 기다린다.
+                first_browser_status = (
+                    _safe_int(browser_result.get("status"), 0)
+                    if browser_result
+                    else 0
+                )
+                self.current_site = None
+                try:
+                    self._bootstrap(site_no, site_name, play_ymd)
+                    retry_browser_result = self._consume_browser_schedule(
+                        site_no, play_ymd, wait_seconds=8.0
+                    )
+                except (RuntimeError, TimeoutException, WebDriverException):
+                    retry_browser_result = None
+
+                if retry_browser_result and retry_browser_result.get("ok"):
+                    print("CGV 공식 페이지 재로드 후 구조화 응답 복구")
+                    return retry_browser_result.get("rows") or []
+
+                retry_browser_status = (
+                    _safe_int(retry_browser_result.get("status"), 0)
+                    if retry_browser_result
+                    else 0
+                )
+                if first_browser_status == 403 and retry_browser_status == 403:
+                    raise RuntimeError(
+                        "CGV 상영정보 API 접근 거부 (HTTP 403)"
+                    )
+
+                # 공식 페이지의 두 번의 정상 로드에서도 구조화 응답을
+                # 얻지 못한 경우에만 기존 구조화 경로를 사용한다.
                 result = self.driver.execute_async_script(
                     """
                     const siteNo = arguments[0];
