@@ -390,10 +390,6 @@ class CgvBrowser:
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
         options.add_argument("--lang=ko-KR")
-        options.add_argument(
-            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
-        )
         options.page_load_strategy = "eager"
         options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
         try:
@@ -484,6 +480,11 @@ class CgvBrowser:
         self.timeout = timeout
         self.last_request_at = 0.0
         self.current_site = None
+        self._pending_schedule_requests = {}
+        browser_version = str(
+            self.driver.capabilities.get("browserVersion") or "unknown"
+        )
+        print(f"Chrome 실제 브라우저 버전: {browser_version}")
 
     def close(self):
         try:
@@ -500,6 +501,7 @@ class CgvBrowser:
             f"{BOOKING_URL}?siteNo={quote(site_no)}&siteNm={quote(site_name)}"
             f"&scnYmd={quote(play_ymd)}"
         )
+        self._pending_schedule_requests = {}
         try:
             self.driver.get_log("performance")
         except WebDriverException:
@@ -560,14 +562,18 @@ class CgvBrowser:
         site_no: str,
         play_ymd: str,
     ):
-        """Chrome DevTools 네트워크 로그에서 CGV 공식 구조화 응답을 읽는다."""
+        """Chrome DevTools 네트워크에서 완료된 CGV 구조화 응답만 읽는다.
+
+        Network.responseReceived에서 요청 ID를 기억하고,
+        Network.loadingFinished 뒤에만 response body를 읽는다.
+        """
         try:
             entries = self.driver.get_log("performance")
         except WebDriverException:
             return None
 
-        candidates = []
         saw_403 = False
+        finished_ids = []
 
         for entry in entries:
             try:
@@ -575,27 +581,47 @@ class CgvBrowser:
                 message = outer.get("message") or {}
             except (TypeError, json.JSONDecodeError):
                 continue
-            if message.get("method") != "Network.responseReceived":
-                continue
 
+            method = message.get("method")
             params = message.get("params") or {}
-            response = params.get("response") or {}
-            raw_url = str(response.get("url") or "")
-            if not self._schedule_url_matches(raw_url, site_no, play_ymd):
-                continue
 
-            status = _safe_int(response.get("status"), 0)
+            if method == "Network.responseReceived":
+                response = params.get("response") or {}
+                raw_url = str(response.get("url") or "")
+                if not self._schedule_url_matches(
+                    raw_url, site_no, play_ymd
+                ):
+                    continue
+
+                request_id = str(params.get("requestId") or "")
+                status = _safe_int(response.get("status"), 0)
+                if status == 403:
+                    saw_403 = True
+
+                if request_id:
+                    self._pending_schedule_requests[request_id] = {
+                        "status": status,
+                        "url": raw_url,
+                    }
+
+            elif method == "Network.loadingFinished":
+                request_id = str(params.get("requestId") or "")
+                if request_id in self._pending_schedule_requests:
+                    finished_ids.append(request_id)
+
+            elif method == "Network.loadingFailed":
+                request_id = str(params.get("requestId") or "")
+                self._pending_schedule_requests.pop(request_id, None)
+
+        for request_id in finished_ids:
+            meta = self._pending_schedule_requests.pop(request_id, {})
+            status = _safe_int(meta.get("status"), 0)
             if status == 403:
                 saw_403 = True
                 continue
             if status < 200 or status >= 300:
                 continue
 
-            request_id = str(params.get("requestId") or "")
-            if request_id:
-                candidates.append(request_id)
-
-        for request_id in reversed(candidates):
             try:
                 response_body = self.driver.execute_cdp_cmd(
                     "Network.getResponseBody",
@@ -607,7 +633,9 @@ class CgvBrowser:
             body = str(response_body.get("body") or "")
             if response_body.get("base64Encoded"):
                 try:
-                    body = base64.b64decode(body).decode("utf-8", errors="replace")
+                    body = base64.b64decode(body).decode(
+                        "utf-8", errors="replace"
+                    )
                 except (ValueError, UnicodeDecodeError):
                     continue
 
@@ -626,12 +654,11 @@ class CgvBrowser:
                 "error": "CGV 공식 페이지 네트워크 요청도 HTTP 403",
             }
         return None
-
     def _consume_browser_schedule(
         self,
         site_no: str,
         play_ymd: str,
-        wait_seconds: float = 6.0,
+        wait_seconds: float = 10.0,
     ):
         """CGV 공식 페이지가 직접 요청한 구조화 시간표 응답을 2중으로 읽는다.
 
