@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "12";
+const COMMAND_VERSION = "13";
 
 const DISCORD_COMMANDS = [
   {
@@ -349,6 +349,119 @@ async function rememberGuildAndRegister(env, interaction) {
   }
 }
 
+
+function classifyMonitoringSample(status) {
+  const modes = (status?.targets || [])
+    .map((target) => String(target?.detection_mode || ""))
+    .filter(Boolean);
+
+  if (modes.includes("failed")) return "failed";
+  if (modes.includes("fallback")) return "fallback";
+  if (modes.includes("structured")) return "structured";
+
+  // checker 자체가 실패해서 target 결과를 만들지 못한 실행도 실패로 센다.
+  if (status?.health_summary === "error" && status?.preserve_targets) {
+    return "failed";
+  }
+  return null;
+}
+
+function summarizeMonitoringSamples(samples) {
+  const now = Date.now();
+  const cutoff = now - 24 * 60 * 60 * 1000;
+  const recent = (Array.isArray(samples) ? samples : []).filter((sample) => {
+    const at = Date.parse(sample?.at || "");
+    return Number.isFinite(at) && at >= cutoff && at <= now + 5 * 60 * 1000;
+  });
+
+  const counts = {
+    structured: 0,
+    fallback: 0,
+    failed: 0,
+  };
+  for (const sample of recent) {
+    if (sample?.mode in counts) counts[sample.mode] += 1;
+  }
+
+  const total = counts.structured + counts.fallback + counts.failed;
+  const monitoringSuccess = counts.structured + counts.fallback;
+  return {
+    total,
+    structured: counts.structured,
+    fallback: counts.fallback,
+    failed: counts.failed,
+    monitoring_success_rate:
+      total > 0 ? Math.round((monitoringSuccess / total) * 1000) / 10 : null,
+    structured_rate:
+      total > 0 ? Math.round((counts.structured / total) * 1000) / 10 : null,
+  };
+}
+
+async function recordMonitoringSample(env, incoming) {
+  if (!env.DB) return null;
+
+  const mode = classifyMonitoringSample(incoming);
+  if (!mode) return null;
+
+  const rawAt = String(incoming?.last_run_at || new Date().toISOString());
+  const parsedAt = Date.parse(rawAt);
+  const at = Number.isFinite(parsedAt)
+    ? new Date(parsedAt).toISOString()
+    : new Date().toISOString();
+
+  const key = "monitoring_stats_24h";
+  const row = await getState(env, key);
+  const previous = Array.isArray(row?.value?.samples)
+    ? row.value.samples
+    : [];
+
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const samples = previous.filter((sample) => {
+    const ts = Date.parse(sample?.at || "");
+    return Number.isFinite(ts) && ts >= cutoff && sample?.at !== at;
+  });
+  samples.push({ at, mode });
+
+  // 5분 주기 기준 하루 최대 288회이므로 여유 있게 제한한다.
+  const bounded = samples
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+    .slice(-400);
+
+  const summary = summarizeMonitoringSamples(bounded);
+  await putState(env, key, {
+    samples: bounded,
+    summary,
+    updated_at: new Date().toISOString(),
+  });
+  return summary;
+}
+
+async function getMonitoringStats(env) {
+  if (!env.DB) return summarizeMonitoringSamples([]);
+  try {
+    const row = await getState(env, "monitoring_stats_24h");
+    return summarizeMonitoringSamples(row?.value?.samples || []);
+  } catch {
+    return summarizeMonitoringSamples([]);
+  }
+}
+
+function monitoringStatsText(stats) {
+  if (!stats?.total) return "아직 집계할 실제 조회가 없습니다.";
+  const success =
+    stats.monitoring_success_rate == null
+      ? "-"
+      : `${stats.monitoring_success_rate}%`;
+  const structured =
+    stats.structured_rate == null
+      ? "-"
+      : `${stats.structured_rate}%`;
+  return [
+    `조회 ${stats.total}회 · 구조화 ${stats.structured} · 보조 ${stats.fallback} · 실패 ${stats.failed}`,
+    `감시 성공률 ${success} · 구조화 비율 ${structured}`,
+  ].join("\n");
+}
+
 function mergeStatus(previous, incoming) {
   const previousTargets = new Map(
     (previous?.targets || []).map((target) => [target.id, target]),
@@ -552,9 +665,10 @@ function statusLabel(status) {
 }
 
 async function buildSystemStatus(env) {
-  const [statusRow, cronRow] = await Promise.all([
+  const [statusRow, cronRow, monitoringStats] = await Promise.all([
     getState(env, "status"),
     getState(env, "cron"),
+    getMonitoringStats(env),
   ]);
 
   const status = statusRow?.value;
@@ -618,6 +732,11 @@ async function buildSystemStatus(env) {
         name: "🎬 활성 감시",
         value: `${status.active_count ?? status.targets?.length ?? 0}개`,
         inline: true,
+      },
+      {
+        name: "📊 최근 24시간 감시",
+        value: monitoringStatsText(monitoringStats),
+        inline: false,
       },
       {
         name: fallbackActive ? "최근 참고사항" : "최근 오류",
@@ -840,7 +959,11 @@ export default {
       try {
         const incoming = await request.json();
         await saveStatus(env, incoming);
-        return jsonResponse({ ok: true });
+        const monitoringStats = await recordMonitoringSample(env, incoming);
+        return jsonResponse({
+          ok: true,
+          monitoring_stats_24h: monitoringStats,
+        });
       } catch (error) {
         console.error("Status update failed", error);
         return jsonResponse({ ok: false, error: String(error) }, 500);
@@ -850,6 +973,7 @@ export default {
     if (request.method === "GET" && url.pathname === "/health") {
       let discordCommandSetup;
       let discordCommandState = null;
+      const monitoringStats = await getMonitoringStats(env);
 
       try {
         discordCommandSetup = await ensureCommandsRegistered(env);
@@ -871,6 +995,8 @@ export default {
         ok: true,
         service: "cgv-alert-trigger",
         version: COMMAND_VERSION,
+        browser_binding: Boolean(env.BROWSER),
+        monitoring_stats_24h: monitoringStats,
         discord_commands: discordCommandSetup,
         discord_command_state: discordCommandState,
         now: new Date().toISOString(),
