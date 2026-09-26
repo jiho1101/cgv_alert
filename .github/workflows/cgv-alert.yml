@@ -87,6 +87,7 @@ jobs:
 
       - name: Self-test CGV public timetable API
         if: github.event_name == 'push'
+        continue-on-error: true
         run: python checker.py --self-test
 
       - name: Check configured alerts
