@@ -376,6 +376,12 @@ function mergeStatus(previous, incoming) {
       incoming.last_cgv_success_at ||
       previous?.last_cgv_success_at ||
       null,
+    last_monitoring_success_at:
+      incoming.last_monitoring_success_at ||
+      previous?.last_monitoring_success_at ||
+      incoming.last_cgv_success_at ||
+      previous?.last_cgv_success_at ||
+      null,
   };
 }
 
@@ -413,6 +419,7 @@ function formatTime(value) {
 function statusLabel(status) {
   if (status === "error") return "🔴 이상";
   if (status === "warning") return "🟡 일시 오류";
+  if (status === "fallback") return "🟢 보조 감시";
   return "🟢 정상";
 }
 
@@ -435,10 +442,21 @@ async function buildSystemStatus(env) {
 
   const health = status.health_summary || "normal";
   const recentError = status.recent_error || "없음";
+  const fallbackActive =
+    health === "fallback" ||
+    (status.targets || []).some((target) => target.detection_mode === "fallback");
+  const description =
+    health === "error"
+      ? "**🔴 이상**"
+      : health === "warning"
+        ? "**🟡 일시 오류**"
+        : fallbackActive
+          ? "**🟢 정상 감시 · 보조 경로 사용**"
+          : "**🟢 정상**";
 
   return {
     title: "📡 CGV 알림 시스템 상태",
-    description: `**${statusLabel(health)}**`,
+    description,
     color:
       health === "error" ? 0xe74c3c :
       health === "warning" ? 0xf1c40f :
@@ -457,7 +475,14 @@ async function buildSystemStatus(env) {
         inline: true,
       },
       {
-        name: "✅ 마지막 정상 CGV 조회",
+        name: "🛡️ 마지막 감시 성공",
+        value: formatTime(
+          status.last_monitoring_success_at || status.last_cgv_success_at,
+        ),
+        inline: true,
+      },
+      {
+        name: "✅ 마지막 구조화 정상 조회",
         value: formatTime(status.last_cgv_success_at),
         inline: true,
       },
@@ -467,7 +492,7 @@ async function buildSystemStatus(env) {
         inline: true,
       },
       {
-        name: "최근 오류",
+        name: fallbackActive ? "최근 참고사항" : "최근 오류",
         value: String(recentError).slice(0, 1000),
         inline: false,
       },
