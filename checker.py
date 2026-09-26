@@ -219,10 +219,11 @@ def build_runtime_snapshot(
     pages = state.setdefault("health", {}).setdefault("pages", {})
     found = found or {}
     target_items = []
-    health_levels = {"normal": 0, "warning": 1, "error": 2}
+    health_levels = {"normal": 0, "fallback": 1, "warning": 2, "error": 3}
     overall = "normal"
     recent_error = None
-    any_success = False
+    any_monitoring_success = False
+    any_structured_success = False
 
     for target in targets:
         target_id = str(target["id"])
@@ -245,9 +246,17 @@ def build_runtime_snapshot(
             if parts[0] == theater_code and parts[1] in target_dates:
                 matching_health.append(entry)
 
-        success_now = any(result.get("ok") for result in matching_results)
-        if success_now:
-            any_success = True
+        monitoring_success_now = any(
+            result.get("ok") for result in matching_results
+        )
+        structured_success_now = any(
+            result.get("ok") and not result.get("degraded")
+            for result in matching_results
+        )
+        if monitoring_success_now:
+            any_monitoring_success = True
+        if structured_success_now:
+            any_structured_success = True
 
         failed_now = next(
             (result for result in matching_results if not result.get("ok")),
@@ -265,7 +274,13 @@ def build_runtime_snapshot(
 
         if alerted:
             health_status = "error"
-        elif failed_now or degraded_now or matching_health:
+        elif failed_now:
+            health_status = "warning"
+        elif degraded_now:
+            # 1차 구조화 API는 실패했지만 보조 경로가 정상 동작한 상태.
+            # 감시 자체는 살아 있으므로 오류가 아니라 별도 정상 감시 모드로 표시한다.
+            health_status = "fallback"
+        elif matching_health:
             health_status = "warning"
         else:
             health_status = "normal"
@@ -305,7 +320,12 @@ def build_runtime_snapshot(
                 "date_text": target_date_text(target),
                 "interval_text": current_interval_text(target, now),
                 "health_status": health_status,
-                "last_success_at": now.isoformat() if success_now else None,
+                "last_success_at": (
+                    now.isoformat() if monitoring_success_now else None
+                ),
+                "last_structured_success_at": (
+                    now.isoformat() if structured_success_now else None
+                ),
                 "last_error": last_error,
                 "available_session_count": available_session_count,
                 "detection_mode": detection_mode,
@@ -314,14 +334,18 @@ def build_runtime_snapshot(
 
     return {
         "last_run_at": now.isoformat(),
-        "last_cgv_success_at": now.isoformat() if any_success else None,
+        # 구조화 API 정상 시각과 감시 자체의 성공 시각을 분리한다.
+        "last_cgv_success_at": (
+            now.isoformat() if any_structured_success else None
+        ),
+        "last_monitoring_success_at": (
+            now.isoformat() if any_monitoring_success else None
+        ),
         "health_summary": overall,
         "recent_error": recent_error,
         "active_count": len(target_items),
         "targets": target_items,
     }
-
-
 def write_runtime_status(snapshot):
     with RUNTIME_STATUS_PATH.open("w", encoding="utf-8") as f:
         json.dump(snapshot, f, ensure_ascii=False, indent=2)
@@ -517,6 +541,12 @@ class CgvBrowser:
                 )
             except RuntimeError as exc:
                 last_error = exc
+                if "HTTP 403" in str(exc):
+                    print(
+                        "CGV 상영정보 API 403 확인: "
+                        "추가 구조화 재시도 없이 보조 감지로 즉시 전환합니다."
+                    )
+                    break
             finally:
                 self.last_request_at = time.monotonic()
 
@@ -899,10 +929,19 @@ def update_page_health(state, page_results, now: datetime) -> bool:
 
 
 def notify_failed_pages(state, page_results, now: datetime) -> bool:
-    """5분 감시는 유지하되, 30분 지속 장애와 15분 안정 복구만 알린다."""
+    """5분 감시는 유지하되, 30분 지속 장애와 15분 안정 복구만 알린다.
+
+    복구 판단은 과거에 장애였던 모든 날짜가 아니라 이번 실행에서 실제로
+    조회한 날짜를 기준으로 한다. 이미 지난 날짜나 현재 조회 차례가 아닌
+    장기 감시 날짜가 복구를 영구적으로 막지 않게 한다.
+    """
     health = state.setdefault("health", {})
     incident = health.get("run_warning")
     changed = False
+
+    # 이번 실행에 CGV 외부 조회가 없었다면 장애/복구 상태를 판단하지 않는다.
+    if not page_results:
+        return False
 
     unhealthy_ids = {
         page_id
@@ -915,6 +954,7 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
         health["run_warning"] = {
             "state": "pending",
             "first_failure_at": now.isoformat(),
+            "last_failure_at": now.isoformat(),
             "page_ids": sorted(unhealthy_ids),
             "alerted": False,
         }
@@ -927,36 +967,18 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
     if not incident:
         return False
 
-    tracked_ids = set(incident.get("page_ids") or [])
-    if not tracked_ids:
-        tracked_ids = set(unhealthy_ids)
-        if tracked_ids:
+    if unhealthy_ids:
+        tracked_ids = set(incident.get("page_ids") or [])
+        new_ids = unhealthy_ids - tracked_ids
+        if new_ids:
+            tracked_ids.update(new_ids)
             incident["page_ids"] = sorted(tracked_ids)
             changed = True
 
-    # 새로 불안정해진 날짜도 같은 장애 구간에 포함한다.
-    new_ids = unhealthy_ids - tracked_ids
-    if new_ids:
-        tracked_ids.update(new_ids)
-        incident["page_ids"] = sorted(tracked_ids)
+        incident["last_failure_at"] = now.isoformat()
         changed = True
 
-    # 이번 실행에서 기존 장애 대상이 하나도 조회되지 않았다면 상태를 판단하지 않는다.
-    checked_tracked = tracked_ids.intersection(page_results)
-    if tracked_ids and not checked_tracked:
-        return changed
-
-    relevant_unhealthy = {
-        page_id
-        for page_id in checked_tracked
-        if (
-            (not page_results[page_id].get("ok"))
-            or page_results[page_id].get("degraded")
-        )
-    }
-
-    if relevant_unhealthy:
-        # 복구 확인 중 다시 흔들리면 복구 타이머만 취소한다.
+        # 복구 확인 중 다시 구조화 조회가 흔들리면 복구 타이머를 취소한다.
         if incident.get("recovery_started_at"):
             incident.pop("recovery_started_at", None)
             incident["state"] = "failed" if incident.get("alerted") else "pending"
@@ -979,10 +1001,10 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
             return changed
 
         details = []
-        for page_id in sorted(relevant_unhealthy)[:5]:
+        for page_id in sorted(unhealthy_ids)[:5]:
             result = page_results[page_id]
             mode = (
-                "보조 감지만 동작 중"
+                "보조 감시는 정상 동작 중"
                 if result.get("ok") and result.get("degraded")
                 else "구조화/보조 감지 모두 실패"
             )
@@ -991,13 +1013,13 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
                 f"{result.get('play_ymd', '-')}: {mode}"
             )
         extra = (
-            f"\n- 외 {len(relevant_unhealthy) - 5}개 날짜"
-            if len(relevant_unhealthy) > 5
+            f"\n- 외 {len(unhealthy_ids) - 5}개 날짜"
+            if len(unhealthy_ids) > 5
             else ""
         )
         message = (
             "⚠️ **CGV 확인 장애 지속**\n"
-            "정상 구조화 조회가 30분 이상 안정적으로 동작하지 않았습니다. "
+            "1차 구조화 조회가 30분 이상 안정적으로 동작하지 않았습니다. "
             "예매 없음으로 처리하지 않으며 5분 감시는 계속 재시도합니다.\n"
             + "\n".join(details)
             + extra
@@ -1011,11 +1033,7 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
             changed = True
         return changed
 
-    # 일부 장애 대상이 이번 실행에 빠졌다면 아직 복구로 확정하지 않는다.
-    if tracked_ids and checked_tracked != tracked_ids:
-        return changed
-
-    # 30분 장애 알림 전 정상화된 짧은 흔들림은 Discord 알림 없이 종료.
+    # 이번 실행에서 실제로 조회한 모든 날짜가 구조화 API로 정상 확인됐다.
     if not incident.get("alerted"):
         health.pop("run_warning", None)
         print(
@@ -1024,15 +1042,13 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
         )
         return True
 
-    # 실제 장애 알림을 보낸 뒤에는 15분 동안 구조화 조회가 안정적으로
-    # 정상이어야 완전 복구 알림을 한 번만 보낸다.
     recovery_started_at = incident.get("recovery_started_at")
     if not recovery_started_at:
         incident["recovery_started_at"] = now.isoformat()
         incident["state"] = "recovering"
         print(
             "CGV 구조화 조회 정상화 확인 시작: "
-            "15분 동안 안정적으로 유지되면 완전 복구 알림을 보냅니다."
+            "실제 조회 회차가 15분 동안 안정적으로 유지되면 완전 복구 알림을 보냅니다."
         )
         return True
 
@@ -1056,8 +1072,6 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
         return True
 
     return changed
-
-
 def build_booking_url(target, play_ymd: str) -> str:
     return (
         f"{BOOKING_URL}?siteNo={quote(str(target['theater_code']))}"
