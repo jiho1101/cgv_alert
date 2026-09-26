@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
@@ -397,6 +397,79 @@ class CgvBrowser:
         try:
             self.driver = webdriver.Chrome(options=options)
             self.driver.set_script_timeout(max(int(timeout) + 5, 20))
+            self.driver.set_page_load_timeout(max(int(timeout), 15))
+            self.driver.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {
+                    "source": r"""
+(() => {
+  const save = (url, status, ok, text) => {
+    try {
+      if (!String(url || "").includes("searchMovScnInfo")) return;
+      window.__cgvScheduleResponses = window.__cgvScheduleResponses || [];
+      window.__cgvScheduleResponses.push({
+        url: String(url || ""),
+        status: Number(status || 0),
+        ok: Boolean(ok),
+        text: String(text || ""),
+      });
+      if (window.__cgvScheduleResponses.length > 20) {
+        window.__cgvScheduleResponses.shift();
+      }
+    } catch (_) {}
+  };
+
+  const nativeFetch = window.fetch;
+  if (nativeFetch) {
+    window.fetch = async function(...args) {
+      const response = await nativeFetch.apply(this, args);
+      try {
+        const input = args[0];
+        const requestUrl =
+          typeof input === "string" ? input : (input && input.url) || "";
+        if (String(requestUrl).includes("searchMovScnInfo")) {
+          const clone = response.clone();
+          clone.text()
+            .then((text) =>
+              save(response.url || requestUrl, response.status, response.ok, text)
+            )
+            .catch(() => {});
+        }
+      } catch (_) {}
+      return response;
+    };
+  }
+
+  const NativeXHR = window.XMLHttpRequest;
+  if (NativeXHR) {
+    const nativeOpen = NativeXHR.prototype.open;
+    const nativeSend = NativeXHR.prototype.send;
+
+    NativeXHR.prototype.open = function(method, url, ...rest) {
+      this.__cgvRequestUrl = url;
+      return nativeOpen.call(this, method, url, ...rest);
+    };
+
+    NativeXHR.prototype.send = function(...args) {
+      try {
+        if (String(this.__cgvRequestUrl || "").includes("searchMovScnInfo")) {
+          this.addEventListener("load", () => {
+            save(
+              this.responseURL || this.__cgvRequestUrl,
+              this.status,
+              this.status >= 200 && this.status < 300,
+              this.responseText
+            );
+          });
+        }
+      } catch (_) {}
+      return nativeSend.apply(this, args);
+    };
+  }
+})();
+"""
+                },
+            )
         except WebDriverException as exc:
             raise RuntimeError(f"Chrome 시작 실패 ({type(exc).__name__})") from None
         self.timeout = timeout
@@ -410,7 +483,7 @@ class CgvBrowser:
             pass
 
     def _bootstrap(self, site_no: str, site_name: str, play_ymd: str):
-        site_key = (str(site_no), str(site_name))
+        site_key = (str(site_no), str(site_name), str(play_ymd))
         if self.current_site == site_key:
             return
 
@@ -420,11 +493,15 @@ class CgvBrowser:
         )
         self.driver.get(url)
         WebDriverWait(self.driver, self.timeout).until(
-            lambda d: len(d.find_element(By.TAG_NAME, "body").text.strip()) > 120
+            lambda d: d.execute_script("return document.readyState")
+            in {"interactive", "complete"}
         )
-        time.sleep(1.0)
+        time.sleep(0.8)
 
-        text = self.driver.find_element(By.TAG_NAME, "body").text
+        try:
+            text = self.driver.find_element(By.TAG_NAME, "body").text
+        except WebDriverException:
+            text = ""
         lowered = text.casefold()
         blocked = ["access denied", "just a moment", "비정상적인 접근", "captcha"]
         if any(word in lowered for word in blocked):
@@ -432,6 +509,79 @@ class CgvBrowser:
 
         self.current_site = site_key
 
+    def _consume_browser_schedule(
+        self,
+        site_no: str,
+        play_ymd: str,
+        wait_seconds: float = 3.0,
+    ):
+        """CGV 공식 페이지가 직접 요청한 구조화 시간표 응답을 재사용한다.
+
+        별도의 인증/서명 요청을 재현하지 않고, 실제 웹앱이 정상적으로 받은
+        응답만 읽는다. 응답이 없으면 기존 구조화 조회 경로로 넘어간다.
+        """
+        deadline = time.monotonic() + max(0.2, float(wait_seconds))
+
+        while time.monotonic() < deadline:
+            try:
+                captured = self.driver.execute_script(
+                    """
+                    const rows = Array.isArray(window.__cgvScheduleResponses)
+                      ? window.__cgvScheduleResponses.splice(0)
+                      : [];
+                    return rows;
+                    """
+                )
+            except WebDriverException:
+                captured = []
+
+            for item in captured or []:
+                if not isinstance(item, dict):
+                    continue
+                raw_url = str(item.get("url") or "")
+                try:
+                    query = parse_qs(urlparse(raw_url).query)
+                except ValueError:
+                    query = {}
+
+                captured_site = str((query.get("siteNo") or [""])[0])
+                captured_date = str((query.get("scnYmd") or [""])[0])
+                if captured_site and captured_site != str(site_no):
+                    continue
+                if captured_date and captured_date != str(play_ymd):
+                    continue
+
+                status = _safe_int(item.get("status"), 0)
+                body = str(item.get("text") or "")
+                if status == 403:
+                    return {
+                        "ok": False,
+                        "status": 403,
+                        "error": "CGV 공식 페이지 요청도 HTTP 403",
+                    }
+                if not item.get("ok"):
+                    continue
+
+                try:
+                    payload = json.loads(body)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                if payload.get("statusCode") not in (None, 0, "0"):
+                    continue
+
+                rows = payload.get("data")
+                if isinstance(rows, list):
+                    print(
+                        "CGV 공식 페이지 구조화 요청 캡처 성공: "
+                        f"{play_ymd} 응답 {len(rows)}개"
+                    )
+                    return {"ok": True, "rows": rows}
+
+            time.sleep(0.2)
+
+        return None
     def fetch_schedule(
         self,
         site_no: str,
@@ -451,6 +601,18 @@ class CgvBrowser:
             try:
                 self._bootstrap(site_no, site_name, play_ymd)
 
+                browser_result = self._consume_browser_schedule(
+                    site_no, play_ymd
+                )
+                if browser_result:
+                    if browser_result.get("ok"):
+                        return browser_result.get("rows") or []
+                    if _safe_int(browser_result.get("status"), 0) == 403:
+                        raise RuntimeError(
+                            "CGV 상영정보 API 접근 거부 (HTTP 403)"
+                        )
+
+                # 공식 페이지 요청을 캡처하지 못한 경우에만 기존 구조화 경로를 사용한다.
                 result = self.driver.execute_async_script(
                     """
                     const siteNo = arguments[0];
