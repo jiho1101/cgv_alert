@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "10";
+const COMMAND_VERSION = "11";
 
 const DISCORD_COMMANDS = [
   {
@@ -365,6 +365,10 @@ function mergeStatus(previous, incoming) {
       ...old,
       ...target,
       last_success_at: target.last_success_at || old.last_success_at || null,
+      last_structured_success_at:
+        target.last_structured_success_at ||
+        old.last_structured_success_at ||
+        null,
     };
   });
 
@@ -532,7 +536,10 @@ async function buildWatchList(env) {
           `**극장** ${target.theater_name}`,
           `**날짜** ${target.date_text}`,
           `**현재 주기** ${target.interval_text}`,
-          `**마지막 정상 확인** ${formatTime(target.last_success_at)}`,
+          `**마지막 감시 성공** ${formatTime(target.last_success_at)}`,
+          `**마지막 구조화 정상** ${formatTime(
+            target.last_structured_success_at,
+          )}`,
         ].join("\n"),
         inline: false,
       })),
