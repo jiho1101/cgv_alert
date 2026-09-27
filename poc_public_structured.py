@@ -243,6 +243,13 @@ def main():
         "target_listed_cycles": sum(c["target_movie_listed"] for c in checks),
         "target_session_cycles": sum(c["target_session_count"] > 0 for c in checks),
         "max_timetable_count": max((c["timetable_count"] for c in checks), default=0),
+        "complete_identity_cycles": sum(
+            bool(c["target_sessions"])
+            and all(x["movie"] and x["theater"] and x["date"] and x["screen"] and x["start"] for x in c["target_sessions"])
+            for c in checks
+        ),
+        "official_crosscheck_performed": False,  # No comparable official rows were collected.
+        "production_ready": False,
     }
 
     OUT.write_text(
