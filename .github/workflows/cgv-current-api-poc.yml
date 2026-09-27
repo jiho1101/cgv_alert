@@ -1,0 +1,44 @@
+name: CGV Current API POC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "poc_current_api.py"
+      - ".github/workflows/cgv-current-api-poc.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Probe current official structured endpoints
+        run: python poc_current_api.py
+
+      - name: Show result
+        if: always()
+        run: cat current_api_probe_result.json || true
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cgv-current-api-probe
+          path: current_api_probe_result.json
+          if-no-files-found: warn
+          retention-days: 7
