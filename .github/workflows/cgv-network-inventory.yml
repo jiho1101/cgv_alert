@@ -1,0 +1,49 @@
+name: CGV Network Inventory POC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "poc_network_inventory.py"
+      - ".github/workflows/cgv-network-inventory.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-network:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check
+        run: python -m py_compile checker.py poc_network_inventory.py
+
+      - name: Observe official CGV page network
+        run: python poc_network_inventory.py
+
+      - name: Show result
+        if: always()
+        run: |
+          if [ -f network_inventory_result.json ]; then
+            cat network_inventory_result.json
+          fi
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cgv-network-inventory
+          path: network_inventory_result.json
+          if-no-files-found: warn
