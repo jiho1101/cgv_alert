@@ -1,0 +1,58 @@
+name: CGV Persistent Session POC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "poc_persistent_browser.py"
+      - ".github/workflows/cgv-persistent-poc.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cgv-persistent-poc
+  cancel-in-progress: true
+
+jobs:
+  persistent-poc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check
+        run: python -m py_compile checker.py poc_persistent_browser.py
+
+      - name: Run persistent Chrome structured-data POC
+        run: python poc_persistent_browser.py
+
+      - name: Show POC result
+        if: always()
+        run: |
+          if [ -f persistent_poc_result.json ]; then
+            cat persistent_poc_result.json
+          else
+            echo "persistent_poc_result.json was not created"
+          fi
+
+      - name: Upload POC result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cgv-persistent-poc-result
+          path: persistent_poc_result.json
+          if-no-files-found: warn
