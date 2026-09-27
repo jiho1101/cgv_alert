@@ -109,7 +109,42 @@ def main():
         "site_no": SITE_NO,
         "play_ymd": PLAY_YMD,
         "checks": [],
+        "official_public_probes": [],
     }
+
+    # Independent official paths, ordinary server GET only. An access denial is
+    # recorded as a health failure; no alternate network identity is attempted.
+    official = [
+        ("movie_dates", "https://cgv.co.kr/api/v1/booking/searchSiteScnscYmdListByMov", {"coCd": "A420", "siteNo": SITE_NO, "movNo": "30001323"}),
+        ("movie_schedule", "https://cgv.co.kr/api/v1/booking/searchSchByMov", {"coCd": "A420", "siteNo": SITE_NO, "movNo": "30001323", "scnYmd": PLAY_YMD, "rtctlScopCd": "08"}),
+        ("booking_page", "https://cgv.co.kr/cnm/movieBook/cinema", {"siteNo": SITE_NO}),
+    ]
+    for label, url, params in official:
+        started = time.monotonic()
+        try:
+            response = requests.get(url, params=params, timeout=15)
+            body = response.text
+            item = {
+                "name": label,
+                "status": response.status_code,
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+                "content_type": response.headers.get("content-type", ""),
+                "has_next_data": "__NEXT_DATA__" in body,
+                "has_nuxt_data": "__NUXT__" in body or "__NUXT_DATA__" in body,
+                "has_application_json": 'type="application/json"' in body,
+            }
+            if "json" in item["content_type"]:
+                try:
+                    payload = response.json()
+                    item["valid_json"] = isinstance(payload, dict)
+                    item["status_code_field"] = payload.get("statusCode") if isinstance(payload, dict) else None
+                    item["data_rows"] = len(payload.get("data")) if isinstance(payload, dict) and isinstance(payload.get("data"), list) else None
+                except ValueError:
+                    item["valid_json"] = False
+        except requests.RequestException as exc:
+            item = {"name": label, "error_type": type(exc).__name__, "elapsed_seconds": round(time.monotonic() - started, 3)}
+        result["official_public_probes"].append(item)
+        print("[official-probe]", json.dumps(item, ensure_ascii=False))
 
     # 공개 API 자체의 가용성과 결과 일관성을 확인한다.
     previous_keys = None
@@ -165,8 +200,12 @@ def main():
             "target_sessions": target_sessions,
             "sample_movie_names": movie_names[:30],
             "session_keys": keys,
+            "sample_raw_timetable_field_names": sorted(raw_timetable[0]) if raw_timetable and isinstance(raw_timetable[0], dict) else [],
+            "sample_raw_target_row": next((row for row in raw_timetable if isinstance(row, dict) and any(alias in norm(row.get('movieName') or row.get('movNm') or '') for alias in alias_norms)), None),
         }
         previous_keys = keys
+        if cycle == 1:
+            print("[row-schema]", json.dumps({"fields": check["sample_raw_timetable_field_names"], "target": check["sample_raw_target_row"]}, ensure_ascii=False))
         result["checks"].append(check)
 
         print(
