@@ -23,7 +23,6 @@ STATE_PATH = Path("state.json")
 RUNTIME_STATUS_PATH = Path("runtime_status.json")
 KST = ZoneInfo("Asia/Seoul")
 BOOKING_URL = "https://cgv.co.kr/cnm/movieBook/cinema"
-PUBLIC_CGV_TIMETABLE_URL = "https://mcp.aka.page/api/cgv/timetable"
 
 
 def load_json(path: Path, default):
@@ -126,7 +125,6 @@ def prune_expired_targets(config, state, today_ymd: str):
     state_changed = False
     seen = state.setdefault("seen", {})
     fallback_seen = state.setdefault("fallback_seen", {})
-    public_baseline = state.setdefault("public_baseline", {})
     for target_id in removed_ids:
         if target_id and target_id in seen:
             seen.pop(target_id, None)
@@ -134,11 +132,6 @@ def prune_expired_targets(config, state, today_ymd: str):
         if target_id and target_id in fallback_seen:
             fallback_seen.pop(target_id, None)
             state_changed = True
-        prefix = f"{target_id}|"
-        for baseline_key in list(public_baseline):
-            if baseline_key.startswith(prefix):
-                public_baseline.pop(baseline_key, None)
-                state_changed = True
 
     pages = state.setdefault("health", {}).setdefault("pages", {})
     for page_id in list(pages):
@@ -386,75 +379,6 @@ def summarize_cgv_error(value, limit=160) -> str:
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:limit] or "응답 내용 없음"
-
-
-def fetch_public_structured_schedule(site_no: str, play_ymd: str, timeout=15):
-    """공개 구조화 CGV 시간표 API를 평범한 HTTP GET으로 조회한다.
-
-    브라우저 위장, 쿠키 수집, 서명 복제, 프록시 우회는 사용하지 않는다.
-    응답 형식이 예상과 다르면 예매 없음으로 처리하지 않고 실패시킨다.
-    """
-    try:
-        response = requests.get(
-            PUBLIC_CGV_TIMETABLE_URL,
-            params={
-                "playDate": str(play_ymd),
-                "theaterCode": str(site_no),
-                "limit": 500,
-            },
-            headers={"Accept": "application/json"},
-            timeout=max(int(timeout), 10),
-        )
-    except requests.RequestException as exc:
-        raise RuntimeError(
-            f"공개 구조화 시간표 호출 실패 ({type(exc).__name__})"
-        ) from None
-
-    remaining = response.headers.get("X-RateLimit-Remaining")
-    if remaining is not None:
-        print(f"공개 구조화 API 일일 잔여 호출: {remaining}")
-
-    if response.status_code == 429:
-        raise RuntimeError("공개 구조화 시간표 일일 호출 한도 도달 (HTTP 429)")
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"공개 구조화 시간표 조회 실패 (HTTP {response.status_code})"
-        )
-
-    try:
-        payload = response.json()
-    except ValueError:
-        raise RuntimeError(
-            "공개 구조화 시간표가 JSON이 아닌 응답을 반환했습니다"
-        ) from None
-
-    if not isinstance(payload, dict) or payload.get("success") is not True:
-        raise RuntimeError("공개 구조화 시간표 응답이 성공 형식이 아닙니다")
-
-    data = payload.get("data")
-    if not isinstance(data, dict):
-        raise RuntimeError("공개 구조화 시간표 data 구조가 예상과 다릅니다")
-
-    returned_date = str(data.get("playDate") or "")
-    if returned_date and returned_date != str(play_ymd):
-        raise RuntimeError(
-            f"공개 구조화 시간표 날짜 불일치 ({returned_date} != {play_ymd})"
-        )
-
-    filters = data.get("filters")
-    if isinstance(filters, dict):
-        returned_site = str(filters.get("theaterCode") or "")
-        if returned_site and returned_site != str(site_no):
-            raise RuntimeError(
-                f"공개 구조화 시간표 극장 불일치 ({returned_site} != {site_no})"
-            )
-
-    rows = data.get("timetable")
-    if not isinstance(rows, list):
-        raise RuntimeError("공개 구조화 시간표 timetable 구조가 예상과 다릅니다")
-
-    print(f"공개 구조화 시간표 정상: {play_ymd} 응답 {len(rows)}개")
-    return rows
 
 
 class CgvBrowser:
@@ -1194,71 +1118,6 @@ def _safe_int(value, default=0):
         return default
 
 
-def extract_public_sessions(rows: list, target, play_ymd: str):
-    """정규화된 공개 시간표에서 정확히 일치하는 영화 회차만 추출한다."""
-    if target.get("screen_keywords"):
-        raise RuntimeError(
-            "공개 구조화 시간표는 상영관명 필터를 지원하지 않습니다"
-        )
-
-    aliases = set(target_aliases(target))
-    min_remaining = max(_safe_int(target.get("min_remaining_seats"), 0), 0)
-    sessions = []
-    seen_ids = set()
-
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-
-        row_date = str(row.get("playDate") or "")
-        row_site = str(row.get("theaterCode") or "")
-        if row_date != str(play_ymd) or row_site != str(target["theater_code"]):
-            continue
-
-        movie_name = str(row.get("movieName") or "").strip()
-        if normalize(movie_name) not in aliases:
-            continue
-
-        schedule_id = str(row.get("scheduleId") or "").strip()
-        if not schedule_id or schedule_id in seen_ids:
-            continue
-
-        start_raw = str(row.get("startTime") or "").strip().replace(":", "")
-        if not start_raw.isdigit() or len(start_raw) not in (3, 4):
-            continue
-        start_raw = start_raw.zfill(4)
-        hour = _safe_int(start_raw[:2], -1)
-        minute = _safe_int(start_raw[2:], -1)
-        if hour < 0 or hour > 29 or minute < 0 or minute > 59:
-            continue
-
-        remaining = _safe_int(row.get("remainingSeats"), -1)
-        if remaining < 0:
-            continue
-        if min_remaining and remaining < min_remaining:
-            continue
-
-        seen_ids.add(schedule_id)
-        sessions.append(
-            {
-                "MovieNmKor": movie_name,
-                "PlayStartTm": start_raw,
-                "PlayYmd": str(play_ymd),
-                "ScreenNm": "상영관 정보 미제공",
-                "RemainingSeats": remaining,
-                "_source": "public_structured",
-                "_schedule_id": schedule_id,
-                "_key": (
-                    f"{target['theater_code']}|{play_ymd}|{target['id']}|"
-                    f"public|{schedule_id}"
-                ),
-            }
-        )
-
-    sessions.sort(key=lambda row: row["PlayStartTm"])
-    return sessions
-
-
 def extract_sessions(api_rows: list, target, play_ymd: str):
     aliases = target_aliases(target)
     screen_keywords = [
@@ -1961,49 +1820,13 @@ def run_self_test(timeout: int):
             "CGV 보조 파서 자체점검 실패: 다른 영화 회차 혼입 가능성"
         )
 
-    public_rows = [
-        {
-            "scheduleId": "209901010128001",
-            "movieCode": "m1",
-            "movieName": "테스트 영화",
-            "theaterCode": "0128",
-            "playDate": "20990101",
-            "startTime": "12:30",
-            "endTime": "14:30",
-            "remainingSeats": 10,
-        },
-        {
-            "scheduleId": "209901010128002",
-            "movieCode": "m2",
-            "movieName": "다른 영화",
-            "theaterCode": "0128",
-            "playDate": "20990101",
-            "startTime": "13:00",
-            "endTime": "15:00",
-            "remainingSeats": 10,
-        },
-    ]
-    public_parsed = extract_public_sessions(
-        public_rows, sample_target, "20990101"
-    )
-    if (
-        len(public_parsed) != 1
-        or public_parsed[0].get("_schedule_id") != "209901010128001"
-        or public_parsed[0].get("_source") != "public_structured"
-    ):
-        raise RuntimeError("CGV 공개 구조화 파서 자체점검 실패")
-
-    print(
-        "CGV 파서 자체점검 완료 · 공개 구조화 정확일치 및 "
-        "다른 영화 회차 혼입 방지 검증 통과"
-    )
+    print("CGV 파서 자체점검 완료 · 다른 영화 회차 혼입 방지 검증 통과")
 def run_checker(force_all: bool = False):
     config = load_json(CONFIG_PATH, {"targets": []})
     state = load_json(STATE_PATH, {"version": 2, "seen": {}})
     state.setdefault("version", 2)
     state.setdefault("seen", {})
     state.setdefault("fallback_seen", {})
-    state.setdefault("public_baseline", {})
     state.setdefault("health", {}).setdefault("pages", {})
 
     migration_changed = migrate_state(state)
@@ -2043,17 +1866,10 @@ def run_checker(force_all: bool = False):
         )
         return
 
-    browser = None
+    browser = CgvBrowser(timeout=timeout)
     page_cache = {}
     page_results = {}
     found = defaultdict(dict)
-    baseline_changed = False
-
-    def get_browser():
-        nonlocal browser
-        if browser is None:
-            browser = CgvBrowser(timeout=timeout)
-        return browser
 
     try:
         def get_source(target, play_ymd, target_ids=None):
@@ -2062,155 +1878,121 @@ def run_checker(force_all: bool = False):
             if key not in page_cache:
                 print(
                     f"[{target['theater_name']}] {play_ymd} "
-                    "공개 구조화 상영정보 확인"
+                    "구조화 상영정보 확인"
                 )
                 try:
-                    rows = fetch_public_structured_schedule(
+                    rows = browser.fetch_schedule(
                         str(target["theater_code"]),
+                        page_site_name(target),
                         play_ymd,
-                        timeout=timeout,
                     )
-                    page_cache[key] = {"mode": "public", "data": rows}
+                    page_cache[key] = {
+                        "mode": "api",
+                        "data": rows,
+                    }
                     page_results[page_id] = {
                         "ok": True,
                         "degraded": False,
-                        "source": "public_structured",
                         "theater_name": target["theater_name"],
                         "play_ymd": play_ymd,
                     }
-                except RuntimeError as public_exc:
-                    public_message = summarize_cgv_error(public_exc)
+                except RuntimeError as primary_exc:
+                    primary_message = summarize_cgv_error(primary_exc)
                     print(
                         f"경고: [{target['theater_name']}] {play_ymd} "
-                        f"공개 구조화 조회 실패. CGV 공식 구조화 경로로 재확인: "
-                        f"{public_message}"
+                        f"구조화 조회 실패. 보조 감지로 재확인: "
+                        f"{primary_message}"
                     )
                     try:
-                        rows = get_browser().fetch_schedule(
+                        alias_ids = set(
+                            target_ids or {str(target["id"])}
+                        )
+                        alias_map = {
+                            target_id: [
+                                str(alias)
+                                for alias in (
+                                    target_by_id[target_id].get("movie_aliases")
+                                    or [target_by_id[target_id].get("label", "")]
+                                )
+                                if str(alias).strip()
+                            ]
+                            for target_id in alias_ids
+                            if target_id in target_by_id
+                        }
+                        fallback_data = browser.fetch_text_fallback(
                             str(target["theater_code"]),
                             page_site_name(target),
                             play_ymd,
+                            target_alias_map=alias_map,
                         )
-                        page_cache[key] = {"mode": "api", "data": rows}
+                        page_cache[key] = {
+                            "mode": "fallback",
+                            "data": fallback_data,
+                        }
                         page_results[page_id] = {
                             "ok": True,
-                            "degraded": False,
-                            "source": "official_structured",
+                            "degraded": True,
                             "theater_name": target["theater_name"],
                             "play_ymd": play_ymd,
                             "error": (
-                                "공개 구조화 조회 실패 후 CGV 공식 구조화 조회 사용: "
-                                f"{public_message}"
+                                "구조화 조회 실패 후 보조 감지 사용: "
+                                f"{primary_message}"
                             ),
                         }
-                    except RuntimeError as primary_exc:
-                        primary_message = summarize_cgv_error(primary_exc)
                         print(
-                            f"경고: [{target['theater_name']}] {play_ymd} "
-                            "두 구조화 경로 실패. HTML 보조 감지는 "
-                            "상태 진단용으로만 확인합니다: "
-                            f"{primary_message}"
+                            f"[{target['theater_name']}] {play_ymd} "
+                            "보조 감지로 확인 계속"
                         )
-                        try:
-                            alias_ids = set(target_ids or {str(target["id"])})
-                            alias_map = {
-                                target_id: [
-                                    str(alias)
-                                    for alias in (
-                                        target_by_id[target_id].get("movie_aliases")
-                                        or [target_by_id[target_id].get("label", "")]
-                                    )
-                                    if str(alias).strip()
-                                ]
-                                for target_id in alias_ids
-                                if target_id in target_by_id
-                            }
-                            fallback_data = get_browser().fetch_text_fallback(
-                                str(target["theater_code"]),
-                                page_site_name(target),
-                                play_ymd,
-                                target_alias_map=alias_map,
-                            )
-                            page_cache[key] = {
-                                "mode": "fallback",
-                                "data": fallback_data,
-                            }
-                            page_results[page_id] = {
-                                "ok": True,
-                                "degraded": True,
-                                "source": "html_diagnostic",
-                                "theater_name": target["theater_name"],
-                                "play_ymd": play_ymd,
-                                "error": (
-                                    "공개/공식 구조화 조회 실패 후 HTML 진단 후보만 사용: "
-                                    f"{public_message}; {primary_message}"
-                                ),
-                            }
-                            print(
-                                f"[{target['theater_name']}] {play_ymd} "
-                                "HTML 보조 후보 확인 · 예매 오픈 알림에는 사용하지 않음"
-                            )
-                        except RuntimeError as fallback_exc:
-                            fallback_message = summarize_cgv_error(fallback_exc)
-                            local_message = (
-                                f"공개 구조화 조회 실패: {public_message}; "
-                                f"공식 구조화 조회 실패: {primary_message}; "
-                                f"HTML 진단도 실패: {fallback_message}"
-                            )
+                    except RuntimeError as fallback_exc:
+                        fallback_message = summarize_cgv_error(fallback_exc)
+                        local_message = (
+                            f"구조화 조회 실패: {primary_message}; "
+                            f"보조 감지도 실패: {fallback_message}"
+                        )
 
-                            if not is_access_restriction_error(
-                                public_message,
-                                primary_message,
-                                fallback_message,
-                            ):
-                                try:
-                                    cloudflare_text = fetch_cloudflare_browser_text(
-                                        str(target["theater_code"]),
-                                        page_site_name(target),
-                                        play_ymd,
-                                        timeout=max(timeout + 10, 25),
-                                    )
-                                    page_cache[key] = {
-                                        "mode": "fallback",
-                                        "data": {"body": cloudflare_text, "regions": {}},
-                                    }
-                                    page_results[page_id] = {
-                                        "ok": True,
-                                        "degraded": True,
-                                        "source": "cloudflare_html_diagnostic",
-                                        "theater_name": target["theater_name"],
-                                        "play_ymd": play_ymd,
-                                        "error": f"{local_message}; Cloudflare HTML 진단 사용",
-                                    }
-                                    print(
-                                        f"[{target['theater_name']}] {play_ymd} "
-                                        "Cloudflare HTML 진단 후보 확인 · "
-                                        "예매 오픈 알림에는 사용하지 않음"
-                                    )
-                                except RuntimeError as cloudflare_exc:
-                                    message = (
-                                        f"{local_message}; Cloudflare 진단도 실패: "
-                                        f"{summarize_cgv_error(cloudflare_exc)}"
-                                    )
-                                    print(
-                                        f"경고: [{target['theater_name']}] {play_ymd} "
-                                        f"모든 허용된 확인 경로 실패: {message}"
-                                    )
-                                    page_cache[key] = None
-                                    page_results[page_id] = {
-                                        "ok": False,
-                                        "theater_name": target["theater_name"],
-                                        "play_ymd": play_ymd,
-                                        "error": message,
-                                    }
-                            else:
+                        # 명시적 403/접근 제한은 다른 실행환경으로 우회하지 않는다.
+                        # 순수 timeout/네트워크 오류일 때만 Cloudflare Browser Run을
+                        # 비상 확인 경로로 한 번 사용한다.
+                        if not is_access_restriction_error(
+                            primary_message, fallback_message
+                        ):
+                            try:
+                                cloudflare_text = fetch_cloudflare_browser_text(
+                                    str(target["theater_code"]),
+                                    page_site_name(target),
+                                    play_ymd,
+                                    timeout=max(timeout + 10, 25),
+                                )
+                                page_cache[key] = {
+                                    "mode": "fallback",
+                                    "data": {
+                                        "body": cloudflare_text,
+                                        "regions": {},
+                                    },
+                                }
+                                page_results[page_id] = {
+                                    "ok": True,
+                                    "degraded": True,
+                                    "theater_name": target["theater_name"],
+                                    "play_ymd": play_ymd,
+                                    "error": (
+                                        f"{local_message}; "
+                                        "Cloudflare Browser Run 비상 확인 사용"
+                                    ),
+                                }
+                                print(
+                                    f"[{target['theater_name']}] {play_ymd} "
+                                    "Cloudflare Browser Run 비상 확인으로 감시 계속"
+                                )
+                            except RuntimeError as cloudflare_exc:
                                 message = (
-                                    f"{local_message}; 명시적 접근 제한이므로 "
-                                    "Cloudflare 비상 경로는 우회 용도로 사용하지 않음"
+                                    f"{local_message}; "
+                                    "Cloudflare 비상 확인도 실패: "
+                                    f"{summarize_cgv_error(cloudflare_exc)}"
                                 )
                                 print(
                                     f"경고: [{target['theater_name']}] {play_ymd} "
-                                    f"구조화/진단 경로 실패: {message}"
+                                    f"모든 허용된 확인 경로 실패: {message}"
                                 )
                                 page_cache[key] = None
                                 page_results[page_id] = {
@@ -2219,104 +2001,111 @@ def run_checker(force_all: bool = False):
                                     "play_ymd": play_ymd,
                                     "error": message,
                                 }
+                        else:
+                            message = (
+                                f"{local_message}; "
+                                "명시적 접근 제한이므로 Cloudflare 비상 경로는 "
+                                "우회 용도로 사용하지 않음"
+                            )
+                            print(
+                                f"경고: [{target['theater_name']}] {play_ymd} "
+                                f"두 확인 경로 모두 실패: {message}"
+                            )
+                            page_cache[key] = None
+                            page_results[page_id] = {
+                                "ok": False,
+                                "theater_name": target["theater_name"],
+                                "play_ymd": play_ymd,
+                                "error": message,
+                            }
             return page_cache[key]
-
-        def parse_source_for_target(source, target, play_ymd, target_id):
-            if source["mode"] == "public":
-                return extract_public_sessions(source["data"], target, play_ymd)
-            if source["mode"] == "api":
-                return extract_sessions(source["data"], target, play_ymd)
-
-            fallback_data = source["data"] or {}
-            regions = fallback_data.get("regions") or {}
-            scoped_text = str(regions.get(target_id) or "")
-            return extract_sessions_fallback(
-                scoped_text or str(fallback_data.get("body") or ""),
-                target,
-                play_ymd,
-                scoped=bool(scoped_text),
-            )
-
-        def apply_public_baseline(target_id, play_ymd, source, sessions):
-            nonlocal baseline_changed
-            if source["mode"] != "public":
-                return
-            baseline_key = f"{target_id}|{play_ymd}"
-            public_baseline = state.setdefault("public_baseline", {})
-            if baseline_key in public_baseline:
-                return
-
-            seen = set(state["seen"].get(target_id, []))
-            seen.update(row["_key"] for row in sessions)
-            state["seen"][target_id] = sorted(seen)[-1000:]
-            public_baseline[baseline_key] = now.isoformat()
-            baseline_changed = True
-            print(
-                f"[{target_id}] {play_ymd} 공개 구조화 기준선 초기화 · "
-                f"기존 회차 {len(sessions)}개는 신규 알림에서 제외"
-            )
 
         for theater_code, dates in scheduled.items():
             for play_ymd, target_ids in sorted(dates.items()):
                 sample_target = target_by_id[next(iter(target_ids))]
-                source = get_source(sample_target, play_ymd, target_ids=target_ids)
+                source = get_source(
+                    sample_target,
+                    play_ymd,
+                    target_ids=target_ids,
+                )
                 if source is None:
                     continue
                 for target_id in target_ids:
                     target = target_by_id[target_id]
-                    try:
-                        sessions = parse_source_for_target(
-                            source, target, play_ymd, target_id
+                    if source["mode"] == "api":
+                        sessions = extract_sessions(
+                            source["data"], target, play_ymd
                         )
-                    except RuntimeError as exc:
-                        print(
-                            f"경고: [{target_id}] {play_ymd} "
-                            f"현재 구조화 소스로 확정 불가: {exc}"
+                    else:
+                        fallback_data = source["data"] or {}
+                        regions = fallback_data.get("regions") or {}
+                        scoped_text = str(regions.get(target_id) or "")
+                        sessions = extract_sessions_fallback(
+                            scoped_text
+                            or str(fallback_data.get("body") or ""),
+                            target,
+                            play_ymd,
+                            scoped=bool(scoped_text),
                         )
-                        continue
-                    apply_public_baseline(target_id, play_ymd, source, sessions)
                     if sessions:
                         found[target_id][play_ymd] = sessions
 
+        # 후보가 생기면 그보다 앞선 날짜를 즉시 확인해 감시 범위 내 최초 날짜를 확정한다.
         for target_id, by_date in list(found.items()):
             target = target_by_id[target_id]
             candidate = min(by_date)
             for earlier in [d for d in resolve_target_range(target) if d < candidate]:
-                source = get_source(target, earlier, target_ids={target_id})
+                source = get_source(
+                    target,
+                    earlier,
+                    target_ids={target_id},
+                )
                 if source is None:
                     continue
-                try:
-                    sessions = parse_source_for_target(
-                        source, target, earlier, target_id
+                if source["mode"] == "api":
+                    sessions = extract_sessions(
+                        source["data"], target, earlier
                     )
-                except RuntimeError as exc:
-                    print(
-                        f"경고: [{target_id}] {earlier} "
-                        f"현재 구조화 소스로 확정 불가: {exc}"
+                else:
+                    fallback_data = source["data"] or {}
+                    regions = fallback_data.get("regions") or {}
+                    scoped_text = str(regions.get(target_id) or "")
+                    sessions = extract_sessions_fallback(
+                        scoped_text
+                        or str(fallback_data.get("body") or ""),
+                        target,
+                        earlier,
+                        scoped=bool(scoped_text),
                     )
-                    continue
-                apply_public_baseline(target_id, earlier, source, sessions)
                 if sessions:
                     by_date[earlier] = sessions
 
         failed_pages = [
-            result for result in page_results.values() if not result.get("ok")
+            result for result in page_results.values()
+            if not result.get("ok")
         ]
         if failed_pages:
             first = failed_pages[0]
             print(
-                "주의: 이번 실행에서 허용된 확인 경로가 모두 실패한 날짜가 "
-                f"{len(failed_pages)}개 있습니다. 다음 실행에서 다시 시도합니다. "
+                "주의: 이번 실행에서 두 확인 경로가 모두 실패한 날짜가 "
+                f"{len(failed_pages)}개 있습니다. 다음 5분 실행에서 다시 시도합니다. "
                 f"첫 오류: {first.get('error')}"
             )
 
-        health_changed = notify_failed_pages(state, page_results, now)
-        health_changed = update_page_health(state, page_results, now) or health_changed
-        if health_changed or baseline_changed:
+        health_changed = notify_failed_pages(
+            state, page_results, now
+        )
+        health_changed = (
+            update_page_health(state, page_results, now)
+            or health_changed
+        )
+        if health_changed:
             save_state(state)
 
         write_runtime_status(
-            build_runtime_snapshot(config, state, targets, now, page_results, found=found)
+            build_runtime_snapshot(
+                config, state, targets, now, page_results, found=found
+            )
         )
 
         notification_items = []
@@ -2335,12 +2124,15 @@ def run_checker(force_all: bool = False):
                 for play_ymd in sorted(by_date)
                 for row in by_date[play_ymd]
             ]
-            # HTML/텍스트 보조 감지는 상태 진단용이다.
-            # 예매 오픈 알림은 구조화 데이터에서 확인된 회차만 사용한다.
             new_sessions = [
                 row
                 for row in all_sessions
-                if not row.get("_fallback") and row["_key"] not in seen
+                if row["_key"]
+                not in (
+                    fallback_seen
+                    if row.get("_fallback")
+                    else seen
+                )
             ]
             structured_count = sum(
                 1 for row in all_sessions if not row.get("_fallback")
@@ -2392,8 +2184,7 @@ def run_checker(force_all: bool = False):
                 "구조화 감지와 보조 후보 기록은 서로 분리됩니다."
             )
     finally:
-        if browser is not None:
-            browser.close()
+        browser.close()
 
 
 def main():
