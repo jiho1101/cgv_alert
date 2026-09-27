@@ -1,0 +1,81 @@
+name: CGV Public Structured Shadow
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - "shadow_public_monitor.py"
+      - ".github/workflows/cgv-public-shadow.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cgv-public-structured-shadow
+  cancel-in-progress: true
+
+jobs:
+  shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check
+        run: python -m py_compile shadow_public_monitor.py
+
+      - name: Run shadow structured monitor
+        run: python shadow_public_monitor.py
+
+      - name: Show compact result
+        if: always()
+        run: |
+          if [ -f public_shadow_result.json ]; then
+            python - <<'PY'
+          import json
+          d = json.load(open("public_shadow_result.json", encoding="utf-8"))
+          print(json.dumps({
+              "generated_at": d.get("generated_at"),
+              "summary": d.get("summary"),
+              "checks": [
+                  {
+                      "target_id": x.get("target_id"),
+                      "play_ymd": x.get("play_ymd"),
+                      "http_status": x.get("http_status"),
+                      "elapsed_seconds": x.get("elapsed_seconds"),
+                      "timetable_rows": x.get("timetable_rows"),
+                      "target_sessions": x.get("target_sessions"),
+                      "unique_identity_keys": x.get("unique_identity_keys"),
+                      "identity_collisions": len(x.get("identity_collisions") or []),
+                      "missing_required": x.get("missing_required"),
+                      "missing_screen_count": x.get("missing_screen_count"),
+                      "identity_hash": x.get("identity_hash"),
+                      "valid_shadow_sample": x.get("valid_shadow_sample"),
+                  }
+                  for x in d.get("checks", [])
+              ],
+          }, ensure_ascii=False, indent=2))
+          PY
+          fi
+
+      - name: Upload shadow sample
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cgv-public-shadow-${{ github.run_id }}
+          path: public_shadow_result.json
+          if-no-files-found: warn
+          retention-days: 3
