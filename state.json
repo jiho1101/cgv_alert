@@ -163,8 +163,40 @@
         "0128|20260928",
         "0128|20261218"
       ],
-      "state": "failed"
+      "recovery_started_at": "2026-09-27T21:24:03.997106+09:00",
+      "state": "recovering"
     }
+  },
+  "public_baseline": {
+    "avengers-doomsday-ulsan-samsan|20261218": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261219": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261220": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261221": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261222": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261223": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261224": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261225": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261226": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261227": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261228": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261229": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261230": "2026-09-27T21:24:03.997106+09:00",
+    "avengers-doomsday-ulsan-samsan|20261231": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261218": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261219": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261220": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261221": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261222": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261223": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261224": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261225": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261226": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261227": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261228": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261229": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261230": "2026-09-27T21:24:03.997106+09:00",
+    "dune-part-three-ulsan-samsan|20261231": "2026-09-27T21:24:03.997106+09:00",
+    "movie-20260928-ulsan-samsan|20260928": "2026-09-27T21:24:03.997106+09:00"
   },
   "seen": {
     "avengers-endgame-encore-20260925-ulsan-samsan": [
@@ -194,7 +226,13 @@
       "0128|20260928|movie-20260928-ulsan-samsan|GOLD CLASS|14:10",
       "0128|20260928|movie-20260928-ulsan-samsan|GOLD CLASS|16:50",
       "0128|20260928|movie-20260928-ulsan-samsan|GOLD CLASS|19:30",
-      "0128|20260928|movie-20260928-ulsan-samsan|GOLD CLASS|22:10"
+      "0128|20260928|movie-20260928-ulsan-samsan|GOLD CLASS|22:10",
+      "0128|20260928|movie-20260928-ulsan-samsan|public|2026092801281",
+      "0128|20260928|movie-20260928-ulsan-samsan|public|2026092801282",
+      "0128|20260928|movie-20260928-ulsan-samsan|public|2026092801283",
+      "0128|20260928|movie-20260928-ulsan-samsan|public|2026092801284",
+      "0128|20260928|movie-20260928-ulsan-samsan|public|2026092801285",
+      "0128|20260928|movie-20260928-ulsan-samsan|public|2026092801286"
     ]
   },
   "version": 2
