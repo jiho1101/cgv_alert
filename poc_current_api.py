@@ -20,6 +20,16 @@ ENDPOINTS = [
         "name": "legacy_same_origin_path",
         "url": "https://cgv.co.kr/api/v1/booking/searchMovScnInfo",
     },
+    {
+        "name": "renewed_movie_schedule",
+        "url": "https://api.cgv.co.kr/cnm/atkt/searchSchByMov",
+        "extra_params": {"movNo": "30001314"},
+    },
+    {
+        "name": "renewed_movie_dates",
+        "url": "https://api.cgv.co.kr/cnm/atkt/searchSiteScnscYmdListByMov",
+        "extra_params": {"movNo": "30001314"},
+    },
 ]
 
 
@@ -53,9 +63,11 @@ def main():
     for item in ENDPOINTS:
         try:
             # 특별 헤더/쿠키/브라우저 위장 없이 일반적인 공개 GET만 검사한다.
+            params = dict(PARAMS)
+            params.update(item.get("extra_params") or {})
             response = requests.get(
                 item["url"],
-                params=PARAMS,
+                params=params,
                 headers={"Accept": "application/json"},
                 timeout=20,
             )
