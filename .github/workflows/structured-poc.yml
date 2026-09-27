@@ -1,0 +1,66 @@
+name: CGV Structured POC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "poc_structured.py"
+      - ".github/workflows/structured-poc.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cgv-structured-poc
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check POC syntax
+        run: python -m py_compile poc_structured.py
+
+      - name: Probe official CGV structured responses
+        run: python poc_structured.py
+
+      - name: Print compact report
+        if: always()
+        run: |
+          if [ -f poc_structured_report.json ]; then
+            python - <<'PY'
+          import json
+          data = json.load(open("poc_structured_report.json", encoding="utf-8"))
+          print(json.dumps({
+              "summary": data.get("summary"),
+              "discovered_structured_endpoints": data.get("discovered_structured_endpoints"),
+          }, ensure_ascii=False, indent=2))
+          PY
+          else
+            echo "POC report was not created"
+          fi
+
+      - name: Upload POC report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cgv-structured-poc-report
+          path: poc_structured_report.json
+          if-no-files-found: warn
+          retention-days: 7
