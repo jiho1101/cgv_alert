@@ -1,0 +1,71 @@
+name: CGV Public Structured POC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "poc_public_structured.py"
+      - ".github/workflows/cgv-public-structured-poc.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check
+        run: python -m py_compile poc_public_structured.py
+
+      - name: Probe public structured CGV source
+        run: python poc_public_structured.py
+
+      - name: Show compact result
+        if: always()
+        run: |
+          if [ -f public_structured_poc_result.json ]; then
+            python - <<'PY'
+          import json
+          d = json.load(open("public_structured_poc_result.json", encoding="utf-8"))
+          print(json.dumps({
+              "summary": d.get("summary"),
+              "checks": [
+                  {
+                      "cycle": x.get("cycle"),
+                      "movies_status": x.get("movies_status"),
+                      "timetable_status": x.get("timetable_status"),
+                      "movie_count": x.get("movie_count"),
+                      "timetable_count": x.get("timetable_count"),
+                      "target_movie_listed": x.get("target_movie_listed"),
+                      "target_session_count": x.get("target_session_count"),
+                      "same_session_keys_as_previous": x.get("same_session_keys_as_previous"),
+                      "target_sessions": x.get("target_sessions"),
+                  }
+                  for x in d.get("checks", [])
+              ],
+          }, ensure_ascii=False, indent=2))
+          PY
+          fi
+
+      - name: Upload POC result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cgv-public-structured-poc
+          path: public_structured_poc_result.json
+          if-no-files-found: warn
+          retention-days: 7
