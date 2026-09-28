@@ -101,6 +101,10 @@ jobs:
           BROWSER_CHECK_URL: "https://cgv-alert-trigger.choi1101jh.workers.dev/api/browser-check"
           FORCE_ALL_CGV_DATES: ${{ github.event_name == 'workflow_dispatch' && inputs.source == 'discord_manual' && '1' || '0' }}
 
+      - name: Self-test public structured shadow logic
+        if: github.event_name == 'push'
+        run: python shadow_public_monitor.py --self-test
+
       - name: Run public structured shadow
         if: always()
         continue-on-error: true
