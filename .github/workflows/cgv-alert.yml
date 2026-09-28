@@ -105,11 +105,6 @@ jobs:
         if: github.event_name == 'push'
         run: python shadow_public_monitor.py --self-test
 
-      - name: Run public structured shadow
-        if: always()
-        continue-on-error: true
-        run: python shadow_public_monitor.py
-
       - name: Report runtime status to Cloudflare
         if: always()
         env:
