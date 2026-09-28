@@ -13,6 +13,15 @@ CONFIG = Path("config.json")
 OUT = Path("public_shadow_result.json")
 KST = ZoneInfo("Asia/Seoul")
 
+REQUIRED_ID_FIELDS = (
+    "movie_code",
+    "movie_name",
+    "theater_code",
+    "play_date",
+    "start_time",
+    "schedule_id",
+)
+
 
 def norm(text):
     return "".join(ch for ch in str(text or "").casefold() if ch.isalnum())
@@ -33,7 +42,7 @@ def resolve_dates(target):
     return out
 
 
-def choose_targets(config):
+def choose_target_checks(config):
     today = datetime.now(KST).date()
     horizon = today + timedelta(days=3)
     selected = []
@@ -41,13 +50,10 @@ def choose_targets(config):
     for target in config.get("targets", []):
         if not target.get("enabled", True):
             continue
-        dates = resolve_dates(target)
-        near = [
-            d for d in dates
-            if today <= datetime.strptime(d, "%Y%m%d").date() <= horizon
-        ]
-        for play_ymd in near:
-            selected.append((target, play_ymd))
+        for play_ymd in resolve_dates(target):
+            day = datetime.strptime(play_ymd, "%Y%m%d").date()
+            if today <= day <= horizon:
+                selected.append((target, play_ymd))
 
     if selected:
         return selected
@@ -57,9 +63,9 @@ def choose_targets(config):
         if not target.get("enabled", True):
             continue
         for play_ymd in resolve_dates(target):
-            d = datetime.strptime(play_ymd, "%Y%m%d").date()
-            if d >= today:
-                future.append((d, target, play_ymd))
+            day = datetime.strptime(play_ymd, "%Y%m%d").date()
+            if day >= today:
+                future.append((day, target, play_ymd))
     future.sort(key=lambda x: x[0])
     return [(future[0][1], future[0][2])] if future else []
 
@@ -78,32 +84,39 @@ def request_timetable(site_no, play_ymd):
             timeout=20,
         )
         elapsed = round(time.monotonic() - started, 3)
-        payload = None
         try:
             payload = response.json()
         except ValueError:
-            pass
+            payload = None
         return response.status_code, elapsed, payload, None
     except requests.RequestException as exc:
-        return None, round(time.monotonic() - started, 3), None, f"{type(exc).__name__}: {exc}"
+        return (
+            None,
+            round(time.monotonic() - started, 3),
+            None,
+            f"{type(exc).__name__}: {exc}",
+        )
 
 
 def extract_rows(payload):
     if not isinstance(payload, dict):
-        return []
+        return [], False
+
     data = payload.get("data")
     if isinstance(data, list):
-        return data
+        return data, True
     if isinstance(data, dict):
         for key in ("timetable", "items", "results"):
             value = data.get(key)
             if isinstance(value, list):
-                return value
+                return value, True
+
     for key in ("timetable", "items", "results"):
         value = payload.get(key)
         if isinstance(value, list):
-            return value
-    return []
+            return value, True
+
+    return [], False
 
 
 def canonical(row):
@@ -111,7 +124,9 @@ def canonical(row):
         return None
     return {
         "movie_code": str(row.get("movieCode") or row.get("movNo") or ""),
-        "movie_name": str(row.get("movieName") or row.get("movNm") or row.get("prodNm") or ""),
+        "movie_name": str(
+            row.get("movieName") or row.get("movNm") or row.get("prodNm") or ""
+        ),
         "theater_code": str(row.get("theaterCode") or row.get("siteNo") or ""),
         "theater_name": str(row.get("theaterName") or row.get("siteNm") or ""),
         "play_date": str(row.get("playDate") or row.get("scnYmd") or ""),
@@ -126,7 +141,10 @@ def canonical(row):
             or row.get("scnsNo")
             or ""
         ),
-        "remaining_seats": row.get("remainingSeats", row.get("frSeatCnt", row.get("frtmpSeatCnt"))),
+        "remaining_seats": row.get(
+            "remainingSeats",
+            row.get("frSeatCnt", row.get("frtmpSeatCnt")),
+        ),
     }
 
 
@@ -143,61 +161,148 @@ def identity_key(item):
 
 
 def target_match(item, target):
-    aliases = [norm(x) for x in (target.get("movie_aliases") or [target.get("label", "")]) if str(x).strip()]
+    aliases = [
+        norm(x)
+        for x in (
+            target.get("movie_aliases")
+            or [target.get("label", "")]
+        )
+        if str(x).strip()
+    ]
     movie = norm(item.get("movie_name"))
     return bool(movie) and any(alias and alias in movie for alias in aliases)
 
 
+def inspect_rows(rows):
+    keys = [identity_key(item) for item in rows]
+    counts = Counter(keys)
+    collisions = sorted(key for key, count in counts.items() if count > 1)
+    missing_required = {
+        field: sum(not bool(item.get(field)) for item in rows)
+        for field in REQUIRED_ID_FIELDS
+    }
+    unique_keys = sorted(set(keys))
+    key_hash = hashlib.sha256(
+        "\n".join(unique_keys).encode("utf-8")
+    ).hexdigest()[:16]
+
+    return {
+        "rows": len(rows),
+        "unique_identity_keys": len(unique_keys),
+        "identity_collisions": collisions,
+        "missing_required": missing_required,
+        "missing_screen_count": sum(not bool(x.get("screen")) for x in rows),
+        "identity_hash": key_hash,
+        "identity_keys": unique_keys,
+    }
+
+
+def source_valid(status, error, payload_shape_ok, inspection):
+    return (
+        status == 200
+        and error is None
+        and payload_shape_ok
+        and not inspection["identity_collisions"]
+        and all(v == 0 for v in inspection["missing_required"].values())
+        and inspection["unique_identity_keys"] == inspection["rows"]
+    )
+
+
 def main():
     config = json.loads(CONFIG.read_text(encoding="utf-8"))
-    selected = choose_targets(config)
+    now = datetime.now(KST)
+    today_ymd = now.strftime("%Y%m%d")
 
     result = {
-        "generated_at": datetime.now(KST).isoformat(),
+        "generated_at": now.isoformat(),
         "source": BASE,
         "mode": "shadow_only_no_notifications",
-        "checks": [],
+        "source_health": [],
+        "target_checks": [],
     }
 
     cache = {}
-    for target, play_ymd in selected:
-        site_no = str(target["theater_code"])
-        cache_key = (site_no, play_ymd)
 
+    def fetch(site_no, play_ymd):
+        cache_key = (site_no, play_ymd)
         if cache_key not in cache:
             status, elapsed, payload, error = request_timetable(site_no, play_ymd)
-            rows = [x for x in (canonical(r) for r in extract_rows(payload)) if x]
-            cache[cache_key] = (status, elapsed, rows, error)
-        else:
-            status, elapsed, rows, error = cache[cache_key]
+            raw_rows, payload_shape_ok = extract_rows(payload)
+            rows = [
+                item
+                for item in (canonical(row) for row in raw_rows)
+                if item is not None
+            ]
+            cache[cache_key] = (
+                status,
+                elapsed,
+                rows,
+                error,
+                payload_shape_ok,
+            )
+        return cache[cache_key]
 
-        matched = [x for x in rows if target_match(x, target)]
-        keys = [identity_key(x) for x in matched]
-        counts = Counter(keys)
-        collisions = sorted(k for k, count in counts.items() if count > 1)
+    theaters = {}
+    for target in config.get("targets", []):
+        if not target.get("enabled", True):
+            continue
+        site_no = str(target.get("theater_code") or "")
+        if site_no:
+            theaters[site_no] = target.get("theater_name") or site_no
 
-        required = ("movie_code", "movie_name", "theater_code", "play_date", "start_time", "schedule_id")
-        missing_required = {
-            field: sum(not bool(x.get(field)) for x in matched)
-            for field in required
+    # Source-health sentinel: always query today's timetable for each configured theater.
+    # This keeps the 5-minute acquisition test meaningful even after a monitored movie date expires.
+    for site_no, theater_name in sorted(theaters.items()):
+        status, elapsed, rows, error, payload_shape_ok = fetch(site_no, today_ymd)
+        inspection = inspect_rows(rows)
+        valid = source_valid(status, error, payload_shape_ok, inspection)
+        item = {
+            "site_no": site_no,
+            "theater_name": theater_name,
+            "play_ymd": today_ymd,
+            "http_status": status,
+            "elapsed_seconds": elapsed,
+            "error": error,
+            "payload_shape_ok": payload_shape_ok,
+            **inspection,
+            "source_valid": valid,
         }
-        screen_missing = sum(not bool(x.get("screen")) for x in matched)
-
-        sorted_keys = sorted(set(keys))
-        key_hash = hashlib.sha256(
-            "\n".join(sorted_keys).encode("utf-8")
-        ).hexdigest()[:16]
-
-        valid = (
-            status == 200
-            and error is None
-            and bool(matched)
-            and all(value == 0 for value in missing_required.values())
-            and not collisions
-            and len(sorted_keys) == len(matched)
+        result["source_health"].append(item)
+        print(
+            "SHADOW_SOURCE "
+            f"site={site_no} date={today_ymd} http={status} "
+            f"rows={inspection['rows']} unique={inspection['unique_identity_keys']} "
+            f"collisions={len(inspection['identity_collisions'])} "
+            f"missing_required={sum(inspection['missing_required'].values())} "
+            f"valid={valid} latency={elapsed}s "
+            f"hash={inspection['identity_hash']}"
         )
 
-        check = {
+    for target, play_ymd in choose_target_checks(config):
+        site_no = str(target["theater_code"])
+        status, elapsed, rows, error, payload_shape_ok = fetch(site_no, play_ymd)
+        all_inspection = inspect_rows(rows)
+        matched = [item for item in rows if target_match(item, target)]
+        target_inspection = inspect_rows(matched)
+
+        target_identity_valid = None
+        if matched:
+            target_identity_valid = (
+                not target_inspection["identity_collisions"]
+                and all(
+                    value == 0
+                    for value in target_inspection["missing_required"].values()
+                )
+                and target_inspection["unique_identity_keys"]
+                == target_inspection["rows"]
+            )
+
+        valid = (
+            source_valid(status, error, payload_shape_ok, all_inspection)
+            and target_identity_valid is not False
+        )
+
+        item = {
             "target_id": str(target["id"]),
             "label": target.get("label"),
             "site_no": site_no,
@@ -205,31 +310,44 @@ def main():
             "http_status": status,
             "elapsed_seconds": elapsed,
             "error": error,
-            "timetable_rows": len(rows),
-            "target_sessions": len(matched),
-            "unique_identity_keys": len(sorted_keys),
-            "identity_collisions": collisions,
-            "missing_required": missing_required,
-            "missing_screen_count": screen_missing,
-            "identity_hash": key_hash,
-            "identity_keys": sorted_keys,
+            "payload_shape_ok": payload_shape_ok,
+            "timetable_rows": all_inspection["rows"],
+            "target_sessions": target_inspection["rows"],
+            "target_present": bool(matched),
+            "unique_identity_keys": target_inspection["unique_identity_keys"],
+            "identity_collisions": target_inspection["identity_collisions"],
+            "missing_required": target_inspection["missing_required"],
+            "missing_screen_count": target_inspection["missing_screen_count"],
+            "identity_hash": target_inspection["identity_hash"],
+            "identity_keys": target_inspection["identity_keys"],
+            "target_identity_valid": target_identity_valid,
             "valid_shadow_sample": valid,
         }
-        result["checks"].append(check)
+        result["target_checks"].append(item)
 
         print(
-            "SHADOW_RESULT "
-            f"target={check['target_id']} date={play_ymd} "
-            f"http={status} rows={len(rows)} target_sessions={len(matched)} "
-            f"unique={len(sorted_keys)} collisions={len(collisions)} "
-            f"missing_screen={screen_missing} valid={valid} "
-            f"latency={elapsed}s hash={key_hash}"
+            "SHADOW_TARGET "
+            f"target={item['target_id']} date={play_ymd} http={status} "
+            f"all_rows={all_inspection['rows']} "
+            f"target_sessions={target_inspection['rows']} "
+            f"unique={target_inspection['unique_identity_keys']} "
+            f"collisions={len(target_inspection['identity_collisions'])} "
+            f"missing_screen={target_inspection['missing_screen_count']} "
+            f"identity_valid={target_identity_valid} sample_valid={valid} "
+            f"latency={elapsed}s hash={target_inspection['identity_hash']}"
         )
 
+    source_checks = result["source_health"]
+    target_checks = result["target_checks"]
     result["summary"] = {
-        "checks": len(result["checks"]),
-        "valid_checks": sum(bool(x["valid_shadow_sample"]) for x in result["checks"]),
-        "all_valid": bool(result["checks"]) and all(x["valid_shadow_sample"] for x in result["checks"]),
+        "source_checks": len(source_checks),
+        "source_valid_checks": sum(bool(x["source_valid"]) for x in source_checks),
+        "all_sources_valid": bool(source_checks)
+        and all(x["source_valid"] for x in source_checks),
+        "target_checks": len(target_checks),
+        "valid_target_checks": sum(
+            bool(x["valid_shadow_sample"]) for x in target_checks
+        ),
         "notifications_sent": 0,
         "production_state_modified": False,
     }

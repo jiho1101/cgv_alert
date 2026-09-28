@@ -15,6 +15,7 @@ on:
       - "checker.py"
       - "config.json"
       - "requirements.txt"
+      - "shadow_public_monitor.py"
       - ".github/workflows/cgv-alert.yml"
 
 permissions:
@@ -51,7 +52,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Check Python syntax
-        run: python -m py_compile checker.py
+        run: python -m py_compile checker.py shadow_public_monitor.py
 
       - name: Apply staged monitoring intervals
         run: |
@@ -99,6 +100,11 @@ jobs:
           STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
           BROWSER_CHECK_URL: "https://cgv-alert-trigger.choi1101jh.workers.dev/api/browser-check"
           FORCE_ALL_CGV_DATES: ${{ github.event_name == 'workflow_dispatch' && inputs.source == 'discord_manual' && '1' || '0' }}
+
+      - name: Run public structured shadow
+        if: always()
+        continue-on-error: true
+        run: python shadow_public_monitor.py
 
       - name: Report runtime status to Cloudflare
         if: always()
