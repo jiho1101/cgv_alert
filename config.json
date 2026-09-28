@@ -81,25 +81,6 @@
           }
         ]
       }
-    },
-    {
-      "id": "movie-20260928-ulsan-samsan",
-      "enabled": true,
-      "label": "암살자(들)",
-      "theater_code": "0128",
-      "theater_name": "CGV 울산삼산",
-      "date_range": {
-        "start": "20260928",
-        "end": "20260928"
-      },
-      "movie_aliases": [
-        "암살자(들)",
-        "암살자들",
-        "암살자"
-      ],
-      "screen_keywords": [],
-      "require_sale_open": true,
-      "min_remaining_seats": 1
     }
   ],
   "request": {
