@@ -59,6 +59,11 @@ def main():
                 "empty future response was incorrectly treated as confirmed"
             )
 
+
+    print("PRODUCTION_DRY_RUN START · force_all=True · Discord secrets not provided")
+    checker.run_checker(force_all=True)
+    print("PRODUCTION_DRY_RUN PASS")
+
     print(
         "PRIMARY_SMOKE PASS "
         + json.dumps(
