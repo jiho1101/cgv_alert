@@ -195,13 +195,20 @@
     "dune-part-three-ulsan-samsan|20261231": "2026-09-27T21:24:03.997106+09:00",
     "movie-20260928-ulsan-samsan|20260928": "2026-09-27T21:24:03.997106+09:00"
   },
-  "public_movie_codes": {},
+  "public_movie_codes": {
+    "tazza-belzebub-ulsan-samsan-test": {
+      "learned_at": "2026-09-29T15:21:17.941884+09:00",
+      "movie_code": "30001342",
+      "movie_name_at_learning": "타짜-벨제붑의 노래",
+      "theater_code": "0128"
+    }
+  },
   "public_primary_validation": {
     "pages": {
       "0128|20260929": {
-        "last_nonempty_at": "2026-09-29T15:11:34.713797+09:00",
-        "last_nonempty_count": 28,
-        "last_nonempty_hash": "f8180809d0b77f76",
+        "last_nonempty_at": "2026-09-29T15:21:17.941884+09:00",
+        "last_nonempty_count": 27,
+        "last_nonempty_hash": "e208b91a3b271e74",
         "last_nonempty_keys": [
           "30001314|0128|20260929|2026092901283|15:10",
           "30001314|0128|20260929|2026092901283|15:40",
@@ -218,7 +225,6 @@
           "30001323|0128|20260929|2026092901284|19:15",
           "30001323|0128|20260929|2026092901285|20:40",
           "30001323|0128|20260929|2026092901285|22:40",
-          "30001342|0128|20260929|2026092901283|15:00",
           "30001342|0128|20260929|2026092901283|16:00",
           "30001342|0128|20260929|2026092901284|18:00",
           "30001342|0128|20260929|2026092901284|19:00",
@@ -234,19 +240,6 @@
         ],
         "last_nonempty_latest_end_minutes": 1542,
         "last_nonempty_rows": [
-          {
-            "end_time": "17:19",
-            "movie_code": "30001342",
-            "movie_name": "타짜-벨제붑의 노래",
-            "play_date": "20260929",
-            "remaining_seats": 257,
-            "schedule_id": "2026092901283",
-            "screen": "",
-            "start_time": "15:00",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 295
-          },
           {
             "end_time": "17:31",
             "movie_code": "30001314",
@@ -265,7 +258,7 @@
             "movie_code": "30001372",
             "movie_name": "가능한 사랑",
             "play_date": "20260929",
-            "remaining_seats": 108,
+            "remaining_seats": 107,
             "schedule_id": "2026092901283",
             "screen": "",
             "start_time": "15:30",
@@ -291,7 +284,7 @@
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20260929",
-            "remaining_seats": 389,
+            "remaining_seats": 387,
             "schedule_id": "2026092901283",
             "screen": "",
             "start_time": "15:50",
@@ -304,7 +297,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20260929",
-            "remaining_seats": 123,
+            "remaining_seats": 124,
             "schedule_id": "2026092901283",
             "screen": "",
             "start_time": "16:00",
@@ -395,7 +388,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20260929",
-            "remaining_seats": 273,
+            "remaining_seats": 272,
             "schedule_id": "2026092901284",
             "screen": "",
             "start_time": "18:20",
@@ -408,7 +401,7 @@
             "movie_code": "30001372",
             "movie_name": "가능한 사랑",
             "play_date": "20260929",
-            "remaining_seats": 111,
+            "remaining_seats": 112,
             "schedule_id": "2026092901284",
             "screen": "",
             "start_time": "18:45",
@@ -421,7 +414,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20260929",
-            "remaining_seats": 109,
+            "remaining_seats": 108,
             "schedule_id": "2026092901284",
             "screen": "",
             "start_time": "19:00",
@@ -601,29 +594,47 @@
         ]
       },
       "0128|20261002": {
-        "last_nonempty_at": "2026-09-29T12:57:21.127193+09:00",
-        "last_nonempty_count": 10,
-        "last_nonempty_hash": "9b59a89eeb672585",
+        "last_nonempty_at": "2026-09-29T15:21:17.941884+09:00",
+        "last_nonempty_count": 28,
+        "last_nonempty_hash": "37e163a43bec0737",
         "last_nonempty_keys": [
           "30001297|0128|20261002|2026100201282|11:20",
           "30001297|0128|20261002|2026100201285|18:50",
+          "30001314|0128|20261002|2026100201283|13:10",
           "30001323|0128|20261002|2026100201281|09:00",
           "30001323|0128|20261002|2026100201282|12:25",
           "30001323|0128|20261002|2026100201283|15:50",
+          "30001323|0128|20261002|2026100201284|19:10",
+          "30001323|0128|20261002|2026100201285|22:35",
+          "30001342|0128|20261002|2026100201281|09:40",
+          "30001342|0128|20261002|2026100201282|12:20",
+          "30001342|0128|20261002|2026100201283|15:00",
+          "30001342|0128|20261002|2026100201284|17:40",
+          "30001342|0128|20261002|2026100201285|20:20",
+          "30001342|0128|20261002|2026100201286|23:20",
+          "30001367|0128|20261002|2026100201281|10:00",
+          "30001367|0128|20261002|2026100201282|12:10",
+          "30001367|0128|20261002|2026100201283|14:35",
+          "30001372|0128|20261002|2026100201281|09:40",
+          "30001372|0128|20261002|2026100201282|13:00",
+          "30001372|0128|20261002|2026100201283|16:15",
+          "30001372|0128|20261002|2026100201284|19:30",
+          "30001372|0128|20261002|2026100201285|23:00",
           "30001376|0128|20261002|2026100201281|09:10",
+          "30001376|0128|20261002|2026100201282|10:40",
           "30001376|0128|20261002|2026100201283|14:25",
           "30001376|0128|20261002|2026100201284|16:35",
           "30001376|0128|20261002|2026100201285|18:40",
           "30001376|0128|20261002|2026100201286|22:00"
         ],
-        "last_nonempty_latest_end_minutes": 1431,
+        "last_nonempty_latest_end_minutes": 1554,
         "last_nonempty_rows": [
           {
             "end_time": "12:02",
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20261002",
-            "remaining_seats": 419,
+            "remaining_seats": 418,
             "schedule_id": "2026100201281",
             "screen": "",
             "start_time": "09:00",
@@ -645,6 +656,58 @@
             "total_seats": 168
           },
           {
+            "end_time": "12:34",
+            "movie_code": "30001372",
+            "movie_name": "가능한 사랑",
+            "play_date": "20261002",
+            "remaining_seats": 293,
+            "schedule_id": "2026100201281",
+            "screen": "",
+            "start_time": "09:40",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 295
+          },
+          {
+            "end_time": "11:59",
+            "movie_code": "30001342",
+            "movie_name": "타짜-벨제붑의 노래",
+            "play_date": "20261002",
+            "remaining_seats": 224,
+            "schedule_id": "2026100201281",
+            "screen": "",
+            "start_time": "09:40",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 224
+          },
+          {
+            "end_time": "11:49",
+            "movie_code": "30001367",
+            "movie_name": "극장판 치이카와-인어 섬의 비밀",
+            "play_date": "20261002",
+            "remaining_seats": 295,
+            "schedule_id": "2026100201281",
+            "screen": "",
+            "start_time": "10:00",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 295
+          },
+          {
+            "end_time": "12:31",
+            "movie_code": "30001376",
+            "movie_name": "부활남-더 레드",
+            "play_date": "20261002",
+            "remaining_seats": 146,
+            "schedule_id": "2026100201282",
+            "screen": "",
+            "start_time": "10:40",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 146
+          },
+          {
             "end_time": "14:06",
             "movie_code": "30001297",
             "movie_name": "호프",
@@ -656,6 +719,32 @@
             "theater_code": "0128",
             "theater_name": "CGV 울산삼산",
             "total_seats": 168
+          },
+          {
+            "end_time": "13:59",
+            "movie_code": "30001367",
+            "movie_name": "극장판 치이카와-인어 섬의 비밀",
+            "play_date": "20261002",
+            "remaining_seats": 295,
+            "schedule_id": "2026100201282",
+            "screen": "",
+            "start_time": "12:10",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 295
+          },
+          {
+            "end_time": "14:39",
+            "movie_code": "30001342",
+            "movie_name": "타짜-벨제붑의 노래",
+            "play_date": "20261002",
+            "remaining_seats": 224,
+            "schedule_id": "2026100201282",
+            "screen": "",
+            "start_time": "12:20",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 224
           },
           {
             "end_time": "15:27",
@@ -671,6 +760,32 @@
             "total_seats": 441
           },
           {
+            "end_time": "15:54",
+            "movie_code": "30001372",
+            "movie_name": "가능한 사랑",
+            "play_date": "20261002",
+            "remaining_seats": 293,
+            "schedule_id": "2026100201282",
+            "screen": "",
+            "start_time": "13:00",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 295
+          },
+          {
+            "end_time": "15:31",
+            "movie_code": "30001314",
+            "movie_name": "암살자(들)",
+            "play_date": "20261002",
+            "remaining_seats": 146,
+            "schedule_id": "2026100201283",
+            "screen": "",
+            "start_time": "13:10",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 146
+          },
+          {
             "end_time": "16:16",
             "movie_code": "30001376",
             "movie_name": "부활남-더 레드",
@@ -682,6 +797,32 @@
             "theater_code": "0128",
             "theater_name": "CGV 울산삼산",
             "total_seats": 168
+          },
+          {
+            "end_time": "16:24",
+            "movie_code": "30001367",
+            "movie_name": "극장판 치이카와-인어 섬의 비밀",
+            "play_date": "20261002",
+            "remaining_seats": 295,
+            "schedule_id": "2026100201283",
+            "screen": "",
+            "start_time": "14:35",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 295
+          },
+          {
+            "end_time": "17:19",
+            "movie_code": "30001342",
+            "movie_name": "타짜-벨제붑의 노래",
+            "play_date": "20261002",
+            "remaining_seats": 224,
+            "schedule_id": "2026100201283",
+            "screen": "",
+            "start_time": "15:00",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 224
           },
           {
             "end_time": "18:52",
@@ -697,6 +838,19 @@
             "total_seats": 441
           },
           {
+            "end_time": "19:09",
+            "movie_code": "30001372",
+            "movie_name": "가능한 사랑",
+            "play_date": "20261002",
+            "remaining_seats": 293,
+            "schedule_id": "2026100201283",
+            "screen": "",
+            "start_time": "16:15",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 295
+          },
+          {
             "end_time": "18:26",
             "movie_code": "30001376",
             "movie_name": "부활남-더 레드",
@@ -708,6 +862,19 @@
             "theater_code": "0128",
             "theater_name": "CGV 울산삼산",
             "total_seats": 168
+          },
+          {
+            "end_time": "19:59",
+            "movie_code": "30001342",
+            "movie_name": "타짜-벨제붑의 노래",
+            "play_date": "20261002",
+            "remaining_seats": 224,
+            "schedule_id": "2026100201284",
+            "screen": "",
+            "start_time": "17:40",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 224
           },
           {
             "end_time": "20:31",
@@ -736,6 +903,45 @@
             "total_seats": 168
           },
           {
+            "end_time": "22:12",
+            "movie_code": "30001323",
+            "movie_name": "오디세이",
+            "play_date": "20261002",
+            "remaining_seats": 441,
+            "schedule_id": "2026100201284",
+            "screen": "",
+            "start_time": "19:10",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 441
+          },
+          {
+            "end_time": "22:24",
+            "movie_code": "30001372",
+            "movie_name": "가능한 사랑",
+            "play_date": "20261002",
+            "remaining_seats": 293,
+            "schedule_id": "2026100201284",
+            "screen": "",
+            "start_time": "19:30",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 295
+          },
+          {
+            "end_time": "22:39",
+            "movie_code": "30001342",
+            "movie_name": "타짜-벨제붑의 노래",
+            "play_date": "20261002",
+            "remaining_seats": 224,
+            "schedule_id": "2026100201285",
+            "screen": "",
+            "start_time": "20:20",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 224
+          },
+          {
             "end_time": "23:51",
             "movie_code": "30001376",
             "movie_name": "부활남-더 레드",
@@ -747,6 +953,45 @@
             "theater_code": "0128",
             "theater_name": "CGV 울산삼산",
             "total_seats": 168
+          },
+          {
+            "end_time": "25:37",
+            "movie_code": "30001323",
+            "movie_name": "오디세이",
+            "play_date": "20261002",
+            "remaining_seats": 441,
+            "schedule_id": "2026100201285",
+            "screen": "",
+            "start_time": "22:35",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 441
+          },
+          {
+            "end_time": "25:54",
+            "movie_code": "30001372",
+            "movie_name": "가능한 사랑",
+            "play_date": "20261002",
+            "remaining_seats": 293,
+            "schedule_id": "2026100201285",
+            "screen": "",
+            "start_time": "23:00",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 295
+          },
+          {
+            "end_time": "25:39",
+            "movie_code": "30001342",
+            "movie_name": "타짜-벨제붑의 노래",
+            "play_date": "20261002",
+            "remaining_seats": 224,
+            "schedule_id": "2026100201286",
+            "screen": "",
+            "start_time": "23:20",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "total_seats": 224
           }
         ]
       }
@@ -856,6 +1101,14 @@
       "0128|20260928|movie-20260928-ulsan-samsan|public|2026092801284",
       "0128|20260928|movie-20260928-ulsan-samsan|public|2026092801285",
       "0128|20260928|movie-20260928-ulsan-samsan|public|2026092801286"
+    ],
+    "tazza-belzebub-ulsan-samsan-test": [
+      "0128|20261002|tazza-belzebub-ulsan-samsan-test|public|30001342|2026100201281|09:40",
+      "0128|20261002|tazza-belzebub-ulsan-samsan-test|public|30001342|2026100201282|12:20",
+      "0128|20261002|tazza-belzebub-ulsan-samsan-test|public|30001342|2026100201283|15:00",
+      "0128|20261002|tazza-belzebub-ulsan-samsan-test|public|30001342|2026100201284|17:40",
+      "0128|20261002|tazza-belzebub-ulsan-samsan-test|public|30001342|2026100201285|20:20",
+      "0128|20261002|tazza-belzebub-ulsan-samsan-test|public|30001342|2026100201286|23:20"
     ]
   },
   "version": 2
