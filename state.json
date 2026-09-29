@@ -152,20 +152,7 @@
     ]
   },
   "health": {
-    "pages": {},
-    "run_warning": {
-      "alerted": true,
-      "alerted_at": "2026-09-24T15:35:36.755754+09:00",
-      "first_failure_at": "2026-09-24T15:05:36.421168+09:00",
-      "last_failure_at": "2026-09-26T19:15:49.562247+09:00",
-      "page_ids": [
-        "0128|20260925",
-        "0128|20260928",
-        "0128|20261218"
-      ],
-      "recovery_started_at": "2026-09-29T09:16:05.074855+09:00",
-      "state": "recovering"
-    }
+    "pages": {}
   },
   "public_baseline": {
     "avengers-doomsday-ulsan-samsan|20261218": "2026-09-27T21:24:03.997106+09:00",
