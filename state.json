@@ -152,14 +152,22 @@
     ]
   },
   "health": {
-    "pages": {}
+    "pages": {},
+    "run_warning": {
+      "alerted": false,
+      "first_failure_at": "2026-09-29T22:00:50.096906+09:00",
+      "page_ids": [
+        "0128|20261225"
+      ],
+      "state": "pending"
+    }
   },
   "public_api_guard": {
-    "backoff_reason": null,
-    "backoff_until": null,
-    "failure_count": 0,
-    "last_failure_at": "2026-09-29T20:00:54.265957+09:00",
-    "last_status": 200,
+    "backoff_reason": "adaptive",
+    "backoff_until": "2026-09-29T22:05:50.096906+09:00",
+    "failure_count": 1,
+    "last_failure_at": "2026-09-29T22:00:50.096906+09:00",
+    "last_status": 500,
     "last_success_at": "2026-09-29T20:05:34.634364+09:00",
     "retry_after_raw": "",
     "version": 1
@@ -206,31 +214,17 @@
   "public_primary_validation": {
     "pages": {
       "0128|20260929": {
-        "last_nonempty_at": "2026-09-29T21:50:34.706204+09:00",
-        "last_nonempty_count": 5,
-        "last_nonempty_hash": "a4e52026eac2237f",
+        "last_nonempty_at": "2026-09-29T22:00:50.096906+09:00",
+        "last_nonempty_count": 4,
+        "last_nonempty_hash": "1c99473032f98d7b",
         "last_nonempty_keys": [
           "30001314|0128|20260929|2026092901286|22:50",
           "30001323|0128|20260929|2026092901285|22:40",
-          "30001342|0128|20260929|2026092901285|21:40",
           "30001351|0128|20260929|2026092901285|22:00",
           "30001399|0128|20260929|2026092901285|22:00"
         ],
         "last_nonempty_latest_end_minutes": 1542,
         "last_nonempty_rows": [
-          {
-            "end_time": "23:59",
-            "movie_code": "30001342",
-            "movie_name": "타짜-벨제붑의 노래",
-            "play_date": "20260929",
-            "remaining_seats": 70,
-            "schedule_id": "2026092901285",
-            "screen": "",
-            "start_time": "21:40",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 146
-          },
           {
             "end_time": "23:43",
             "movie_code": "30001351",
@@ -262,7 +256,7 @@
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20260929",
-            "remaining_seats": 424,
+            "remaining_seats": 423,
             "schedule_id": "2026092901285",
             "screen": "",
             "start_time": "22:40",
@@ -275,7 +269,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20260929",
-            "remaining_seats": 288,
+            "remaining_seats": 292,
             "schedule_id": "2026092901286",
             "screen": "",
             "start_time": "22:50",
