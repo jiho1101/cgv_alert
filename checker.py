@@ -6,7 +6,8 @@ import re
 import sys
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 from zoneinfo import ZoneInfo
@@ -19,12 +20,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
 from shadow_public_monitor import (
+    BASE as PUBLIC_TIMETABLE_BASE,
     canonical as public_canonical,
     extract_rows as public_extract_rows,
     identity_key as public_identity_key,
     inspect_rows as public_inspect_rows,
     natural_end_of_day as public_natural_end_of_day,
-    request_timetable as public_request_timetable,
     structural_valid as public_structural_valid,
 )
 
@@ -1159,6 +1160,185 @@ def _safe_int(value, default=0):
 
 
 
+
+def _priority_dates_for_target(target):
+    dates = resolve_target_range(target)
+    if not dates:
+        return set()
+    strategy = target.get("scan_strategy") or {}
+    priority = strategy.get("priority_range") or {}
+    start = str(priority.get("start", dates[0]))
+    end = str(priority.get("end", dates[-1]))
+    return {date for date in dates if start <= date <= end}
+
+
+def _is_priority_date(target, play_ymd: str) -> bool:
+    return str(play_ymd) in _priority_dates_for_target(target)
+
+
+def _public_api_guard(state):
+    guard = state.setdefault(
+        "public_api_guard",
+        {
+            "version": 1,
+            "failure_count": 0,
+            "backoff_until": None,
+            "last_status": None,
+            "last_failure_at": None,
+        },
+    )
+    guard.setdefault("version", 1)
+    guard.setdefault("failure_count", 0)
+    return guard
+
+
+def _parse_retry_after_seconds(value, now: datetime):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+
+    if raw.isdigit():
+        return max(int(raw), 0)
+
+    try:
+        retry_at = parsedate_to_datetime(raw)
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        seconds = int(
+            (retry_at.astimezone(KST) - now).total_seconds()
+        )
+        return max(seconds, 0)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _public_guard_active(state, now: datetime) -> bool:
+    guard = _public_api_guard(state)
+    raw = guard.get("backoff_until")
+    if not raw:
+        return False
+    try:
+        until = datetime.fromisoformat(str(raw))
+    except (TypeError, ValueError):
+        return False
+    return now < until
+
+
+def _public_guard_failure(
+    state,
+    status,
+    retry_after,
+    now: datetime,
+):
+    """429/5xx에서만 adaptive backoff를 건다.
+
+    명시적인 Retry-After는 우선 존중하고, 없으면 짧은 지수형 backoff를
+    사용한다. 일반 오류나 403에는 이 보호 장치를 적용하지 않는다.
+    """
+    try:
+        status_int = int(status or 0)
+    except (TypeError, ValueError):
+        return False
+
+    if status_int != 429 and not (500 <= status_int <= 599):
+        return False
+
+    guard = _public_api_guard(state)
+    failures = min(int(guard.get("failure_count") or 0) + 1, 8)
+
+    retry_seconds = _parse_retry_after_seconds(retry_after, now)
+    if retry_seconds is not None:
+        # 서버가 직접 요청한 대기 시간은 존중하되 하루 전체 중단은 피한다.
+        delay_seconds = min(max(retry_seconds, 300), 21600)
+        reason = "retry_after"
+    else:
+        base = 600 if status_int == 429 else 300
+        # 429: 10m -> 20m -> 40m -> 60m
+        # 5xx: 5m -> 10m -> 20m -> 40m -> 60m
+        delay_seconds = min(base * (2 ** (failures - 1)), 3600)
+        reason = "adaptive"
+
+    until = now + timedelta(seconds=delay_seconds)
+    guard.update(
+        {
+            "failure_count": failures,
+            "backoff_until": until.isoformat(),
+            "last_status": status_int,
+            "last_failure_at": now.isoformat(),
+            "backoff_reason": reason,
+            "retry_after_raw": str(retry_after or ""),
+        }
+    )
+    print(
+        "제3자 API 한도 보호 활성화 · "
+        f"HTTP {status_int} · 비핵심 날짜 일시 축소 · "
+        f"{until.strftime('%H:%M:%S')} KST까지"
+    )
+    return True
+
+
+def _public_guard_success(state, now: datetime):
+    """보호 모드 뒤 정상 구조화 응답이 돌아오면 즉시 원래 주기로 복귀한다."""
+    guard = _public_api_guard(state)
+    if not guard.get("backoff_until") and not int(
+        guard.get("failure_count") or 0
+    ):
+        return False
+
+    guard.update(
+        {
+            "failure_count": 0,
+            "backoff_until": None,
+            "last_status": 200,
+            "last_success_at": now.isoformat(),
+            "backoff_reason": None,
+            "retry_after_raw": "",
+        }
+    )
+    print("제3자 API 한도 보호 해제 · 정상 응답 확인 · 원래 감시주기 즉시 복귀")
+    return True
+
+
+def _production_public_request(site_no: str, play_ymd: str):
+    """Production용 구조화 요청.
+
+    Shadow와 동일한 공개 endpoint를 쓰되 Retry-After 헤더까지 읽어
+    adaptive rate-limit protection에 사용한다.
+    """
+    started = time.monotonic()
+    try:
+        response = requests.get(
+            PUBLIC_TIMETABLE_BASE + "/api/cgv/timetable",
+            params={
+                "playDate": play_ymd,
+                "theaterCode": site_no,
+                "limit": 200,
+            },
+            headers={"Accept": "application/json"},
+            timeout=20,
+        )
+        elapsed = round(time.monotonic() - started, 3)
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        return (
+            response.status_code,
+            elapsed,
+            payload,
+            None,
+            response.headers.get("Retry-After"),
+        )
+    except requests.RequestException as exc:
+        return (
+            None,
+            round(time.monotonic() - started, 3),
+            None,
+            f"{type(exc).__name__}: {exc}",
+            None,
+        )
+
+
 def _public_snapshot_root(state):
     root = state.setdefault(
         "public_primary_validation",
@@ -1278,8 +1458,8 @@ def _fetch_public_page(state, site_no: str, play_ymd: str, now: datetime):
     직전 비어있지 않은 정상 스냅샷이 갑자기 0건이 되면 신뢰 실패로
     처리하고, 이전 정상 상태는 지우지 않는다.
     """
-    status, elapsed, payload, error = public_request_timetable(
-        str(site_no), str(play_ymd)
+    status, elapsed, payload, error, retry_after = (
+        _production_public_request(str(site_no), str(play_ymd))
     )
     raw_rows, payload_shape_ok = public_extract_rows(payload)
     rows = [
@@ -1307,10 +1487,17 @@ def _fetch_public_page(state, site_no: str, play_ymd: str, now: datetime):
         "accepted": False,
         "empty_unconfirmed": False,
         "state": "invalid_structure",
+        "retry_after": retry_after,
+        "guard_state_changed": False,
     }
 
     if not structural:
+        result["guard_state_changed"] = _public_guard_failure(
+            state, status, retry_after, now
+        )
         return result
+
+    result["guard_state_changed"] = _public_guard_success(state, now)
 
     if rows:
         guarded_rows, guarded, removed_count, added_count = (
@@ -2327,6 +2514,42 @@ def run_self_test(timeout: int):
         "신규 회차 즉시 반영 · 당일 자연 감소 허용"
     )
 
+    guard_test_state = {}
+    guard_now = datetime(2099, 10, 1, 12, 0, tzinfo=KST)
+    if not _public_guard_failure(
+        guard_test_state, 429, "600", guard_now
+    ):
+        raise RuntimeError("API 한도 보호 자체점검 실패: 429 보호 미작동")
+    if not _public_guard_active(
+        guard_test_state, guard_now + timedelta(minutes=5)
+    ):
+        raise RuntimeError("API 한도 보호 자체점검 실패: backoff 유지 오류")
+    if not _public_guard_success(
+        guard_test_state, guard_now + timedelta(minutes=10)
+    ):
+        raise RuntimeError("API 한도 보호 자체점검 실패: 정상복귀 미작동")
+    if _public_guard_active(
+        guard_test_state, guard_now + timedelta(minutes=10)
+    ):
+        raise RuntimeError("API 한도 보호 자체점검 실패: 정상복귀 후 보호 잔존")
+
+    priority_test_target = {
+        "date_range": {"start": "20991218", "end": "20991220"},
+        "scan_strategy": {
+            "priority_range": {"start": "20991218", "end": "20991218"}
+        },
+    }
+    if (
+        not _is_priority_date(priority_test_target, "20991218")
+        or _is_priority_date(priority_test_target, "20991219")
+    ):
+        raise RuntimeError("API 한도 보호 자체점검 실패: 핵심 날짜 판별 오류")
+
+    print(
+        "API 한도 보호 자체점검 완료 · 429/5xx adaptive backoff · "
+        "핵심 날짜 보조경로 유지 · 정상응답 즉시 복귀"
+    )
+
     print(
         "CGV 파서 자체점검 완료 · 다른 영화 혼입 방지 + "
         "제3자 구조화 production key 검증 통과"
@@ -2367,6 +2590,12 @@ def run_checker(force_all: bool = False):
         )
     for target in targets:
         for play_ymd in planned_dates(target, now, force_all=force_all):
+            if (
+                not force_all
+                and _public_guard_active(state, now)
+                and not _is_priority_date(target, play_ymd)
+            ):
+                continue
             scheduled[str(target["theater_code"])][play_ymd].add(str(target["id"]))
 
     if not scheduled:
@@ -2398,24 +2627,60 @@ def run_checker(force_all: bool = False):
             if key in page_cache:
                 return page_cache[key]
 
-            print(
-                f"[{target['theater_name']}] {play_ymd} "
-                "제3자 구조화 시간표 1차 확인"
+            priority_for_any = any(
+                target_id in target_by_id
+                and _is_priority_date(target_by_id[target_id], play_ymd)
+                for target_id in (target_ids or {str(target["id"])})
             )
 
-            public_result = public_cache.get(key)
-            if public_result is None:
-                public_result = _fetch_public_page(
-                    state,
-                    str(target["theater_code"]),
-                    play_ymd,
-                    now,
+            if _public_guard_active(state, now):
+                guard = _public_api_guard(state)
+                until = str(guard.get("backoff_until") or "-")
+                if not priority_for_any:
+                    print(
+                        f"[{target['theater_name']}] {play_ymd} "
+                        "제3자 API 한도 보호 중 · 비핵심 날짜 이번 회차 건너뜀 · "
+                        f"보호 종료 {until}"
+                    )
+                    page_cache[key] = None
+                    return None
+
+                print(
+                    f"[{target['theater_name']}] {play_ymd} "
+                    "핵심 날짜지만 제3자 API 보호 대기 중 · "
+                    "제3자 호출은 쉬고 기존 CGV 보조 경로로 확인"
                 )
-                public_cache[key] = public_result
-                public_state_changed = (
-                    public_state_changed
-                    or bool(public_result.get("state_changed"))
+                public_result = {
+                    "accepted": False,
+                    "state": "adaptive_backoff",
+                    "status": guard.get("last_status"),
+                    "error": (
+                        "제3자 API 한도 보호 대기 중 "
+                        f"(until={until})"
+                    ),
+                    "state_changed": False,
+                    "guard_state_changed": False,
+                }
+            else:
+                print(
+                    f"[{target['theater_name']}] {play_ymd} "
+                    "제3자 구조화 시간표 1차 확인"
                 )
+
+                public_result = public_cache.get(key)
+                if public_result is None:
+                    public_result = _fetch_public_page(
+                        state,
+                        str(target["theater_code"]),
+                        play_ymd,
+                        now,
+                    )
+                    public_cache[key] = public_result
+                    public_state_changed = (
+                        public_state_changed
+                        or bool(public_result.get("state_changed"))
+                        or bool(public_result.get("guard_state_changed"))
+                    )
 
             if public_result.get("accepted"):
                 rows = public_result.get("rows") or []
