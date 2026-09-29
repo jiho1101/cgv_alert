@@ -259,6 +259,47 @@ def current_interval_text(target, now: datetime) -> str:
     return f"우선 {priority}분 / 전체 {full}분"
 
 
+def _runtime_detection_mode(
+    matching_results,
+    api_guard_active: bool = False,
+    sentinel_unhealthy: bool = False,
+):
+    """이번 실행에서 실제로 사용한 감지 경로를 상태 UI용으로 분류한다."""
+    if any(not result.get("ok") for result in matching_results):
+        return "failed"
+
+    source_modes = {
+        str(result.get("source_mode") or "")
+        for result in matching_results
+        if result.get("ok")
+    }
+
+    for mode in (
+        "cloudflare_fallback",
+        "text_fallback",
+        "cgv_official",
+    ):
+        if mode in source_modes:
+            return mode
+
+    public_results = [
+        result
+        for result in matching_results
+        if result.get("ok")
+        and result.get("source_mode") == "public_primary"
+    ]
+    if public_results:
+        if all(result.get("empty_unconfirmed") for result in public_results):
+            return "empty_unconfirmed"
+        return "public_primary"
+
+    if api_guard_active:
+        return "api_protection"
+    if sentinel_unhealthy:
+        return "source_unhealthy"
+    return "not_checked"
+
+
 def build_runtime_snapshot(
     config, state, targets, now: datetime, page_results, found=None
 ):
@@ -269,7 +310,14 @@ def build_runtime_snapshot(
     overall = "normal"
     recent_error = None
     any_monitoring_success = False
-    any_structured_success = False
+    any_primary_success = False
+
+    sentinel_sites = (
+        state.get("public_source_sentinel", {}).get("sites", {}) or {}
+    )
+    guard = state.get("public_api_guard") or {}
+    guard_active = _public_guard_active(state, now)
+    guard_until = guard.get("backoff_until") if guard_active else None
 
     for target in targets:
         target_id = str(target["id"])
@@ -292,17 +340,38 @@ def build_runtime_snapshot(
             if parts[0] == theater_code and parts[1] in target_dates:
                 matching_health.append(entry)
 
+        sentinel_incident = sentinel_sites.get(theater_code)
+        sentinel_unhealthy = bool(sentinel_incident)
+        sentinel_checked_healthy = any(
+            result.get("source_sentinel_checked")
+            and result.get("source_sentinel_healthy") is True
+            for result in matching_results
+        )
+        sentinel_status = (
+            "unhealthy"
+            if sentinel_unhealthy
+            else "healthy"
+            if sentinel_checked_healthy
+            else "not_checked"
+        )
+        sentinel_reason = (
+            str((sentinel_incident or {}).get("reason") or "")
+            if sentinel_unhealthy
+            else None
+        )
+
         monitoring_success_now = any(
             result.get("ok") for result in matching_results
         )
-        structured_success_now = any(
-            result.get("ok") and not result.get("degraded")
+        primary_success_now = any(
+            result.get("ok")
+            and result.get("source_mode") == "public_primary"
             for result in matching_results
         )
         if monitoring_success_now:
             any_monitoring_success = True
-        if structured_success_now:
-            any_structured_success = True
+        if primary_success_now:
+            any_primary_success = True
 
         failed_now = next(
             (result for result in matching_results if not result.get("ok")),
@@ -318,13 +387,29 @@ def build_runtime_snapshot(
         )
         alerted = any(entry.get("alerted") for entry in matching_health)
 
+        available_session_count = sum(
+            len(rows) for rows in (found.get(target_id) or {}).values()
+        )
+        detection_mode = _runtime_detection_mode(
+            matching_results,
+            api_guard_active=guard_active,
+            sentinel_unhealthy=sentinel_unhealthy,
+        )
+
         if alerted:
             health_status = "error"
-        elif failed_now:
+        elif failed_now or sentinel_unhealthy:
             health_status = "warning"
-        elif degraded_now:
-            # 1차 구조화 API는 실패했지만 보조 경로가 정상 동작한 상태.
-            # 감시 자체는 살아 있으므로 오류가 아니라 별도 정상 감시 모드로 표시한다.
+        elif (
+            detection_mode
+            in {
+                "cgv_official",
+                "text_fallback",
+                "cloudflare_fallback",
+                "api_protection",
+            }
+            or guard_active
+        ):
             health_status = "fallback"
         elif matching_health:
             health_status = "warning"
@@ -337,26 +422,23 @@ def build_runtime_snapshot(
         last_error = None
         if failed_now:
             last_error = failed_now.get("error")
+        elif sentinel_unhealthy:
+            last_error = (
+                "제3자 소스 Sentinel 이상: "
+                + (sentinel_reason or "원인 미확인")
+            )
         elif degraded_now:
             last_error = degraded_now.get("error")
+        elif guard_active:
+            last_error = (
+                "제3자 API 보호모드 활성"
+                + (f" · {guard_until}까지" if guard_until else "")
+            )
         elif matching_health:
             last_error = matching_health[0].get("last_error")
 
         if last_error and recent_error is None:
             recent_error = last_error
-
-        available_session_count = sum(
-            len(rows) for rows in (found.get(target_id) or {}).values()
-        )
-        detection_mode = (
-            "failed"
-            if failed_now
-            else "fallback"
-            if degraded_now
-            else "structured"
-            if matching_results
-            else "not_checked"
-        )
 
         target_items.append(
             {
@@ -369,20 +451,30 @@ def build_runtime_snapshot(
                 "last_success_at": (
                     now.isoformat() if monitoring_success_now else None
                 ),
+                "last_primary_success_at": (
+                    now.isoformat() if primary_success_now else None
+                ),
                 "last_structured_success_at": (
-                    now.isoformat() if structured_success_now else None
+                    now.isoformat() if primary_success_now else None
                 ),
                 "last_error": last_error,
                 "available_session_count": available_session_count,
                 "detection_mode": detection_mode,
+                "source_sentinel_status": sentinel_status,
+                "source_sentinel_reason": sentinel_reason,
+                "api_guard_active": bool(guard_active),
+                "api_guard_until": guard_until,
+                "checked_page_count": len(matching_results),
             }
         )
 
     return {
         "last_run_at": now.isoformat(),
-        # 구조화 API 정상 시각과 감시 자체의 성공 시각을 분리한다.
+        "last_primary_success_at": (
+            now.isoformat() if any_primary_success else None
+        ),
         "last_cgv_success_at": (
-            now.isoformat() if any_structured_success else None
+            now.isoformat() if any_primary_success else None
         ),
         "last_monitoring_success_at": (
             now.isoformat() if any_monitoring_success else None
@@ -392,6 +484,8 @@ def build_runtime_snapshot(
         "active_count": len(target_items),
         "targets": target_items,
     }
+
+
 def write_runtime_status(snapshot):
     with RUNTIME_STATUS_PATH.open("w", encoding="utf-8") as f:
         json.dump(snapshot, f, ensure_ascii=False, indent=2)
@@ -2802,6 +2896,48 @@ def run_self_test(timeout: int):
         "미래 0건 교차검증 · 이상 중 5분 재확인 · 전환만 상태 저장"
     )
 
+    mode_cases = [
+        (
+            [{"ok": True, "source_mode": "public_primary", "empty_unconfirmed": False}],
+            False, False, "public_primary",
+        ),
+        (
+            [{"ok": True, "source_mode": "public_primary", "empty_unconfirmed": True}],
+            False, False, "empty_unconfirmed",
+        ),
+        (
+            [{"ok": True, "source_mode": "cgv_official", "degraded": True}],
+            False, False, "cgv_official",
+        ),
+        (
+            [{"ok": True, "source_mode": "text_fallback", "degraded": True}],
+            False, False, "text_fallback",
+        ),
+        (
+            [{"ok": True, "source_mode": "cloudflare_fallback", "degraded": True}],
+            False, False, "cloudflare_fallback",
+        ),
+        ([], True, False, "api_protection"),
+        ([], False, True, "source_unhealthy"),
+        ([{"ok": False, "source_mode": "failed"}], False, False, "failed"),
+    ]
+    for results, guard_on, sentinel_bad, expected in mode_cases:
+        actual = _runtime_detection_mode(
+            results,
+            api_guard_active=guard_on,
+            sentinel_unhealthy=sentinel_bad,
+        )
+        if actual != expected:
+            raise RuntimeError(
+                "상태 모드 자체점검 실패: "
+                f"expected={expected}, actual={actual}"
+            )
+
+    print(
+        "상태 모드 자체점검 완료 · 제3자/0건미확정/공식보조/"
+        "텍스트보조/Browser보조/API보호/Sentinel/실패 구분"
+    )
+
     guard_test_state = {}
     guard_now = datetime(2099, 10, 1, 12, 0, tzinfo=KST)
     if not _public_guard_failure(
@@ -3286,6 +3422,8 @@ def run_checker(force_all: bool = False):
                 page_results[page_id] = {
                     "ok": True,
                     "degraded": False,
+                    "source_mode": "public_primary",
+                    "public_state": public_result.get("state"),
                     "public_structured": True,
                     "empty_unconfirmed": bool(
                         public_result.get("empty_unconfirmed")
@@ -3362,6 +3500,7 @@ def run_checker(force_all: bool = False):
                 page_results[page_id] = {
                     "ok": True,
                     "degraded": True,
+                    "source_mode": "cgv_official",
                     "public_primary_failed": True,
                     "theater_name": target["theater_name"],
                     "play_ymd": play_ymd,
@@ -3406,6 +3545,7 @@ def run_checker(force_all: bool = False):
                     page_results[page_id] = {
                         "ok": True,
                         "degraded": True,
+                        "source_mode": "text_fallback",
                         "public_primary_failed": True,
                         "theater_name": target["theater_name"],
                         "play_ymd": play_ymd,
@@ -3447,6 +3587,7 @@ def run_checker(force_all: bool = False):
                             page_results[page_id] = {
                                 "ok": True,
                                 "degraded": True,
+                                "source_mode": "cloudflare_fallback",
                                 "public_primary_failed": True,
                                 "theater_name": target["theater_name"],
                                 "play_ymd": play_ymd,
@@ -3464,6 +3605,7 @@ def run_checker(force_all: bool = False):
                             page_cache[key] = None
                             page_results[page_id] = {
                                 "ok": False,
+                                "source_mode": "failed",
                                 "theater_name": target["theater_name"],
                                 "play_ymd": play_ymd,
                                 "error": message,
@@ -3477,6 +3619,7 @@ def run_checker(force_all: bool = False):
                         page_cache[key] = None
                         page_results[page_id] = {
                             "ok": False,
+                            "source_mode": "failed",
                             "theater_name": target["theater_name"],
                             "play_ymd": play_ymd,
                             "error": message,
