@@ -1343,6 +1343,61 @@ def _production_public_request(site_no: str, play_ymd: str):
         )
 
 
+def _public_sentinel_root(state):
+    root = state.setdefault(
+        "public_source_sentinel",
+        {"version": 1, "sites": {}},
+    )
+    root.setdefault("version", 1)
+    root.setdefault("sites", {})
+    return root
+
+
+def _public_sentinel_should_check(state, site_no: str, now: datetime) -> bool:
+    """정상 시 10분마다, 이상 상태에서는 매 실행마다 재확인한다."""
+    incident = _public_sentinel_root(state)["sites"].get(str(site_no))
+    return bool(incident) or is_due(10, now)
+
+
+def _public_sentinel_result_healthy(result) -> bool:
+    """당일 극장 시간표가 실제 비어있지 않을 때만 강한 health 근거로 쓴다."""
+    if not isinstance(result, dict):
+        return False
+    return bool(
+        result.get("accepted")
+        and result.get("state") == "nonempty_trusted"
+        and (result.get("rows") or [])
+    )
+
+
+def _public_sentinel_transition(
+    state,
+    site_no: str,
+    healthy: bool,
+    reason: str,
+    now: datetime,
+) -> bool:
+    """Sentinel 이상/복구 전환만 저장해 state commit 폭증을 막는다."""
+    sites = _public_sentinel_root(state)["sites"]
+    key = str(site_no)
+    existing = sites.get(key)
+
+    if healthy:
+        if existing is None:
+            return False
+        sites.pop(key, None)
+        return True
+
+    if existing is not None:
+        return False
+
+    sites[key] = {
+        "first_unhealthy_at": now.isoformat(),
+        "reason": str(reason or "sentinel_unhealthy")[:300],
+    }
+    return True
+
+
 def _public_snapshot_root(state):
     root = state.setdefault(
         "public_primary_validation",
@@ -2610,6 +2665,76 @@ def run_self_test(timeout: int):
         "신규 회차 즉시 반영 · 당일 자연 감소 허용"
     )
 
+    sentinel_state = {}
+    sentinel_now = datetime(2099, 10, 1, 12, 10, tzinfo=KST)
+    sentinel_good = {
+        "accepted": True,
+        "state": "nonempty_trusted",
+        "rows": [{"schedule_id": "S1"}],
+    }
+    sentinel_empty = {
+        "accepted": True,
+        "state": "empty_unconfirmed",
+        "rows": [],
+    }
+    if not _public_sentinel_result_healthy(sentinel_good):
+        raise RuntimeError(
+            "Sentinel 자체점검 실패: 당일 비어있지 않은 정상 시간표 거부"
+        )
+    if _public_sentinel_result_healthy(sentinel_empty):
+        raise RuntimeError(
+            "Sentinel 자체점검 실패: 빈 응답을 health 정상으로 오인"
+        )
+    if not _public_sentinel_should_check(
+        sentinel_state, "0128", sentinel_now
+    ):
+        raise RuntimeError(
+            "Sentinel 자체점검 실패: 10분 정기 확인 누락"
+        )
+    if not _public_sentinel_transition(
+        sentinel_state,
+        "0128",
+        False,
+        "empty_unconfirmed",
+        sentinel_now,
+    ):
+        raise RuntimeError(
+            "Sentinel 자체점검 실패: 이상 상태 기록 누락"
+        )
+    if not _public_sentinel_should_check(
+        sentinel_state,
+        "0128",
+        sentinel_now + timedelta(minutes=5),
+    ):
+        raise RuntimeError(
+            "Sentinel 자체점검 실패: 이상 중 5분 재확인 누락"
+        )
+    if _public_sentinel_transition(
+        sentinel_state,
+        "0128",
+        False,
+        "still_bad",
+        sentinel_now + timedelta(minutes=5),
+    ):
+        raise RuntimeError(
+            "Sentinel 자체점검 실패: 반복 이상으로 불필요 state 변경"
+        )
+    if not _public_sentinel_transition(
+        sentinel_state,
+        "0128",
+        True,
+        "recovered",
+        sentinel_now + timedelta(minutes=10),
+    ):
+        raise RuntimeError(
+            "Sentinel 자체점검 실패: 복구 상태 정리 누락"
+        )
+
+    print(
+        "소스 Sentinel 자체점검 완료 · 정상 시 10분 확인 · "
+        "미래 0건 교차검증 · 이상 중 5분 재확인 · 전환만 상태 저장"
+    )
+
     guard_test_state = {}
     guard_now = datetime(2099, 10, 1, 12, 0, tzinfo=KST)
     if not _public_guard_failure(
@@ -2916,6 +3041,7 @@ def run_checker(force_all: bool = False):
     page_results = {}
     found = defaultdict(dict)
     public_cache = {}
+    public_sentinel_cache = {}
     public_state_changed = False
     movie_code_state_changed = False
 
@@ -2926,6 +3052,84 @@ def run_checker(force_all: bool = False):
         return browser
 
     try:
+        def get_public_sentinel(target):
+            nonlocal public_state_changed
+
+            site_no = str(target["theater_code"])
+            if site_no in public_sentinel_cache:
+                return public_sentinel_cache[site_no]
+
+            if not _public_sentinel_should_check(state, site_no, now):
+                result = {
+                    "checked": False,
+                    "healthy": True,
+                    "state": "not_due_no_incident",
+                    "reason": None,
+                }
+                public_sentinel_cache[site_no] = result
+                return result
+
+            sentinel_ymd = now.strftime("%Y%m%d")
+            sentinel_key = (site_no, sentinel_ymd)
+            print(
+                f"[{target['theater_name']}] 소스 Sentinel 확인 · "
+                f"당일 {sentinel_ymd} 시간표"
+            )
+
+            sentinel_page = public_cache.get(sentinel_key)
+            if sentinel_page is None:
+                sentinel_page = _fetch_public_page(
+                    state,
+                    site_no,
+                    sentinel_ymd,
+                    now,
+                )
+                public_cache[sentinel_key] = sentinel_page
+                public_state_changed = (
+                    public_state_changed
+                    or bool(sentinel_page.get("state_changed"))
+                    or bool(sentinel_page.get("guard_state_changed"))
+                )
+
+            healthy = _public_sentinel_result_healthy(sentinel_page)
+            reason = (
+                "nonempty_today_timetable"
+                if healthy
+                else sentinel_page.get("error")
+                or f"sentinel_state={sentinel_page.get('state')}"
+            )
+            transition_changed = _public_sentinel_transition(
+                state,
+                site_no,
+                healthy,
+                reason,
+                now,
+            )
+            public_state_changed = (
+                public_state_changed or transition_changed
+            )
+
+            result = {
+                "checked": True,
+                "healthy": healthy,
+                "state": sentinel_page.get("state"),
+                "reason": reason,
+                "rows": len(sentinel_page.get("rows") or []),
+            }
+            public_sentinel_cache[site_no] = result
+
+            if healthy:
+                print(
+                    f"[{target['theater_name']}] 소스 Sentinel 정상 · "
+                    f"당일 시간표 {result['rows']}회차"
+                )
+            else:
+                print(
+                    f"경고: [{target['theater_name']}] 소스 Sentinel 신뢰 실패 · "
+                    f"{summarize_cgv_error(reason)}"
+                )
+            return result
+
         def get_source(target, play_ymd, target_ids=None):
             nonlocal public_state_changed
             key = (str(target["theater_code"]), play_ymd)
@@ -2990,6 +3194,23 @@ def run_checker(force_all: bool = False):
                     )
 
             if public_result.get("accepted"):
+                sentinel = None
+                if (
+                    public_result.get("empty_unconfirmed")
+                    and str(play_ymd) > now.strftime("%Y%m%d")
+                ):
+                    sentinel = get_public_sentinel(target)
+                    if sentinel.get("checked") and not sentinel.get("healthy"):
+                        public_result["accepted"] = False
+                        public_result["state"] = (
+                            "empty_unconfirmed_sentinel_unhealthy"
+                        )
+                        public_result["error"] = (
+                            "미래 날짜 0건이며 당일 극장 Sentinel도 "
+                            f"신뢰 실패 ({sentinel.get('reason')})"
+                        )
+
+            if public_result.get("accepted"):
                 rows = public_result.get("rows") or []
                 page_cache[key] = {
                     "mode": "public",
@@ -3002,15 +3223,31 @@ def run_checker(force_all: bool = False):
                     "empty_unconfirmed": bool(
                         public_result.get("empty_unconfirmed")
                     ),
+                    "source_sentinel_checked": bool(
+                        sentinel and sentinel.get("checked")
+                    ),
+                    "source_sentinel_healthy": (
+                        None
+                        if sentinel is None
+                        else bool(sentinel.get("healthy"))
+                    ),
+                    "source_sentinel_state": (
+                        None if sentinel is None else sentinel.get("state")
+                    ),
                     "theater_name": target["theater_name"],
                     "play_ymd": play_ymd,
                 }
 
                 if public_result.get("empty_unconfirmed"):
+                    sentinel_text = (
+                        " · 당일 Sentinel 정상"
+                        if sentinel and sentinel.get("checked")
+                        else " · Sentinel 주기 사이"
+                    )
                     print(
                         f"[{target['theater_name']}] {play_ymd} "
                         "제3자 구조화 응답 0건 · 예매 없음으로 확정하지 않고 "
-                        "다음 주기에도 계속 감시"
+                        f"다음 주기에도 계속 감시{sentinel_text}"
                     )
                 else:
                     inspection = public_result["inspection"]
