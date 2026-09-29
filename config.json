@@ -24,21 +24,27 @@
           "end": "20261218"
         },
         "fast_mode_from": "20261118",
-        "preopen_interval_minutes": 360,
+        "preopen_interval_minutes": 5,
         "priority_interval_minutes": 5,
-        "full_interval_minutes": 120,
+        "full_interval_minutes": 15,
         "preopen_stages": [
           {
             "from": "20260915",
             "until": "20261115",
-            "interval_minutes": 360
+            "interval_minutes": 5,
+            "priority_interval_minutes": 5,
+            "full_interval_minutes": 30
           },
           {
             "from": "20261116",
             "until": "20261117",
-            "interval_minutes": 30
+            "interval_minutes": 5,
+            "priority_interval_minutes": 5,
+            "full_interval_minutes": 15
           }
-        ]
+        ],
+        "preopen_priority_interval_minutes": 5,
+        "preopen_full_interval_minutes": 30
       }
     },
     {
@@ -65,21 +71,27 @@
           "end": "20261218"
         },
         "fast_mode_from": "20261118",
-        "preopen_interval_minutes": 360,
+        "preopen_interval_minutes": 5,
         "priority_interval_minutes": 5,
-        "full_interval_minutes": 120,
+        "full_interval_minutes": 15,
         "preopen_stages": [
           {
             "from": "20260915",
             "until": "20261115",
-            "interval_minutes": 360
+            "interval_minutes": 5,
+            "priority_interval_minutes": 5,
+            "full_interval_minutes": 30
           },
           {
             "from": "20261116",
             "until": "20261117",
-            "interval_minutes": 30
+            "interval_minutes": 5,
+            "priority_interval_minutes": 5,
+            "full_interval_minutes": 15
           }
-        ]
+        ],
+        "preopen_priority_interval_minutes": 5,
+        "preopen_full_interval_minutes": 30
       }
     }
   ],

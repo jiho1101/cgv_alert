@@ -158,6 +158,34 @@ def is_due(interval_minutes: int, now: datetime) -> bool:
     return (minute_of_day % interval_minutes) < 5
 
 
+def _preopen_scan_intervals(strategy, today_ymd: str):
+    """예매 전 단계에서도 핵심 날짜와 전체 날짜를 서로 다른 주기로 확인한다.
+
+    핵심 날짜는 빠르게 확인하되 전체 범위도 주기적으로 스캔해,
+    첫 날짜가 아닌 뒤쪽 날짜만 먼저 열리는 경우의 미탐을 막는다.
+    """
+    priority_minutes = int(
+        strategy.get("preopen_priority_interval_minutes", 5)
+    )
+    full_minutes = int(
+        strategy.get("preopen_full_interval_minutes", 30)
+    )
+
+    for stage in strategy.get("preopen_stages") or []:
+        start = str(stage.get("from", "00000000"))
+        end = str(stage.get("until", "99999999"))
+        if start <= today_ymd <= end:
+            priority_minutes = int(
+                stage.get("priority_interval_minutes", priority_minutes)
+            )
+            full_minutes = int(
+                stage.get("full_interval_minutes", full_minutes)
+            )
+            break
+
+    return max(priority_minutes, 5), max(full_minutes, 5)
+
+
 def planned_dates(target, now: datetime, force_all: bool = False):
     all_dates = resolve_target_range(target)
     if force_all:
@@ -173,15 +201,21 @@ def planned_dates(target, now: datetime, force_all: bool = False):
 
     fast_mode_from = str(strategy.get("fast_mode_from", all_dates[0]))
     today_ymd = now.strftime("%Y%m%d")
+    selected = set()
 
     if today_ymd < fast_mode_from:
-        interval = int(strategy.get("preopen_interval_minutes", 360))
-        return priority_dates if is_due(interval, now) else []
+        priority_minutes, full_minutes = _preopen_scan_intervals(
+            strategy, today_ymd
+        )
+        if is_due(priority_minutes, now):
+            selected.update(priority_dates)
+        if is_due(full_minutes, now):
+            selected.update(all_dates)
+        return sorted(selected)
 
-    selected = set()
-    if is_due(int(strategy.get("priority_interval_minutes", 15)), now):
+    if is_due(int(strategy.get("priority_interval_minutes", 5)), now):
         selected.update(priority_dates)
-    if is_due(int(strategy.get("full_interval_minutes", 120)), now):
+    if is_due(int(strategy.get("full_interval_minutes", 15)), now):
         selected.update(all_dates)
     return sorted(selected)
 
@@ -208,18 +242,14 @@ def current_interval_text(target, now: datetime) -> str:
         return "5분"
 
     today = now.strftime("%Y%m%d")
-    for stage in strategy.get("preopen_stages") or []:
-        start = str(stage.get("from", "00000000"))
-        end = str(stage.get("until", "99999999"))
-        if start <= today <= end:
-            return f"{int(stage.get('interval_minutes', 360))}분"
-
     fast_from = str(strategy.get("fast_mode_from", "99999999"))
-    if today < fast_from:
-        return f"{int(strategy.get('preopen_interval_minutes', 360))}분"
 
-    priority = int(strategy.get("priority_interval_minutes", 15))
-    full = int(strategy.get("full_interval_minutes", 120))
+    if today < fast_from:
+        priority, full = _preopen_scan_intervals(strategy, today)
+        return f"우선 {priority}분 / 전체 {full}분"
+
+    priority = int(strategy.get("priority_interval_minutes", 5))
+    full = int(strategy.get("full_interval_minutes", 15))
     return f"우선 {priority}분 / 전체 {full}분"
 
 
@@ -2092,6 +2122,63 @@ def run_self_test(timeout: int):
     )
     if changed_parsed[0]["_key"] != public_parsed[0]["_key"]:
         raise RuntimeError("제3자 구조화 좌석 변화가 회차 key를 바꿈")
+
+    schedule_target = {
+        "date_range": {"start": "20991218", "end": "20991220"},
+        "scan_strategy": {
+            "priority_range": {"start": "20991218", "end": "20991218"},
+            "fast_mode_from": "20991118",
+            "preopen_priority_interval_minutes": 5,
+            "preopen_full_interval_minutes": 30,
+            "priority_interval_minutes": 5,
+            "full_interval_minutes": 15,
+            "preopen_stages": [
+                {
+                    "from": "20990901",
+                    "until": "20991115",
+                    "priority_interval_minutes": 5,
+                    "full_interval_minutes": 30,
+                },
+                {
+                    "from": "20991116",
+                    "until": "20991117",
+                    "priority_interval_minutes": 5,
+                    "full_interval_minutes": 15,
+                },
+            ],
+        },
+    }
+    preopen_fast = planned_dates(
+        schedule_target,
+        datetime(2099, 10, 1, 0, 5, tzinfo=KST),
+    )
+    if preopen_fast != ["20991218"]:
+        raise RuntimeError(
+            "감시주기 자체점검 실패: 5분 핵심 날짜 스캔이 동작하지 않음"
+        )
+
+    preopen_full = planned_dates(
+        schedule_target,
+        datetime(2099, 10, 1, 0, 30, tzinfo=KST),
+    )
+    if preopen_full != ["20991218", "20991219", "20991220"]:
+        raise RuntimeError(
+            "감시주기 자체점검 실패: 30분 전체 범위 스캔이 동작하지 않음"
+        )
+
+    fast_mode_full = planned_dates(
+        schedule_target,
+        datetime(2099, 11, 18, 0, 15, tzinfo=KST),
+    )
+    if fast_mode_full != ["20991218", "20991219", "20991220"]:
+        raise RuntimeError(
+            "감시주기 자체점검 실패: fast mode 전체 범위 스캔이 동작하지 않음"
+        )
+
+    print(
+        "감시주기 자체점검 완료 · 예매 전 핵심 5분 / 전체 30분 · "
+        "근접 단계 전체 15분"
+    )
 
     print(
         "CGV 파서 자체점검 완료 · 다른 영화 혼입 방지 + "
