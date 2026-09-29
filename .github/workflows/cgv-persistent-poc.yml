@@ -2,13 +2,6 @@ name: CGV Persistent Session POC
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "poc_persistent_browser.py"
-      - ".github/workflows/cgv-persistent-poc.yml"
-
 permissions:
   contents: read
 
