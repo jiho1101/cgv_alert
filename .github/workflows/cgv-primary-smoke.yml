@@ -1,0 +1,35 @@
+name: CGV Primary Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "checker.py"
+      - "verify_public_primary.py"
+      - ".github/workflows/cgv-primary-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check
+        run: python -m py_compile checker.py shadow_public_monitor.py verify_public_primary.py
+
+      - name: Verify production public primary path
+        run: python verify_public_primary.py
