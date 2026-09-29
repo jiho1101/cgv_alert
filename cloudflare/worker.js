@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "14";
+const COMMAND_VERSION = "15";
 
 const DISCORD_COMMANDS = [
   {
@@ -356,8 +356,23 @@ function classifyMonitoringSample(status) {
     .filter(Boolean);
 
   if (modes.includes("failed")) return "failed";
-  if (modes.includes("fallback")) return "fallback";
-  if (modes.includes("structured")) return "structured";
+
+  const fallbackModes = new Set([
+    "cgv_official",
+    "text_fallback",
+    "cloudflare_fallback",
+    "api_protection",
+    "source_unhealthy",
+    "fallback",
+  ]);
+  if (modes.some((mode) => fallbackModes.has(mode))) return "fallback";
+
+  const structuredModes = new Set([
+    "public_primary",
+    "empty_unconfirmed",
+    "structured",
+  ]);
+  if (modes.some((mode) => structuredModes.has(mode))) return "structured";
 
   // checker 자체가 실패해서 target 결과를 만들지 못한 실행도 실패로 센다.
   if (status?.health_summary === "error" && status?.preserve_targets) {
@@ -478,9 +493,17 @@ function mergeStatus(previous, incoming) {
       ...old,
       ...target,
       last_success_at: target.last_success_at || old.last_success_at || null,
+      last_primary_success_at:
+        target.last_primary_success_at ||
+        old.last_primary_success_at ||
+        target.last_structured_success_at ||
+        old.last_structured_success_at ||
+        null,
       last_structured_success_at:
         target.last_structured_success_at ||
         old.last_structured_success_at ||
+        target.last_primary_success_at ||
+        old.last_primary_success_at ||
         null,
     };
   });
@@ -489,13 +512,23 @@ function mergeStatus(previous, incoming) {
     ...previous,
     ...incoming,
     targets: mergedTargets,
+    last_primary_success_at:
+      incoming.last_primary_success_at ||
+      previous?.last_primary_success_at ||
+      incoming.last_cgv_success_at ||
+      previous?.last_cgv_success_at ||
+      null,
     last_cgv_success_at:
       incoming.last_cgv_success_at ||
       previous?.last_cgv_success_at ||
+      incoming.last_primary_success_at ||
+      previous?.last_primary_success_at ||
       null,
     last_monitoring_success_at:
       incoming.last_monitoring_success_at ||
       previous?.last_monitoring_success_at ||
+      incoming.last_primary_success_at ||
+      previous?.last_primary_success_at ||
       incoming.last_cgv_success_at ||
       previous?.last_cgv_success_at ||
       null,
@@ -674,6 +707,41 @@ function statusLabel(status) {
   return "🟢 정상";
 }
 
+function detectionModeLabel(mode) {
+  const labels = {
+    public_primary: "🟢 제3자 구조화 정상",
+    empty_unconfirmed: "🔵 미래 0건 · 미확정 감시",
+    cgv_official: "🟡 CGV 공식 구조화 보조",
+    text_fallback: "🟠 CGV 텍스트 보조",
+    cloudflare_fallback: "🟠 Browser Run 비상 보조",
+    api_protection: "🛡️ 제3자 API 보호모드",
+    source_unhealthy: "⚠️ 소스 Sentinel 이상",
+    failed: "🔴 확인 실패",
+    not_checked: "⚪ 이번 주기 미조회",
+    structured: "🟢 구조화 정상",
+    fallback: "🟡 보조 감시",
+  };
+  return labels[String(mode || "")] || "⚪ 상태 미확인";
+}
+
+function sentinelLabel(status) {
+  if (status === "unhealthy") return "⚠️ Sentinel 이상";
+  if (status === "healthy") return "✅ Sentinel 정상";
+  return "➖ Sentinel 주기 사이";
+}
+
+function targetDetectionText(target) {
+  const parts = [detectionModeLabel(target?.detection_mode)];
+  if (
+    target?.api_guard_active &&
+    target?.detection_mode !== "api_protection"
+  ) {
+    parts.push("🛡️ API 보호모드");
+  }
+  parts.push(sentinelLabel(target?.source_sentinel_status));
+  return parts.join(" · ");
+}
+
 async function buildSystemStatus(env) {
   const [statusRow, cronRow, monitoringStats, browserBudget] =
     await Promise.all([
@@ -694,19 +762,42 @@ async function buildSystemStatus(env) {
     };
   }
 
+  const targets = status.targets || [];
   const health = status.health_summary || "normal";
   const recentError = status.recent_error || "없음";
+  const fallbackModes = new Set([
+    "cgv_official",
+    "text_fallback",
+    "cloudflare_fallback",
+    "api_protection",
+    "source_unhealthy",
+    "fallback",
+  ]);
   const fallbackActive =
     health === "fallback" ||
-    (status.targets || []).some((target) => target.detection_mode === "fallback");
+    targets.some(
+      (target) =>
+        fallbackModes.has(String(target?.detection_mode || "")) ||
+        target?.api_guard_active,
+    );
+
   const description =
     health === "error"
       ? "**🔴 장애 지속**"
       : health === "warning"
-        ? "**🟠 일시 확인 실패**"
+        ? "**🟠 확인 필요**"
         : fallbackActive
-          ? "**🟡 보조 감시 중**"
+          ? "**🟡 보조/보호 감시 중**"
           : "**🟢 정상**";
+
+  const modeLines = targets.map(
+    (target) =>
+      `**${target.label || target.id}** — ${targetDetectionText(target)}`,
+  );
+  const modeText = (modeLines.join("\n") || "활성 감시 대상 없음").slice(
+    0,
+    1024,
+  );
 
   return {
     title: "📡 CGV 알림 시스템 상태",
@@ -731,19 +822,28 @@ async function buildSystemStatus(env) {
       {
         name: "🛡️ 마지막 감시 성공",
         value: formatTime(
-          status.last_monitoring_success_at || status.last_cgv_success_at,
+          status.last_monitoring_success_at ||
+          status.last_primary_success_at ||
+          status.last_cgv_success_at,
         ),
         inline: true,
       },
       {
-        name: "✅ 마지막 구조화 정상 조회",
-        value: formatTime(status.last_cgv_success_at),
+        name: "✅ 마지막 제3자 구조화 정상",
+        value: formatTime(
+          status.last_primary_success_at || status.last_cgv_success_at,
+        ),
         inline: true,
       },
       {
         name: "🎬 활성 감시",
-        value: `${status.active_count ?? status.targets?.length ?? 0}개`,
+        value: `${status.active_count ?? targets.length}개`,
         inline: true,
+      },
+      {
+        name: "🔎 현재 감지 경로",
+        value: modeText,
+        inline: false,
       },
       {
         name: "📊 최근 24시간 감시",
@@ -796,8 +896,16 @@ async function buildWatchList(env) {
           `**극장** ${target.theater_name}`,
           `**날짜** ${target.date_text}`,
           `**현재 주기** ${target.interval_text}`,
+          `**감지 상태** ${detectionModeLabel(target.detection_mode)}`,
+          `**소스 검증** ${sentinelLabel(target.source_sentinel_status)}`,
+          `**API 보호** ${
+            target.api_guard_active
+              ? `활성 · ${formatTime(target.api_guard_until)}까지`
+              : "비활성"
+          }`,
           `**마지막 감시 성공** ${formatTime(target.last_success_at)}`,
-          `**마지막 구조화 정상** ${formatTime(
+          `**마지막 제3자 구조화 정상** ${formatTime(
+            target.last_primary_success_at ||
             target.last_structured_success_at,
           )}`,
         ].join("\n"),
