@@ -152,14 +152,22 @@
     ]
   },
   "health": {
-    "pages": {}
+    "pages": {},
+    "run_warning": {
+      "alerted": false,
+      "first_failure_at": "2026-09-29T23:00:58.088463+09:00",
+      "page_ids": [
+        "0128|20261223"
+      ],
+      "state": "pending"
+    }
   },
   "public_api_guard": {
-    "backoff_reason": null,
-    "backoff_until": null,
-    "failure_count": 0,
-    "last_failure_at": "2026-09-29T22:00:50.096906+09:00",
-    "last_status": 200,
+    "backoff_reason": "adaptive",
+    "backoff_until": "2026-09-29T23:05:58.088463+09:00",
+    "failure_count": 1,
+    "last_failure_at": "2026-09-29T23:00:58.088463+09:00",
+    "last_status": 500,
     "last_success_at": "2026-09-29T22:05:02.670567+09:00",
     "retry_after_raw": "",
     "version": 1
@@ -206,34 +214,20 @@
   "public_primary_validation": {
     "pages": {
       "0128|20260929": {
-        "last_nonempty_at": "2026-09-29T22:20:36.549044+09:00",
-        "last_nonempty_count": 2,
-        "last_nonempty_hash": "727cbae3e6572b10",
+        "last_nonempty_at": "2026-09-29T23:00:58.088463+09:00",
+        "last_nonempty_count": 1,
+        "last_nonempty_hash": "ca7d2d58c29e8df5",
         "last_nonempty_keys": [
-          "30001314|0128|20260929|2026092901286|22:50",
-          "30001323|0128|20260929|2026092901285|22:40"
+          "30001314|0128|20260929|2026092901286|22:50"
         ],
-        "last_nonempty_latest_end_minutes": 1542,
+        "last_nonempty_latest_end_minutes": 1511,
         "last_nonempty_rows": [
-          {
-            "end_time": "25:42",
-            "movie_code": "30001323",
-            "movie_name": "오디세이",
-            "play_date": "20260929",
-            "remaining_seats": 420,
-            "schedule_id": "2026092901285",
-            "screen": "",
-            "start_time": "22:40",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 441
-          },
           {
             "end_time": "25:11",
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20260929",
-            "remaining_seats": 276,
+            "remaining_seats": 273,
             "schedule_id": "2026092901286",
             "screen": "",
             "start_time": "22:50",
