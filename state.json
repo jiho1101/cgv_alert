@@ -163,7 +163,8 @@
         "0128|20260928",
         "0128|20261218"
       ],
-      "state": "failed"
+      "recovery_started_at": "2026-09-29T09:16:05.074855+09:00",
+      "state": "recovering"
     }
   },
   "public_baseline": {
@@ -196,6 +197,10 @@
     "dune-part-three-ulsan-samsan|20261230": "2026-09-27T21:24:03.997106+09:00",
     "dune-part-three-ulsan-samsan|20261231": "2026-09-27T21:24:03.997106+09:00",
     "movie-20260928-ulsan-samsan|20260928": "2026-09-27T21:24:03.997106+09:00"
+  },
+  "public_primary_validation": {
+    "pages": {},
+    "version": 1
   },
   "public_shadow_validation": {
     "sources": {
