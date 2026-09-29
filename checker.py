@@ -1322,6 +1322,25 @@ def _public_guard_active(state, now: datetime) -> bool:
     return now < until
 
 
+def _public_guard_priority_probe_allowed(state, now: datetime) -> bool:
+    """보호 중에도 5xx는 핵심 날짜 1차 소스를 다음 5분에 다시 확인한다.
+
+    429는 공급자가 명시한 호출 제한이므로 핵심 날짜도 보호 종료까지
+    제3자 호출을 쉬어야 한다. 5xx는 일시 서버 오류일 수 있으므로
+    핵심 날짜까지 막아 미탐 구간을 만들지 않는다.
+    """
+    if not _public_guard_active(state, now):
+        return True
+
+    guard = _public_api_guard(state)
+    try:
+        status = int(guard.get("last_status") or 0)
+    except (TypeError, ValueError):
+        return False
+
+    return 500 <= status <= 599
+
+
 def _public_guard_failure(
     state,
     status,
@@ -2938,6 +2957,31 @@ def run_self_test(timeout: int):
         "텍스트보조/Browser보조/API보호/Sentinel/실패 구분"
     )
 
+    guard_5xx_state = {}
+    guard_5xx_now = datetime(2099, 10, 1, 11, 0, tzinfo=KST)
+    if not _public_guard_failure(
+        guard_5xx_state, 500, None, guard_5xx_now
+    ):
+        raise RuntimeError("API 보호 자체점검 실패: 5xx 보호 미작동")
+    if not _public_guard_priority_probe_allowed(
+        guard_5xx_state, guard_5xx_now + timedelta(minutes=1)
+    ):
+        raise RuntimeError(
+            "API 보호 자체점검 실패: 5xx에서 핵심 날짜 재시도 차단"
+        )
+
+    guard_429_state = {}
+    if not _public_guard_failure(
+        guard_429_state, 429, "600", guard_5xx_now
+    ):
+        raise RuntimeError("API 보호 자체점검 실패: 429 보호 미작동")
+    if _public_guard_priority_probe_allowed(
+        guard_429_state, guard_5xx_now + timedelta(minutes=1)
+    ):
+        raise RuntimeError(
+            "API 보호 자체점검 실패: 429 대기 중 핵심 API 재호출"
+        )
+
     guard_test_state = {}
     guard_now = datetime(2099, 10, 1, 12, 0, tzinfo=KST)
     if not _public_guard_failure(
@@ -2970,8 +3014,8 @@ def run_self_test(timeout: int):
         raise RuntimeError("API 한도 보호 자체점검 실패: 핵심 날짜 판별 오류")
 
     print(
-        "API 한도 보호 자체점검 완료 · 429/5xx adaptive backoff · "
-        "핵심 날짜 보조경로 유지 · 정상응답 즉시 복귀"
+        "API 보호 자체점검 완료 · 5xx는 핵심 날짜 5분 재시도 · "
+        "429는 Retry-After 존중 · 비핵심 축소 · 정상응답 즉시 복귀"
     )
 
     code_test_state = {}
@@ -3347,34 +3391,54 @@ def run_checker(force_all: bool = False):
                 for target_id in (target_ids or {str(target["id"])})
             )
 
-            if _public_guard_active(state, now):
+            guard_active = _public_guard_active(state, now)
+            if guard_active:
                 guard = _public_api_guard(state)
                 until = str(guard.get("backoff_until") or "-")
                 if not priority_for_any:
                     print(
                         f"[{target['theater_name']}] {play_ymd} "
-                        "제3자 API 한도 보호 중 · 비핵심 날짜 이번 회차 건너뜀 · "
+                        "제3자 API 보호 중 · 비핵심 날짜 이번 회차 건너뜀 · "
                         f"보호 종료 {until}"
                     )
                     page_cache[key] = None
                     return None
 
-                print(
-                    f"[{target['theater_name']}] {play_ymd} "
-                    "핵심 날짜지만 제3자 API 보호 대기 중 · "
-                    "제3자 호출은 쉬고 기존 CGV 보조 경로로 확인"
-                )
-                public_result = {
-                    "accepted": False,
-                    "state": "adaptive_backoff",
-                    "status": guard.get("last_status"),
-                    "error": (
-                        "제3자 API 한도 보호 대기 중 "
-                        f"(until={until})"
-                    ),
-                    "state_changed": False,
-                    "guard_state_changed": False,
-                }
+                if not _public_guard_priority_probe_allowed(state, now):
+                    print(
+                        f"[{target['theater_name']}] {play_ymd} "
+                        "핵심 날짜지만 429 호출 제한 보호 대기 중 · "
+                        "제3자 호출은 쉬고 기존 CGV 보조 경로로 확인"
+                    )
+                    public_result = {
+                        "accepted": False,
+                        "state": "adaptive_backoff",
+                        "status": guard.get("last_status"),
+                        "error": (
+                            "제3자 API 429 보호 대기 중 "
+                            f"(until={until})"
+                        ),
+                        "state_changed": False,
+                        "guard_state_changed": False,
+                    }
+                else:
+                    print(
+                        f"[{target['theater_name']}] {play_ymd} "
+                        "핵심 날짜 5xx 보호 중 재확인 · "
+                        "비핵심은 쉬고 핵심만 제3자 구조화 재시도"
+                    )
+                    public_result = _fetch_public_page(
+                        state,
+                        str(target["theater_code"]),
+                        play_ymd,
+                        now,
+                    )
+                    public_cache[key] = public_result
+                    public_state_changed = (
+                        public_state_changed
+                        or bool(public_result.get("state_changed"))
+                        or bool(public_result.get("guard_state_changed"))
+                    )
             else:
                 print(
                     f"[{target['theater_name']}] {play_ymd} "
