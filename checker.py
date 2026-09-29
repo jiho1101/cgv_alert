@@ -2400,7 +2400,7 @@ def build_alert_embeds(notification_items):
     return embeds
 
 
-def send_discord_embeds(embeds) -> bool:
+def send_discord_embeds(embeds, content_override=None) -> bool:
     webhook = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
     if not webhook:
         print("DISCORD_WEBHOOK_URL Secret이 아직 없어 실제 알림은 보내지 않았습니다.")
@@ -2414,7 +2414,9 @@ def send_discord_embeds(embeds) -> bool:
         payload_embed.pop("_fallback", None)
         payload = {"embeds": [payload_embed]}
         if index == 0:
-            if any_fallback and any_structured:
+            if content_override:
+                payload["content"] = str(content_override)[:2000]
+            elif any_fallback and any_structured:
                 payload["content"] = "🔎 **CGV 감지 결과**"
             elif any_fallback:
                 payload["content"] = "⚠️ **CGV 보조 감지 후보**"
@@ -2429,6 +2431,71 @@ def send_discord_embeds(embeds) -> bool:
 
     print("Discord Embed 알림 전송 완료")
     return True
+
+
+def run_discord_e2e_test():
+    """실제 알림 builder + webhook 전송을 검증하되 감시 state는 건드리지 않는다."""
+    play_ymd = datetime.now(KST).strftime("%Y%m%d")
+    target = {
+        "id": "discord-e2e-test",
+        "label": "CGV Alert E2E 테스트",
+        "theater_code": "0128",
+        "theater_name": "CGV 울산삼산",
+        "site_name": "울산삼산",
+    }
+    row = {
+        "MovieNmKor": "CGV Alert E2E 테스트",
+        "PlayStartTm": "1234",
+        "PlayYmd": play_ymd,
+        "ScreenNm": "테스트 상영관",
+        "RemainingSeats": 42,
+        "TotalSeats": 100,
+        "_public_structured": True,
+        "_sale_open_evidence": True,
+        "_key": (
+            f"0128|{play_ymd}|discord-e2e-test|public|"
+            "TEST-MOVIE|TEST-SCHEDULE|12:34"
+        ),
+    }
+    items = [{
+        "target_id": target["id"],
+        "target": target,
+        "by_date": {play_ymd: [row]},
+        "new_keys": {row["_key"]},
+    }]
+
+    embeds = build_alert_embeds(items)
+    if len(embeds) != 1:
+        raise RuntimeError(
+            f"Discord E2E 테스트 Embed 생성 오류: {len(embeds)}개"
+        )
+
+    for embed in embeds:
+        embed["title"] = "🧪 CGV Alert E2E 테스트 · 실제 예매 오픈 아님"
+        embed["description"] = (
+            "⚠️ **테스트 메시지입니다. 실제 예매 오픈이 아닙니다.**\n\n"
+            + str(embed.get("description") or "")
+        )
+        embed["footer"] = {
+            "text": (
+                "CGV Alert Discord E2E 검증 · state.json 미변경 · "
+                "실제 예매 알림 아님"
+            )
+        }
+
+    sent = send_discord_embeds(
+        embeds,
+        content_override=(
+            "🧪 **CGV Alert E2E 테스트 · 실제 예매 오픈이 아닙니다**"
+        ),
+    )
+    if not sent:
+        raise RuntimeError("Discord E2E 테스트 실패: Webhook 미설정")
+
+    print(
+        "DISCORD_E2E PASS · 실제 Embed builder + Webhook 전송 성공 · "
+        "감시 state 미변경"
+    )
 
 
 def run_self_test(timeout: int):
@@ -3649,9 +3716,19 @@ def run_checker(force_all: bool = False):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--discord-e2e-test", action="store_true")
     args = parser.parse_args()
     config = load_json(CONFIG_PATH, {"request": {}})
     timeout = int(config.get("request", {}).get("timeout_seconds", 15))
+
+    if args.discord_e2e_test:
+        try:
+            run_discord_e2e_test()
+        except Exception as exc:
+            print(f"DISCORD_E2E ERROR: {exc}", file=sys.stderr)
+            raise SystemExit(1)
+        return
+
     try:
         if args.self_test:
             run_self_test(timeout)
