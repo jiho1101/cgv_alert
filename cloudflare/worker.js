@@ -2,7 +2,8 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "15";
+const COMMAND_VERSION = "16";
+const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 
 const DISCORD_COMMANDS = [
   {
@@ -424,7 +425,7 @@ async function recordMonitoringSample(env, incoming) {
     ? new Date(parsedAt).toISOString()
     : new Date().toISOString();
 
-  const key = "monitoring_stats_24h";
+  const key = MONITORING_STATS_KEY;
   const row = await getState(env, key);
   const previous = Array.isArray(row?.value?.samples)
     ? row.value.samples
@@ -454,7 +455,7 @@ async function recordMonitoringSample(env, incoming) {
 async function getMonitoringStats(env) {
   if (!env.DB) return summarizeMonitoringSamples([]);
   try {
-    const row = await getState(env, "monitoring_stats_24h");
+    const row = await getState(env, MONITORING_STATS_KEY);
     return summarizeMonitoringSamples(row?.value?.samples || []);
   } catch {
     return summarizeMonitoringSamples([]);
@@ -462,7 +463,9 @@ async function getMonitoringStats(env) {
 }
 
 function monitoringStatsText(stats) {
-  if (!stats?.total) return "아직 집계할 실제 조회가 없습니다.";
+  if (!stats?.total) {
+    return "새 감시체계 기준 집계를 시작했습니다. 아직 조회 표본이 없습니다.";
+  }
   const success =
     stats.monitoring_success_rate == null
       ? "-"
@@ -472,7 +475,7 @@ function monitoringStatsText(stats) {
       ? "-"
       : `${stats.structured_rate}%`;
   return [
-    `조회 ${stats.total}회 · 구조화 ${stats.structured} · 보조 ${stats.fallback} · 실패 ${stats.failed}`,
+    `새 체계 조회 ${stats.total}회 · 구조화 ${stats.structured} · 보조 ${stats.fallback} · 실패 ${stats.failed}`,
     `감시 성공률 ${success} · 구조화 비율 ${structured}`,
   ].join("\n");
 }
@@ -846,7 +849,7 @@ async function buildSystemStatus(env) {
         inline: false,
       },
       {
-        name: "📊 최근 24시간 감시",
+        name: "📊 최근 24시간 감시 · 새 체계",
         value: monitoringStatsText(monitoringStats),
         inline: false,
       },
