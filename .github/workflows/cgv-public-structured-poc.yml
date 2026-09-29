@@ -2,13 +2,6 @@ name: CGV Public Structured POC
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "poc_public_structured.py"
-      - ".github/workflows/cgv-public-structured-poc.yml"
-
 permissions:
   contents: read
 
