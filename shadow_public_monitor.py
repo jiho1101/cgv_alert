@@ -167,6 +167,10 @@ def canonical(row):
             or row.get("scnsNo")
             or ""
         ),
+        "total_seats": row.get(
+            "totalSeats",
+            row.get("stcnt"),
+        ),
         "remaining_seats": row.get(
             "remainingSeats",
             row.get("frSeatCnt", row.get("frtmpSeatCnt")),

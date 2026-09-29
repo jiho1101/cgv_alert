@@ -1615,6 +1615,22 @@ def resolve_public_movie_code(
     return movie_code, True, False
 
 
+def _public_sale_open_evidence(row, target):
+    """require_sale_open 대상의 확정 예매 가능 근거를 확인한다.
+
+    현재 public source는 CGV booking UI 시간표의 stcnt/frSeatCnt를
+    totalSeats/remainingSeats로 정규화한다. 따라서 총좌석이 실제로
+    존재하고 잔여좌석이 1석 이상이며 총좌석을 넘지 않을 때만
+    '예매 가능' 확정 근거로 사용한다.
+    """
+    if not target.get("require_sale_open", False):
+        return True
+
+    total = _safe_int(row.get("total_seats"), -1)
+    remaining = _safe_int(row.get("remaining_seats"), -1)
+    return total > 0 and 0 < remaining <= total
+
+
 def extract_public_sessions(
     public_rows: list,
     target,
@@ -1678,6 +1694,10 @@ def extract_public_sessions(
             continue
 
         remaining = _safe_int(row.get("remaining_seats"), 0)
+        total = _safe_int(row.get("total_seats"), 0)
+
+        if not _public_sale_open_evidence(row, target):
+            continue
         if min_remaining and remaining < min_remaining:
             continue
 
@@ -1697,7 +1717,9 @@ def extract_public_sessions(
                 "PlayYmd": str(play_ymd),
                 "ScreenNm": "상영관 정보 미제공",
                 "RemainingSeats": remaining,
+                "TotalSeats": total,
                 "_public_structured": True,
+                "_sale_open_evidence": True,
                 "_key": stable_key,
             }
         )
@@ -2736,6 +2758,102 @@ def run_self_test(timeout: int):
     print(
         "movieCode 자동 고정 자체점검 완료 · 첫 감지 즉시 학습 · "
         "이후 코드 우선 · 다중 후보 추측 금지"
+    )
+
+    sale_target = {
+        "id": "sale-open-test",
+        "label": "테스트 영화",
+        "theater_code": "0128",
+        "movie_aliases": ["테스트 영화"],
+        "screen_keywords": [],
+        "require_sale_open": True,
+        "min_remaining_seats": 1,
+    }
+    preopen_like = [
+        {
+            "movie_code": "M-SALE",
+            "movie_name": "테스트 영화",
+            "theater_code": "0128",
+            "play_date": "20991218",
+            "schedule_id": "SALE-0",
+            "start_time": "10:00",
+            "total_seats": 0,
+            "remaining_seats": 100,
+        }
+    ]
+    if extract_public_sessions(
+        preopen_like,
+        sale_target,
+        "20991218",
+        pinned_movie_code="M-SALE",
+    ):
+        raise RuntimeError(
+            "예매 오픈 근거 자체점검 실패: 총좌석 없는 회차를 오픈으로 확정"
+        )
+
+    impossible_seats = [
+        dict(
+            preopen_like[0],
+            schedule_id="SALE-BAD",
+            total_seats=80,
+            remaining_seats=100,
+        )
+    ]
+    if extract_public_sessions(
+        impossible_seats,
+        sale_target,
+        "20991218",
+        pinned_movie_code="M-SALE",
+    ):
+        raise RuntimeError(
+            "예매 오픈 근거 자체점검 실패: 잔여좌석>총좌석 회차를 확정"
+        )
+
+    bookable = [
+        dict(
+            preopen_like[0],
+            schedule_id="SALE-OK",
+            total_seats=150,
+            remaining_seats=120,
+        )
+    ]
+    bookable_sessions = extract_public_sessions(
+        bookable,
+        sale_target,
+        "20991218",
+        pinned_movie_code="M-SALE",
+    )
+    if (
+        len(bookable_sessions) != 1
+        or bookable_sessions[0].get("RemainingSeats") != 120
+        or bookable_sessions[0].get("TotalSeats") != 150
+        or not bookable_sessions[0].get("_sale_open_evidence")
+    ):
+        raise RuntimeError(
+            "예매 오픈 근거 자체점검 실패: 정상 예매 가능 회차 누락"
+        )
+
+    sold_out = [
+        dict(
+            preopen_like[0],
+            schedule_id="SALE-SOLDOUT",
+            total_seats=150,
+            remaining_seats=0,
+        )
+    ]
+    if extract_public_sessions(
+        sold_out,
+        sale_target,
+        "20991218",
+        pinned_movie_code="M-SALE",
+    ):
+        raise RuntimeError(
+            "예매 오픈 근거 자체점검 실패: 잔여좌석 0 회차를 알림 대상으로 확정"
+        )
+
+    print(
+        "예매 오픈 근거 자체점검 완료 · 총좌석>0 · "
+        "잔여좌석 1~총좌석 범위만 확정 · 비정상/매진 회차 제외"
     )
 
     print(
