@@ -199,9 +199,9 @@
   "public_primary_validation": {
     "pages": {
       "0128|20260929": {
-        "last_nonempty_at": "2026-09-29T15:01:53.877082+09:00",
-        "last_nonempty_count": 29,
-        "last_nonempty_hash": "9aced6011da69114",
+        "last_nonempty_at": "2026-09-29T15:11:34.713797+09:00",
+        "last_nonempty_count": 28,
+        "last_nonempty_hash": "f8180809d0b77f76",
         "last_nonempty_keys": [
           "30001314|0128|20260929|2026092901283|15:10",
           "30001314|0128|20260929|2026092901283|15:40",
@@ -214,7 +214,6 @@
           "30001314|0128|20260929|2026092901285|21:00",
           "30001314|0128|20260929|2026092901285|21:30",
           "30001314|0128|20260929|2026092901286|22:50",
-          "30001323|0128|20260929|2026092901283|14:50",
           "30001323|0128|20260929|2026092901283|15:50",
           "30001323|0128|20260929|2026092901284|19:15",
           "30001323|0128|20260929|2026092901285|20:40",
@@ -235,19 +234,6 @@
         ],
         "last_nonempty_latest_end_minutes": 1542,
         "last_nonempty_rows": [
-          {
-            "end_time": "17:52",
-            "movie_code": "30001323",
-            "movie_name": "오디세이",
-            "play_date": "20260929",
-            "remaining_seats": 200,
-            "schedule_id": "2026092901283",
-            "screen": "",
-            "start_time": "14:50",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 224
-          },
           {
             "end_time": "17:19",
             "movie_code": "30001342",
@@ -279,7 +265,7 @@
             "movie_code": "30001372",
             "movie_name": "가능한 사랑",
             "play_date": "20260929",
-            "remaining_seats": 110,
+            "remaining_seats": 108,
             "schedule_id": "2026092901283",
             "screen": "",
             "start_time": "15:30",
@@ -357,7 +343,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20260929",
-            "remaining_seats": 287,
+            "remaining_seats": 285,
             "schedule_id": "2026092901284",
             "screen": "",
             "start_time": "17:20",
@@ -396,7 +382,7 @@
             "movie_code": "30001420",
             "movie_name": "옵세션",
             "play_date": "20260929",
-            "remaining_seats": 205,
+            "remaining_seats": 204,
             "schedule_id": "2026092901284",
             "screen": "",
             "start_time": "18:10",
@@ -578,7 +564,7 @@
             "movie_code": "30001399",
             "movie_name": "인턴",
             "play_date": "20260929",
-            "remaining_seats": 143,
+            "remaining_seats": 141,
             "schedule_id": "2026092901285",
             "screen": "",
             "start_time": "22:00",
