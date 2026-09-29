@@ -21,6 +21,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from shadow_public_monitor import (
     canonical as public_canonical,
     extract_rows as public_extract_rows,
+    identity_key as public_identity_key,
     inspect_rows as public_inspect_rows,
     natural_end_of_day as public_natural_end_of_day,
     request_timetable as public_request_timetable,
@@ -1217,6 +1218,7 @@ def _public_snapshot_update_if_changed(
         "last_nonempty_hash": inspection["identity_hash"],
         "last_nonempty_keys": inspection["identity_keys"],
         "last_nonempty_latest_end_minutes": latest_end,
+        "last_nonempty_rows": rows,
     }
 
     stable_fields = (
@@ -1230,6 +1232,43 @@ def _public_snapshot_update_if_changed(
 
     pages[page_key] = candidate
     return True
+
+
+def _guard_future_partial_drop(previous, rows, play_ymd: str, now: datetime):
+    """미래 날짜에서는 회차 '삭제'를 즉시 신뢰하지 않는다.
+
+    이전 정상 회차는 보존하고 현재 응답의 신규 회차는 즉시 합친다.
+    따라서 제3자 소스가 일부 회차만 누락해도 신규 회차 감지는 계속 가능하며,
+    좌석 수 변화는 identity에 포함되지 않아 신규로 오인하지 않는다.
+    """
+    if str(play_ymd) <= now.strftime("%Y%m%d"):
+        return rows, False, 0, 0
+
+    previous_rows = previous.get("last_nonempty_rows") or []
+    if not previous_rows:
+        return rows, False, 0, 0
+
+    previous_map = {
+        public_identity_key(row): row
+        for row in previous_rows
+        if isinstance(row, dict)
+    }
+    current_map = {
+        public_identity_key(row): row
+        for row in rows
+        if isinstance(row, dict)
+    }
+
+    removed = set(previous_map) - set(current_map)
+    added = set(current_map) - set(previous_map)
+    if not removed:
+        return rows, False, 0, len(added)
+
+    # 기존 회차는 유지하고, 현재 응답의 값(좌석 등)은 최신 값으로 덮어쓴다.
+    merged = dict(previous_map)
+    merged.update(current_map)
+    merged_rows = list(merged.values())
+    return merged_rows, True, len(removed), len(added)
 
 
 def _fetch_public_page(state, site_no: str, play_ymd: str, now: datetime):
@@ -1274,11 +1313,32 @@ def _fetch_public_page(state, site_no: str, play_ymd: str, now: datetime):
         return result
 
     if rows:
+        guarded_rows, guarded, removed_count, added_count = (
+            _guard_future_partial_drop(previous, rows, play_ymd, now)
+        )
+
+        if guarded:
+            guarded_inspection = public_inspect_rows(guarded_rows)
+            result["rows"] = guarded_rows
+            result["inspection"] = guarded_inspection
+            result["state_changed"] = _public_snapshot_update_if_changed(
+                state, page_key, guarded_inspection, guarded_rows, now
+            )
+            result["accepted"] = True
+            result["state"] = "future_partial_drop_guarded"
+            result["partial_drop_guarded"] = True
+            result["removed_identity_count"] = removed_count
+            result["added_identity_count"] = added_count
+            return result
+
         result["state_changed"] = _public_snapshot_update_if_changed(
             state, page_key, inspection, rows, now
         )
         result["accepted"] = True
         result["state"] = "nonempty_trusted"
+        result["partial_drop_guarded"] = False
+        result["removed_identity_count"] = 0
+        result["added_identity_count"] = added_count
         return result
 
     if previous.get("last_nonempty_count"):
@@ -2180,6 +2240,93 @@ def run_self_test(timeout: int):
         "근접 단계 전체 15분"
     )
 
+    future_previous_rows = [
+        {
+            "movie_code": "M1",
+            "movie_name": "테스트 영화",
+            "theater_code": "0128",
+            "play_date": "20991218",
+            "schedule_id": "S1",
+            "start_time": "10:00",
+            "end_time": "12:00",
+            "screen": "",
+            "remaining_seats": 100,
+        },
+        {
+            "movie_code": "M1",
+            "movie_name": "테스트 영화",
+            "theater_code": "0128",
+            "play_date": "20991218",
+            "schedule_id": "S2",
+            "start_time": "13:00",
+            "end_time": "15:00",
+            "screen": "",
+            "remaining_seats": 90,
+        },
+        {
+            "movie_code": "M1",
+            "movie_name": "테스트 영화",
+            "theater_code": "0128",
+            "play_date": "20991218",
+            "schedule_id": "S3",
+            "start_time": "16:00",
+            "end_time": "18:00",
+            "screen": "",
+            "remaining_seats": 80,
+        },
+    ]
+    future_current_rows = [
+        dict(future_previous_rows[0], remaining_seats=70),
+        {
+            "movie_code": "M1",
+            "movie_name": "테스트 영화",
+            "theater_code": "0128",
+            "play_date": "20991218",
+            "schedule_id": "S4",
+            "start_time": "19:00",
+            "end_time": "21:00",
+            "screen": "",
+            "remaining_seats": 120,
+        },
+    ]
+    guarded_rows, guarded, removed_count, added_count = (
+        _guard_future_partial_drop(
+            {"last_nonempty_rows": future_previous_rows},
+            future_current_rows,
+            "20991218",
+            datetime(2099, 10, 1, 0, 0, tzinfo=KST),
+        )
+    )
+    guarded_keys = {
+        public_identity_key(row) for row in guarded_rows
+    }
+    if (
+        not guarded
+        or removed_count != 2
+        or added_count != 1
+        or len(guarded_keys) != 4
+        or not any("|S4|" in key for key in guarded_keys)
+    ):
+        raise RuntimeError(
+            "부분 누락 방어 자체점검 실패: 기존 회차 보존/신규 회차 반영 오류"
+        )
+
+    same_day_rows, same_day_guarded, _, _ = _guard_future_partial_drop(
+        {"last_nonempty_rows": future_previous_rows},
+        future_current_rows,
+        "20991218",
+        datetime(2099, 12, 18, 20, 0, tzinfo=KST),
+    )
+    if same_day_guarded or len(same_day_rows) != 2:
+        raise RuntimeError(
+            "부분 누락 방어 자체점검 실패: 당일 자연 감소를 막고 있음"
+        )
+
+    print(
+        "부분 누락 방어 자체점검 완료 · 미래 회차 삭제 보존 · "
+        "신규 회차 즉시 반영 · 당일 자연 감소 허용"
+    )
+
     print(
         "CGV 파서 자체점검 완료 · 다른 영화 혼입 방지 + "
         "제3자 구조화 production key 검증 통과"
@@ -2295,13 +2442,22 @@ def run_checker(force_all: bool = False):
                     )
                 else:
                     inspection = public_result["inspection"]
-                    print(
-                        f"[{target['theater_name']}] {play_ymd} "
-                        "제3자 구조화 1차 감지 정상 · "
-                        f"{inspection['rows']}회차 · "
-                        f"충돌 {len(inspection['identity_collisions'])} · "
-                        f"{public_result.get('elapsed_seconds')}초"
-                    )
+                    if public_result.get("partial_drop_guarded"):
+                        print(
+                            f"[{target['theater_name']}] {play_ymd} "
+                            "제3자 구조화 일부 회차 누락 방어 적용 · "
+                            f"누락 {public_result.get('removed_identity_count', 0)}개 보존 · "
+                            f"신규 {public_result.get('added_identity_count', 0)}개 즉시 반영 · "
+                            f"유효 {inspection['rows']}회차"
+                        )
+                    else:
+                        print(
+                            f"[{target['theater_name']}] {play_ymd} "
+                            "제3자 구조화 1차 감지 정상 · "
+                            f"{inspection['rows']}회차 · "
+                            f"충돌 {len(inspection['identity_collisions'])} · "
+                            f"{public_result.get('elapsed_seconds')}초"
+                        )
                 return page_cache[key]
 
             public_message = summarize_cgv_error(
