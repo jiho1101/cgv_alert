@@ -206,49 +206,21 @@
   "public_primary_validation": {
     "pages": {
       "0128|20260929": {
-        "last_nonempty_at": "2026-09-29T22:00:50.096906+09:00",
-        "last_nonempty_count": 4,
-        "last_nonempty_hash": "1c99473032f98d7b",
+        "last_nonempty_at": "2026-09-29T22:20:36.549044+09:00",
+        "last_nonempty_count": 2,
+        "last_nonempty_hash": "727cbae3e6572b10",
         "last_nonempty_keys": [
           "30001314|0128|20260929|2026092901286|22:50",
-          "30001323|0128|20260929|2026092901285|22:40",
-          "30001351|0128|20260929|2026092901285|22:00",
-          "30001399|0128|20260929|2026092901285|22:00"
+          "30001323|0128|20260929|2026092901285|22:40"
         ],
         "last_nonempty_latest_end_minutes": 1542,
         "last_nonempty_rows": [
-          {
-            "end_time": "23:43",
-            "movie_code": "30001351",
-            "movie_name": "빈집의 연인들",
-            "play_date": "20260929",
-            "remaining_seats": 193,
-            "schedule_id": "2026092901285",
-            "screen": "",
-            "start_time": "22:00",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 193
-          },
-          {
-            "end_time": "24:22",
-            "movie_code": "30001399",
-            "movie_name": "인턴",
-            "play_date": "20260929",
-            "remaining_seats": 134,
-            "schedule_id": "2026092901285",
-            "screen": "",
-            "start_time": "22:00",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 146
-          },
           {
             "end_time": "25:42",
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20260929",
-            "remaining_seats": 423,
+            "remaining_seats": 420,
             "schedule_id": "2026092901285",
             "screen": "",
             "start_time": "22:40",
@@ -261,7 +233,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20260929",
-            "remaining_seats": 292,
+            "remaining_seats": 276,
             "schedule_id": "2026092901286",
             "screen": "",
             "start_time": "22:50",
