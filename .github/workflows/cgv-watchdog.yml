@@ -1,0 +1,59 @@
+name: CGV Trigger Watchdog
+
+on:
+  schedule:
+    # Main Cloudflare cron is ~5m. Shift by 2m so this checks between normal runs.
+    - cron: "2-57/5 * * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "watchdog.py"
+      - ".github/workflows/cgv-watchdog.yml"
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: cgv-trigger-watchdog
+  cancel-in-progress: true
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Self-test watchdog logic
+        run: python watchdog.py --self-test
+
+      - name: Live dry-run on push
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WATCHDOG_STALE_SECONDS: "660"
+        run: python watchdog.py --dry-run
+
+      - name: Verify watchdog can dispatch CGV Alert
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python watchdog.py --force-dispatch --no-discord
+
+      - name: Check trigger gap and recover
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          WATCHDOG_STALE_SECONDS: "660"
+        run: python watchdog.py
