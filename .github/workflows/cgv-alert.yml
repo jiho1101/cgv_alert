@@ -16,6 +16,7 @@ on:
       - "config.json"
       - "requirements.txt"
       - "shadow_public_monitor.py"
+      - "cloudflare/worker.js"
       - ".github/workflows/cgv-alert.yml"
 
 permissions:
@@ -53,6 +54,9 @@ jobs:
 
       - name: Check Python syntax
         run: python -m py_compile checker.py shadow_public_monitor.py
+
+      - name: Check Cloudflare Worker syntax
+        run: node --check cloudflare/worker.js
 
       - name: Apply staged monitoring intervals
         run: |
@@ -171,7 +175,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "14"
+          expected_version = "15"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:
@@ -203,7 +207,7 @@ jobs:
                   )
                   if version == expected_version and browser_binding:
                       print(
-                          "Cloudflare Worker v14 + Browser Run binding 확인 완료"
+                          "Cloudflare Worker v15 + Browser Run binding 확인 완료"
                       )
                       raise SystemExit(0)
               except requests.RequestException as exc:
