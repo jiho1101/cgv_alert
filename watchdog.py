@@ -113,14 +113,35 @@ def github_json(method, url, token, payload=None):
 
 
 def fetch_alert_runs(repository, token):
+    """Repository-wide run 목록에서 실제 Cloudflare dispatch만 고른다.
+
+    workflow-specific runs endpoint가 드물게 오래된 결과를 반환해
+    Watchdog이 정상 감시를 장기 공백으로 오판한 사례가 있었다.
+    repository-wide endpoint를 사용하고, 정확한 workflow path +
+    workflow_dispatch event만 liveness로 인정한다.
+    """
     url = (
-        f"https://api.github.com/repos/{repository}/actions/workflows/"
-        f"{WORKFLOW_FILE}/runs?branch={BRANCH}&per_page=20"
+        f"https://api.github.com/repos/{repository}/actions/runs"
+        f"?branch={BRANCH}&event=workflow_dispatch&per_page=100"
     )
     status, payload = github_json("GET", url, token)
     if status != 200 or not isinstance(payload, dict):
-        raise RuntimeError(f"Unexpected workflow-runs response: HTTP {status}")
-    return payload.get("workflow_runs") or []
+        raise RuntimeError(f"Unexpected repository-runs response: HTTP {status}")
+
+    rows = payload.get("workflow_runs") or []
+    filtered = [
+        row
+        for row in rows
+        if isinstance(row, dict)
+        and str(row.get("path") or "") == f".github/workflows/{WORKFLOW_FILE}"
+        and str(row.get("event") or "") == "workflow_dispatch"
+    ]
+
+    if rows and not filtered:
+        raise RuntimeError(
+            "Repository run list returned data but no CGV Alert workflow_dispatch runs"
+        )
+    return filtered
 
 
 def dispatch_alert(repository, token, source="github_watchdog"):
@@ -208,9 +229,20 @@ def run_self_test():
     if decide_watchdog([], now)["action"] != "dispatch":
         raise RuntimeError("Watchdog self-test failed: no-run recovery")
 
+    push_only = [{
+        "id": 5,
+        "status": "completed",
+        "conclusion": "success",
+        "event": "push",
+        "path": ".github/workflows/cgv-alert.yml",
+        "created_at": "2099-01-01T11:59:00Z",
+    }]
+    if decide_watchdog(push_only, now)["action"] != "healthy":
+        raise RuntimeError("Watchdog self-test failed: decision helper regression")
+
     print(
         "WATCHDOG_SELF_TEST PASS · recent=healthy · stale=dispatch · "
-        "pending=no-duplicate · failed-run=trigger-alive"
+        "pending=no-duplicate · repo-wide dispatch filtering enabled"
     )
 
 
