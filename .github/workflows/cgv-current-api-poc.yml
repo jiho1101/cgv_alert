@@ -2,13 +2,6 @@ name: CGV Current API POC
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "poc_current_api.py"
-      - ".github/workflows/cgv-current-api-poc.yml"
-
 permissions:
   contents: read
 
