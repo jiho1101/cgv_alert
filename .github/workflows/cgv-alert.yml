@@ -175,7 +175,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "15"
+          expected_version = "16"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:
@@ -207,7 +207,7 @@ jobs:
                   )
                   if version == expected_version and browser_binding:
                       print(
-                          "Cloudflare Worker v15 + Browser Run binding 확인 완료"
+                          "Cloudflare Worker v16 + Browser Run binding 확인 완료"
                       )
                       raise SystemExit(0)
               except requests.RequestException as exc:
