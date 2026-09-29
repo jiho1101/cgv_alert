@@ -2,13 +2,6 @@ name: CGV Public Structured Shadow
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "shadow_public_monitor.py"
-      - ".github/workflows/cgv-public-shadow.yml"
-
 permissions:
   contents: read
 
