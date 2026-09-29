@@ -136,12 +136,16 @@ def prune_expired_targets(config, state, today_ymd: str):
     state_changed = False
     seen = state.setdefault("seen", {})
     fallback_seen = state.setdefault("fallback_seen", {})
+    public_movie_codes = state.setdefault("public_movie_codes", {})
     for target_id in removed_ids:
         if target_id and target_id in seen:
             seen.pop(target_id, None)
             state_changed = True
         if target_id and target_id in fallback_seen:
             fallback_seen.pop(target_id, None)
+            state_changed = True
+        if target_id and target_id in public_movie_codes:
+            public_movie_codes.pop(target_id, None)
             state_changed = True
 
     pages = state.setdefault("health", {}).setdefault("pages", {})
@@ -1551,7 +1555,72 @@ def _fetch_public_page(state, site_no: str, play_ymd: str, now: datetime):
     return result
 
 
-def extract_public_sessions(public_rows: list, target, play_ymd: str):
+def _public_movie_code_store(state):
+    return state.setdefault("public_movie_codes", {})
+
+
+def resolve_public_movie_code(
+    state,
+    target,
+    public_rows: list,
+    play_ymd: str,
+    now: datetime,
+):
+    """제목으로 처음 발견한 영화가 단일 movieCode일 때만 자동 고정한다.
+
+    이미 고정된 뒤에는 제목 표기가 바뀌어도 movieCode를 우선한다.
+    같은 alias에 여러 코드가 동시에 걸리면 추측해서 고정하지 않고
+    기존 제목 매칭으로 계속 감시해 첫 알림 속도를 늦추지 않는다.
+    """
+    configured = str(target.get("movie_code") or "").strip()
+    if configured:
+        return configured, False, False
+
+    target_id = str(target["id"])
+    store = _public_movie_code_store(state)
+    learned = store.get(target_id) or {}
+    learned_code = str(learned.get("movie_code") or "").strip()
+    if learned_code:
+        return learned_code, False, False
+
+    aliases = set(target_aliases(target))
+    candidates = {}
+    for row in public_rows:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("play_date") or "") != str(play_ymd):
+            continue
+        theater_code = str(row.get("theater_code") or "")
+        if theater_code and theater_code != str(target["theater_code"]):
+            continue
+
+        movie_name = str(row.get("movie_name") or "").strip()
+        movie_code = str(row.get("movie_code") or "").strip()
+        if (
+            movie_code
+            and normalize(movie_name) in aliases
+        ):
+            candidates.setdefault(movie_code, movie_name)
+
+    if len(candidates) != 1:
+        return None, False, len(candidates) > 1
+
+    movie_code, movie_name = next(iter(candidates.items()))
+    store[target_id] = {
+        "movie_code": movie_code,
+        "movie_name_at_learning": movie_name,
+        "learned_at": now.isoformat(),
+        "theater_code": str(target["theater_code"]),
+    }
+    return movie_code, True, False
+
+
+def extract_public_sessions(
+    public_rows: list,
+    target,
+    play_ymd: str,
+    pinned_movie_code=None,
+):
     """제3자 구조화 시간표를 안정적인 회차 key로 정규화한다."""
     aliases = set(target_aliases(target))
     screen_keywords = [
@@ -1582,10 +1651,15 @@ def extract_public_sessions(public_rows: list, target, play_ymd: str):
 
         movie_name = str(row.get("movie_name") or "").strip()
         movie_norm = normalize(movie_name)
-        if not movie_norm or movie_norm not in aliases:
+        movie_code = str(row.get("movie_code") or "").strip()
+
+        pinned = str(pinned_movie_code or "").strip()
+        if pinned:
+            if movie_code != pinned:
+                continue
+        elif not movie_norm or movie_norm not in aliases:
             continue
 
-        movie_code = str(row.get("movie_code") or "").strip()
         schedule_id = str(row.get("schedule_id") or "").strip()
         start_text = str(row.get("start_time") or "").strip()
         start_raw = start_text.replace(":", "")
@@ -2550,6 +2624,120 @@ def run_self_test(timeout: int):
         "핵심 날짜 보조경로 유지 · 정상응답 즉시 복귀"
     )
 
+    code_test_state = {}
+    code_target = {
+        "id": "movie-code-test",
+        "label": "테스트 영화",
+        "theater_code": "0128",
+        "movie_aliases": ["테스트 영화"],
+        "screen_keywords": [],
+        "min_remaining_seats": 0,
+    }
+    discovery_rows = [
+        {
+            "movie_code": "M-REAL",
+            "movie_name": "테스트 영화",
+            "theater_code": "0128",
+            "play_date": "20991218",
+            "schedule_id": "S1",
+            "start_time": "10:00",
+            "remaining_seats": 10,
+        }
+    ]
+    learned_code, learned_now, ambiguous = resolve_public_movie_code(
+        code_test_state,
+        code_target,
+        discovery_rows,
+        "20991218",
+        datetime(2099, 10, 1, tzinfo=KST),
+    )
+    first_sessions = extract_public_sessions(
+        discovery_rows,
+        code_target,
+        "20991218",
+        pinned_movie_code=learned_code,
+    )
+    if (
+        learned_code != "M-REAL"
+        or not learned_now
+        or ambiguous
+        or len(first_sessions) != 1
+    ):
+        raise RuntimeError(
+            "movieCode 자동 고정 자체점검 실패: 첫 감지/학습 오류"
+        )
+
+    renamed_and_imposter = [
+        {
+            "movie_code": "M-REAL",
+            "movie_name": "테스트 영화 - 새 표기",
+            "theater_code": "0128",
+            "play_date": "20991218",
+            "schedule_id": "S2",
+            "start_time": "13:00",
+            "remaining_seats": 10,
+        },
+        {
+            "movie_code": "M-WRONG",
+            "movie_name": "테스트 영화",
+            "theater_code": "0128",
+            "play_date": "20991218",
+            "schedule_id": "S3",
+            "start_time": "16:00",
+            "remaining_seats": 10,
+        },
+    ]
+    pinned_code, learned_again, ambiguous_again = resolve_public_movie_code(
+        code_test_state,
+        code_target,
+        renamed_and_imposter,
+        "20991218",
+        datetime(2099, 10, 2, tzinfo=KST),
+    )
+    pinned_sessions = extract_public_sessions(
+        renamed_and_imposter,
+        code_target,
+        "20991218",
+        pinned_movie_code=pinned_code,
+    )
+    if (
+        pinned_code != "M-REAL"
+        or learned_again
+        or ambiguous_again
+        or len(pinned_sessions) != 1
+        or "M-REAL" not in pinned_sessions[0]["_key"]
+    ):
+        raise RuntimeError(
+            "movieCode 자동 고정 자체점검 실패: 코드 우선 매칭 오류"
+        )
+
+    ambiguous_state = {}
+    ambiguous_rows = [
+        dict(discovery_rows[0], movie_code="M-A"),
+        dict(
+            discovery_rows[0],
+            movie_code="M-B",
+            schedule_id="S9",
+            start_time="20:00",
+        ),
+    ]
+    code, changed, ambiguous = resolve_public_movie_code(
+        ambiguous_state,
+        code_target,
+        ambiguous_rows,
+        "20991218",
+        datetime(2099, 10, 3, tzinfo=KST),
+    )
+    if code is not None or changed or not ambiguous:
+        raise RuntimeError(
+            "movieCode 자동 고정 자체점검 실패: 다중 후보를 추측해 고정함"
+        )
+
+    print(
+        "movieCode 자동 고정 자체점검 완료 · 첫 감지 즉시 학습 · "
+        "이후 코드 우선 · 다중 후보 추측 금지"
+    )
+
     print(
         "CGV 파서 자체점검 완료 · 다른 영화 혼입 방지 + "
         "제3자 구조화 production key 검증 통과"
@@ -2611,6 +2799,7 @@ def run_checker(force_all: bool = False):
     found = defaultdict(dict)
     public_cache = {}
     public_state_changed = False
+    movie_code_state_changed = False
 
     def ensure_browser():
         nonlocal browser
@@ -2886,8 +3075,31 @@ def run_checker(force_all: bool = False):
                 for target_id in target_ids:
                     target = target_by_id[target_id]
                     if source["mode"] == "public":
+                        movie_code, learned_code, ambiguous_code = (
+                            resolve_public_movie_code(
+                                state,
+                                target,
+                                source["data"],
+                                play_ymd,
+                                now,
+                            )
+                        )
+                        if learned_code:
+                            movie_code_state_changed = True
+                            print(
+                                f"[{target_id}] movieCode 자동 고정 · "
+                                f"{movie_code} · 첫 감지 지연 없음"
+                            )
+                        elif ambiguous_code:
+                            print(
+                                f"[{target_id}] movieCode 후보가 여러 개라 "
+                                "자동 고정하지 않고 기존 정확 제목 매칭 유지"
+                            )
                         sessions = extract_public_sessions(
-                            source["data"], target, play_ymd
+                            source["data"],
+                            target,
+                            play_ymd,
+                            pinned_movie_code=movie_code,
                         )
                     elif source["mode"] == "api":
                         sessions = extract_sessions(
@@ -2920,8 +3132,31 @@ def run_checker(force_all: bool = False):
                 if source is None:
                     continue
                 if source["mode"] == "public":
+                    movie_code, learned_code, ambiguous_code = (
+                        resolve_public_movie_code(
+                            state,
+                            target,
+                            source["data"],
+                            earlier,
+                            now,
+                        )
+                    )
+                    if learned_code:
+                        movie_code_state_changed = True
+                        print(
+                            f"[{target_id}] movieCode 자동 고정 · "
+                            f"{movie_code} · 첫 감지 지연 없음"
+                        )
+                    elif ambiguous_code:
+                        print(
+                            f"[{target_id}] movieCode 후보가 여러 개라 "
+                            "자동 고정하지 않고 기존 정확 제목 매칭 유지"
+                        )
                     sessions = extract_public_sessions(
-                        source["data"], target, earlier
+                        source["data"],
+                        target,
+                        earlier,
+                        pinned_movie_code=movie_code,
                     )
                 elif source["mode"] == "api":
                     sessions = extract_sessions(
@@ -2953,9 +3188,12 @@ def run_checker(force_all: bool = False):
                 f"첫 오류: {first.get('error')}"
             )
 
-        if public_state_changed:
+        if public_state_changed or movie_code_state_changed:
             save_state(state)
-            print("제3자 구조화 직전 정상 스냅샷 갱신")
+            if public_state_changed:
+                print("제3자 구조화 직전 정상 스냅샷 갱신")
+            if movie_code_state_changed:
+                print("영화 movieCode 자동 고정 상태 저장")
 
         health_changed = notify_failed_pages(
             state, page_results, now
