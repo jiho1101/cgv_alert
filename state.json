@@ -152,25 +152,15 @@
     ]
   },
   "health": {
-    "pages": {},
-    "run_warning": {
-      "alerted": false,
-      "first_failure_at": "2026-09-29T13:31:31.810677+09:00",
-      "page_ids": [
-        "0128|20261002",
-        "0128|20261218",
-        "0128|20261225"
-      ],
-      "state": "pending"
-    }
+    "pages": {}
   },
   "public_api_guard": {
-    "backoff_reason": "adaptive",
-    "backoff_until": "2026-09-29T13:36:31.810677+09:00",
-    "failure_count": 1,
+    "backoff_reason": null,
+    "backoff_until": null,
+    "failure_count": 0,
     "last_failure_at": "2026-09-29T13:31:31.810677+09:00",
-    "last_status": 500,
-    "last_success_at": "2026-09-29T12:41:03.449834+09:00",
+    "last_status": 200,
+    "last_success_at": "2026-09-29T13:41:02.720158+09:00",
     "retry_after_raw": "",
     "version": 1
   },
@@ -209,9 +199,9 @@
   "public_primary_validation": {
     "pages": {
       "0128|20260929": {
-        "last_nonempty_at": "2026-09-29T13:21:10.763611+09:00",
-        "last_nonempty_count": 33,
-        "last_nonempty_hash": "a568a4e52e165a56",
+        "last_nonempty_at": "2026-09-29T13:41:02.720158+09:00",
+        "last_nonempty_count": 32,
+        "last_nonempty_hash": "784756470bdbae49",
         "last_nonempty_keys": [
           "30001314|0128|20260929|2026092901282|14:00",
           "30001314|0128|20260929|2026092901283|14:40",
@@ -232,7 +222,6 @@
           "30001323|0128|20260929|2026092901284|19:15",
           "30001323|0128|20260929|2026092901285|20:40",
           "30001323|0128|20260929|2026092901285|22:40",
-          "30001342|0128|20260929|2026092901282|13:20",
           "30001342|0128|20260929|2026092901283|15:00",
           "30001342|0128|20260929|2026092901283|16:00",
           "30001342|0128|20260929|2026092901284|18:00",
@@ -250,24 +239,11 @@
         "last_nonempty_latest_end_minutes": 1542,
         "last_nonempty_rows": [
           {
-            "end_time": "15:39",
-            "movie_code": "30001342",
-            "movie_name": "타짜-벨제붑의 노래",
-            "play_date": "20260929",
-            "remaining_seats": 91,
-            "schedule_id": "2026092901282",
-            "screen": "",
-            "start_time": "13:20",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 146
-          },
-          {
             "end_time": "16:52",
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20260929",
-            "remaining_seats": 139,
+            "remaining_seats": 142,
             "schedule_id": "2026092901282",
             "screen": "",
             "start_time": "13:50",
@@ -280,7 +256,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20260929",
-            "remaining_seats": 183,
+            "remaining_seats": 177,
             "schedule_id": "2026092901282",
             "screen": "",
             "start_time": "14:00",
@@ -345,7 +321,7 @@
             "movie_code": "30001372",
             "movie_name": "가능한 사랑",
             "play_date": "20260929",
-            "remaining_seats": 119,
+            "remaining_seats": 116,
             "schedule_id": "2026092901283",
             "screen": "",
             "start_time": "15:30",
@@ -358,7 +334,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20260929",
-            "remaining_seats": 277,
+            "remaining_seats": 276,
             "schedule_id": "2026092901283",
             "screen": "",
             "start_time": "15:40",
@@ -384,7 +360,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20260929",
-            "remaining_seats": 133,
+            "remaining_seats": 130,
             "schedule_id": "2026092901283",
             "screen": "",
             "start_time": "16:00",
@@ -449,7 +425,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20260929",
-            "remaining_seats": 278,
+            "remaining_seats": 274,
             "schedule_id": "2026092901284",
             "screen": "",
             "start_time": "18:00",
@@ -488,7 +464,7 @@
             "movie_code": "30001372",
             "movie_name": "가능한 사랑",
             "play_date": "20260929",
-            "remaining_seats": 111,
+            "remaining_seats": 112,
             "schedule_id": "2026092901284",
             "screen": "",
             "start_time": "18:45",
@@ -540,7 +516,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20260929",
-            "remaining_seats": 284,
+            "remaining_seats": 282,
             "schedule_id": "2026092901285",
             "screen": "",
             "start_time": "20:00",
@@ -579,7 +555,7 @@
             "movie_code": "30001517",
             "movie_name": "어벤져스-엔드게임 앙코르",
             "play_date": "20260929",
-            "remaining_seats": 133,
+            "remaining_seats": 134,
             "schedule_id": "2026092901284",
             "screen": "",
             "start_time": "20:50",
