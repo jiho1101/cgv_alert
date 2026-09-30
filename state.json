@@ -152,14 +152,22 @@
     ]
   },
   "health": {
-    "pages": {}
+    "pages": {},
+    "run_warning": {
+      "alerted": false,
+      "first_failure_at": "2026-09-30T12:30:44.300833+09:00",
+      "page_ids": [
+        "0128|20261228"
+      ],
+      "state": "pending"
+    }
   },
   "public_api_guard": {
-    "backoff_reason": null,
-    "backoff_until": null,
-    "failure_count": 0,
-    "last_failure_at": "2026-09-30T11:25:36.617629+09:00",
-    "last_status": 200,
+    "backoff_reason": "adaptive",
+    "backoff_until": "2026-09-30T12:35:44.300833+09:00",
+    "failure_count": 1,
+    "last_failure_at": "2026-09-30T12:30:44.300833+09:00",
+    "last_status": 500,
     "last_success_at": "2026-09-30T11:30:45.120428+09:00",
     "retry_after_raw": "",
     "version": 1
