@@ -230,28 +230,14 @@
         ]
       },
       "0128|20260930": {
-        "last_nonempty_at": "2026-09-30T23:01:28.808481+09:00",
-        "last_nonempty_count": 2,
-        "last_nonempty_hash": "24b7f2302b03d25e",
+        "last_nonempty_at": "2026-09-30T23:11:21.322910+09:00",
+        "last_nonempty_count": 1,
+        "last_nonempty_hash": "cb76dc61d4a331f8",
         "last_nonempty_keys": [
-          "30001275|0128|20260930|2026093001287|22:55",
           "30001342|0128|20260930|2026093001286|23:00"
         ],
         "last_nonempty_latest_end_minutes": 1519,
         "last_nonempty_rows": [
-          {
-            "end_time": "24:48",
-            "movie_code": "30001275",
-            "movie_name": "파리의 사생활",
-            "play_date": "20260930",
-            "remaining_seats": 146,
-            "schedule_id": "2026093001287",
-            "screen": "",
-            "start_time": "22:55",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 146
-          },
           {
             "end_time": "25:19",
             "movie_code": "30001342",
