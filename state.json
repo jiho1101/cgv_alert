@@ -152,7 +152,15 @@
     ]
   },
   "health": {
-    "pages": {}
+    "pages": {},
+    "run_warning": {
+      "alerted": false,
+      "first_failure_at": "2026-09-30T23:21:09.850107+09:00",
+      "page_ids": [
+        "0128|20261218"
+      ],
+      "state": "pending"
+    }
   },
   "public_api_guard": {
     "backoff_reason": null,
@@ -1143,7 +1151,12 @@
     "version": 1
   },
   "public_source_sentinel": {
-    "sites": {},
+    "sites": {
+      "0128": {
+        "first_unhealthy_at": "2026-09-30T23:21:09.850107+09:00",
+        "reason": "제3자 구조화 시간표가 직전 정상 1회차에서 갑자기 0건으로 감소"
+      }
+    },
     "version": 1
   },
   "seen": {
