@@ -1473,14 +1473,40 @@ def _public_sentinel_should_check(state, site_no: str, now: datetime) -> bool:
 
 
 def _public_sentinel_result_healthy(result) -> bool:
-    """당일 극장 시간표가 실제 비어있지 않을 때만 강한 health 근거로 쓴다."""
+    """구조적으로 유효한 비어있지 않은 시간표를 강한 source-health 근거로 쓴다."""
     if not isinstance(result, dict):
         return False
     return bool(
         result.get("accepted")
-        and result.get("state") == "nonempty_trusted"
+        and result.get("state") in {
+            "nonempty_trusted",
+            "future_partial_drop_guarded",
+        }
         and (result.get("rows") or [])
     )
+
+
+def _public_sentinel_cached_evidence(public_cache, site_no: str):
+    """이번 실행에서 같은 극장의 비어있지 않은 정상 응답이 이미 있으면 재사용한다."""
+    site_no = str(site_no)
+    candidates = []
+    for key, result in (public_cache or {}).items():
+        if not isinstance(key, tuple) or len(key) != 2:
+            continue
+        if str(key[0]) != site_no:
+            continue
+        if _public_sentinel_result_healthy(result):
+            candidates.append((str(key[1]), result))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: item[0])
+    play_ymd, result = candidates[0]
+    return {
+        "play_ymd": play_ymd,
+        "result": result,
+    }
 
 
 def _public_sentinel_transition(
@@ -2865,6 +2891,30 @@ def run_self_test(timeout: int):
         raise RuntimeError(
             "Sentinel 자체점검 실패: 빈 응답을 health 정상으로 오인"
         )
+    sentinel_partial = {
+        "accepted": True,
+        "state": "future_partial_drop_guarded",
+        "rows": [{"schedule_id": "S2"}],
+    }
+    if not _public_sentinel_result_healthy(sentinel_partial):
+        raise RuntimeError(
+            "Sentinel 자체점검 실패: 유효한 부분누락 방어 응답 거부"
+        )
+
+    cached_evidence = _public_sentinel_cached_evidence(
+        {
+            ("0128", "20991002"): sentinel_partial,
+            ("9999", "20991002"): sentinel_good,
+        },
+        "0128",
+    )
+    if (
+        not cached_evidence
+        or cached_evidence.get("play_ymd") != "20991002"
+    ):
+        raise RuntimeError(
+            "Sentinel 자체점검 실패: 같은 극장 비어있지 않은 응답 재사용 오류"
+        )
     if not _public_sentinel_should_check(
         sentinel_state, "0128", sentinel_now
     ):
@@ -2911,8 +2961,8 @@ def run_self_test(timeout: int):
         )
 
     print(
-        "소스 Sentinel 자체점검 완료 · 정상 시 10분 확인 · "
-        "미래 0건 교차검증 · 이상 중 5분 재확인 · 전환만 상태 저장"
+        "소스 Sentinel 자체점검 완료 · 같은 극장 정상응답 재사용 · "
+        "당일/다음날 교차검증 · 이상 중 5분 재확인 · 전환만 상태 저장"
     )
 
     mode_cases = [
@@ -3316,39 +3366,114 @@ def run_checker(force_all: bool = False):
                 public_sentinel_cache[site_no] = result
                 return result
 
-            sentinel_ymd = now.strftime("%Y%m%d")
-            sentinel_key = (site_no, sentinel_ymd)
-            print(
-                f"[{target['theater_name']}] 소스 Sentinel 확인 · "
-                f"당일 {sentinel_ymd} 시간표"
+            # 같은 실행에서 같은 극장의 다른 날짜가 이미 비어있지 않은
+            # 정상 구조화 응답을 줬다면 그 자체가 source-health의 강한 증거다.
+            cached = _public_sentinel_cached_evidence(
+                public_cache,
+                site_no,
             )
-
-            sentinel_page = public_cache.get(sentinel_key)
-            if sentinel_page is None:
-                sentinel_page = _fetch_public_page(
+            if cached is not None:
+                cached_page = cached["result"]
+                cached_ymd = cached["play_ymd"]
+                transition_changed = _public_sentinel_transition(
                     state,
                     site_no,
-                    sentinel_ymd,
+                    True,
+                    "same_theater_nonempty_structured",
                     now,
                 )
-                public_cache[sentinel_key] = sentinel_page
                 public_state_changed = (
-                    public_state_changed
-                    or bool(sentinel_page.get("state_changed"))
-                    or bool(sentinel_page.get("guard_state_changed"))
+                    public_state_changed or transition_changed
+                )
+                result = {
+                    "checked": True,
+                    "healthy": True,
+                    "state": "same_theater_nonempty_structured",
+                    "reason": (
+                        "같은 극장의 다른 날짜에서 비어있지 않은 "
+                        "정상 구조화 응답 확인"
+                    ),
+                    "rows": len(cached_page.get("rows") or []),
+                    "evidence_ymd": cached_ymd,
+                }
+                public_sentinel_cache[site_no] = result
+                print(
+                    f"[{target['theater_name']}] 소스 Sentinel 정상 · "
+                    f"{cached_ymd} 비어있지 않은 구조화 시간표 "
+                    f"{result['rows']}회차로 교차 확인"
+                )
+                return result
+
+            # 당일은 심야에 모든 회차가 끝나 0건이 될 수 있다.
+            # 당일이 신뢰되지 않으면 다음 날까지 한 번 더 교차 확인한다.
+            today_ymd = now.strftime("%Y%m%d")
+            tomorrow_ymd = (now + timedelta(days=1)).strftime("%Y%m%d")
+            sentinel_dates = [today_ymd, tomorrow_ymd]
+            checked_pages = []
+
+            for sentinel_ymd in sentinel_dates:
+                sentinel_key = (site_no, sentinel_ymd)
+                print(
+                    f"[{target['theater_name']}] 소스 Sentinel 확인 · "
+                    f"{sentinel_ymd} 시간표"
                 )
 
-            healthy = _public_sentinel_result_healthy(sentinel_page)
-            reason = (
-                "nonempty_today_timetable"
-                if healthy
-                else sentinel_page.get("error")
-                or f"sentinel_state={sentinel_page.get('state')}"
-            )
+                sentinel_page = public_cache.get(sentinel_key)
+                if sentinel_page is None:
+                    sentinel_page = _fetch_public_page(
+                        state,
+                        site_no,
+                        sentinel_ymd,
+                        now,
+                    )
+                    public_cache[sentinel_key] = sentinel_page
+                    public_state_changed = (
+                        public_state_changed
+                        or bool(sentinel_page.get("state_changed"))
+                        or bool(sentinel_page.get("guard_state_changed"))
+                    )
+
+                checked_pages.append((sentinel_ymd, sentinel_page))
+                if _public_sentinel_result_healthy(sentinel_page):
+                    transition_changed = _public_sentinel_transition(
+                        state,
+                        site_no,
+                        True,
+                        "near_term_nonempty_timetable",
+                        now,
+                    )
+                    public_state_changed = (
+                        public_state_changed or transition_changed
+                    )
+                    result = {
+                        "checked": True,
+                        "healthy": True,
+                        "state": sentinel_page.get("state"),
+                        "reason": "near_term_nonempty_timetable",
+                        "rows": len(sentinel_page.get("rows") or []),
+                        "evidence_ymd": sentinel_ymd,
+                    }
+                    public_sentinel_cache[site_no] = result
+                    print(
+                        f"[{target['theater_name']}] 소스 Sentinel 정상 · "
+                        f"{sentinel_ymd} 시간표 {result['rows']}회차"
+                    )
+                    return result
+
+            last_ymd, last_page = checked_pages[-1]
+            reasons = []
+            for checked_ymd, checked_page in checked_pages:
+                detail = (
+                    checked_page.get("error")
+                    or f"sentinel_state={checked_page.get('state')}"
+                )
+                reasons.append(f"{checked_ymd}:{detail}")
+            reason = "; ".join(reasons)
+
             transition_changed = _public_sentinel_transition(
                 state,
                 site_no,
-                healthy,
+                False,
                 reason,
                 now,
             )
@@ -3358,23 +3483,18 @@ def run_checker(force_all: bool = False):
 
             result = {
                 "checked": True,
-                "healthy": healthy,
-                "state": sentinel_page.get("state"),
+                "healthy": False,
+                "state": last_page.get("state"),
                 "reason": reason,
-                "rows": len(sentinel_page.get("rows") or []),
+                "rows": 0,
+                "evidence_ymd": last_ymd,
             }
             public_sentinel_cache[site_no] = result
 
-            if healthy:
-                print(
-                    f"[{target['theater_name']}] 소스 Sentinel 정상 · "
-                    f"당일 시간표 {result['rows']}회차"
-                )
-            else:
-                print(
-                    f"경고: [{target['theater_name']}] 소스 Sentinel 신뢰 실패 · "
-                    f"{summarize_cgv_error(reason)}"
-                )
+            print(
+                f"경고: [{target['theater_name']}] 소스 Sentinel 신뢰 실패 · "
+                f"{summarize_cgv_error(reason)}"
+            )
             return result
 
         def get_source(target, play_ymd, target_ids=None):
@@ -3473,7 +3593,7 @@ def run_checker(force_all: bool = False):
                             "empty_unconfirmed_sentinel_unhealthy"
                         )
                         public_result["error"] = (
-                            "미래 날짜 0건이며 당일 극장 Sentinel도 "
+                            "미래 날짜 0건이며 극장 Sentinel도 "
                             f"신뢰 실패 ({sentinel.get('reason')})"
                         )
 
@@ -3509,7 +3629,7 @@ def run_checker(force_all: bool = False):
 
                 if public_result.get("empty_unconfirmed"):
                     sentinel_text = (
-                        " · 당일 Sentinel 정상"
+                        " · Sentinel 정상"
                         if sentinel and sentinel.get("checked")
                         else " · Sentinel 주기 사이"
                     )
