@@ -3,8 +3,9 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 DEFAULT_STALE_SECONDS = 11 * 60
@@ -144,6 +145,38 @@ def fetch_alert_runs(repository, token):
     return filtered
 
 
+def fetch_recent_alert_runs(repository, token, now, stale_seconds):
+    """Primary 목록이 stale처럼 보일 때 동적 시간창으로 한 번 더 확인한다.
+
+    GitHub Actions 목록이 드물게 오래된 결과를 반환해 정상 5분 감시를
+    장기 공백으로 오판한 사례가 있어, URL 자체가 매 실행마다 달라지는
+    created 범위 조회를 독립 확인으로 사용한다.
+    """
+    start = now - timedelta(seconds=int(stale_seconds))
+    end = now + timedelta(minutes=1)
+    created = (
+        f"{start.strftime('%Y-%m-%dT%H:%M:%SZ')}.."
+        f"{end.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+    )
+    url = (
+        f"https://api.github.com/repos/{repository}/actions/runs"
+        f"?branch={BRANCH}&event=workflow_dispatch"
+        f"&created={quote(created, safe='')}&per_page=100"
+    )
+    status, payload = github_json("GET", url, token)
+    if status != 200 or not isinstance(payload, dict):
+        raise RuntimeError(f"Unexpected recent-window response: HTTP {status}")
+
+    rows = payload.get("workflow_runs") or []
+    return [
+        row
+        for row in rows
+        if isinstance(row, dict)
+        and str(row.get("path") or "") == f".github/workflows/{WORKFLOW_FILE}"
+        and str(row.get("event") or "") == "workflow_dispatch"
+    ]
+
+
 def dispatch_alert(repository, token, source="github_watchdog"):
     url = (
         f"https://api.github.com/repos/{repository}/actions/workflows/"
@@ -275,8 +308,45 @@ def main():
             "latest": None,
         }
     else:
+        now = utc_now()
         runs = fetch_alert_runs(repository, token)
-        decision = decide_watchdog(runs, utc_now(), stale_seconds)
+        decision = decide_watchdog(runs, now, stale_seconds)
+
+        if decision["action"] == "dispatch":
+            try:
+                recent_runs = fetch_recent_alert_runs(
+                    repository,
+                    token,
+                    now,
+                    stale_seconds,
+                )
+                confirmation = decide_watchdog(
+                    recent_runs,
+                    now,
+                    stale_seconds,
+                )
+                confirmed_latest = confirmation.get("latest") or {}
+                confirmed_age = confirmation.get("age_seconds")
+                confirmed_age_text = (
+                    "-"
+                    if confirmed_age is None
+                    else f"{confirmed_age // 60}m {confirmed_age % 60}s"
+                )
+                print(
+                    "WATCHDOG_CONFIRM "
+                    f"action={confirmation['action']} "
+                    f"reason={confirmation['reason']} "
+                    f"age={confirmed_age_text} "
+                    f"latest_run={confirmed_latest.get('id', '-')}"
+                )
+                if confirmation["action"] in {"healthy", "wait"}:
+                    decision = dict(confirmation)
+                    decision["reason"] = "recent_window_confirmed"
+            except Exception as exc:
+                print(
+                    "WATCHDOG_CONFIRM_WARNING "
+                    f"{type(exc).__name__}: {exc}"
+                )
 
     latest = decision.get("latest") or {}
     age = decision.get("age_seconds")
