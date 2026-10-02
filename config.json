@@ -93,22 +93,6 @@
         "preopen_priority_interval_minutes": 5,
         "preopen_full_interval_minutes": 30
       }
-    },
-    {
-      "id": "tazza-belzebub-ulsan-samsan-test",
-      "enabled": true,
-      "label": "타짜: 벨제붑의 노래",
-      "theater_code": "0128",
-      "theater_name": "CGV 울산삼산",
-      "date": "20261002",
-      "movie_aliases": [
-        "타짜: 벨제붑의 노래",
-        "타짜 벨제붑의 노래",
-        "벨제붑의 노래"
-      ],
-      "screen_keywords": [],
-      "require_sale_open": true,
-      "min_remaining_seats": 1
     }
   ],
   "request": {
