@@ -152,7 +152,17 @@
     ]
   },
   "health": {
-    "pages": {}
+    "pages": {},
+    "run_warning": {
+      "alerted": false,
+      "first_failure_at": "2026-10-02T11:31:18.099145+09:00",
+      "page_ids": [
+        "0128|20261224",
+        "0128|20261228",
+        "0128|20261231"
+      ],
+      "state": "pending"
+    }
   },
   "public_api_guard": {
     "backoff_reason": null,
