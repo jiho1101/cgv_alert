@@ -152,23 +152,15 @@
     ]
   },
   "health": {
-    "pages": {},
-    "run_warning": {
-      "alerted": false,
-      "first_failure_at": "2026-10-02T11:01:26.662590+09:00",
-      "page_ids": [
-        "0128|20261227"
-      ],
-      "state": "pending"
-    }
+    "pages": {}
   },
   "public_api_guard": {
-    "backoff_reason": "adaptive",
-    "backoff_until": "2026-10-02T11:06:26.662590+09:00",
-    "failure_count": 1,
+    "backoff_reason": null,
+    "backoff_until": null,
+    "failure_count": 0,
     "last_failure_at": "2026-10-02T11:01:26.662590+09:00",
-    "last_status": 500,
-    "last_success_at": "2026-10-02T10:11:12.711440+09:00",
+    "last_status": 200,
+    "last_success_at": "2026-10-02T11:06:09.382779+09:00",
     "retry_after_raw": "",
     "version": 1
   },
@@ -1028,12 +1020,11 @@
         ]
       },
       "0128|20261002": {
-        "last_nonempty_at": "2026-10-02T10:56:05.821711+09:00",
-        "last_nonempty_count": 46,
-        "last_nonempty_hash": "40e669a30ca4c488",
+        "last_nonempty_at": "2026-10-02T11:06:09.382779+09:00",
+        "last_nonempty_count": 45,
+        "last_nonempty_hash": "d021366b847beb23",
         "last_nonempty_keys": [
           "30001297|0128|20261002|2026100201282|11:20",
-          "30001314|0128|20261002|2026100201281|10:50",
           "30001314|0128|20261002|2026100201283|13:10",
           "30001314|0128|20261002|2026100201284|16:00",
           "30001314|0128|20261002|2026100201284|19:50",
@@ -1082,19 +1073,6 @@
         "last_nonempty_latest_end_minutes": 1554,
         "last_nonempty_rows": [
           {
-            "end_time": "13:11",
-            "movie_code": "30001314",
-            "movie_name": "암살자(들)",
-            "play_date": "20261002",
-            "remaining_seats": 139,
-            "schedule_id": "2026100201281",
-            "screen": "",
-            "start_time": "10:50",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 193
-          },
-          {
             "end_time": "13:54",
             "movie_code": "30001372",
             "movie_name": "가능한 사랑",
@@ -1112,7 +1090,7 @@
             "movie_code": "30001297",
             "movie_name": "호프",
             "play_date": "20261002",
-            "remaining_seats": 138,
+            "remaining_seats": 140,
             "schedule_id": "2026100201282",
             "screen": "",
             "start_time": "11:20",
@@ -1125,7 +1103,7 @@
             "movie_code": "30001376",
             "movie_name": "부활남-더 레드",
             "play_date": "20261002",
-            "remaining_seats": 137,
+            "remaining_seats": 136,
             "schedule_id": "2026100201282",
             "screen": "",
             "start_time": "11:40",
@@ -1151,7 +1129,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261002",
-            "remaining_seats": 216,
+            "remaining_seats": 214,
             "schedule_id": "2026100201282",
             "screen": "",
             "start_time": "12:20",
@@ -1177,7 +1155,7 @@
             "movie_code": "30001372",
             "movie_name": "가능한 사랑",
             "play_date": "20261002",
-            "remaining_seats": 274,
+            "remaining_seats": 272,
             "schedule_id": "2026100201282",
             "screen": "",
             "start_time": "13:00",
@@ -1190,7 +1168,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261002",
-            "remaining_seats": 126,
+            "remaining_seats": 125,
             "schedule_id": "2026100201283",
             "screen": "",
             "start_time": "13:10",
@@ -1216,7 +1194,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261002",
-            "remaining_seats": 272,
+            "remaining_seats": 273,
             "schedule_id": "2026100201282",
             "screen": "",
             "start_time": "13:40",
@@ -1333,7 +1311,7 @@
             "movie_code": "30001367",
             "movie_name": "극장판 치이카와-인어 섬의 비밀",
             "play_date": "20261002",
-            "remaining_seats": 253,
+            "remaining_seats": 252,
             "schedule_id": "2026100201283",
             "screen": "",
             "start_time": "16:30",
@@ -1580,7 +1558,7 @@
             "movie_code": "30001376",
             "movie_name": "부활남-더 레드",
             "play_date": "20261002",
-            "remaining_seats": 135,
+            "remaining_seats": 137,
             "schedule_id": "2026100201286",
             "screen": "",
             "start_time": "21:30",
