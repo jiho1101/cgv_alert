@@ -1037,28 +1037,14 @@
         ]
       },
       "0128|20261003": {
-        "last_nonempty_at": "2026-10-03T23:21:10.686600+09:00",
-        "last_nonempty_count": 2,
-        "last_nonempty_hash": "12446a56b8162836",
+        "last_nonempty_at": "2026-10-03T23:41:31.580501+09:00",
+        "last_nonempty_count": 1,
+        "last_nonempty_hash": "795415ade6f1cd42",
         "last_nonempty_keys": [
-          "30001323|0128|20261003|2026100301285|23:20",
           "30001516|0128|20261003|2026100301286|23:30"
         ],
-        "last_nonempty_latest_end_minutes": 1582,
+        "last_nonempty_latest_end_minutes": 1549,
         "last_nonempty_rows": [
-          {
-            "end_time": "26:22",
-            "movie_code": "30001323",
-            "movie_name": "오디세이",
-            "play_date": "20261003",
-            "remaining_seats": 29,
-            "schedule_id": "2026100301285",
-            "screen": "",
-            "start_time": "23:20",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 31
-          },
           {
             "end_time": "25:49",
             "movie_code": "30001516",
