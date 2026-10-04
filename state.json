@@ -1061,43 +1061,15 @@
         ]
       },
       "0128|20261004": {
-        "last_nonempty_at": "2026-10-04T23:01:35.827665+09:00",
-        "last_nonempty_count": 4,
-        "last_nonempty_hash": "283e9c33b5daef16",
+        "last_nonempty_at": "2026-10-04T23:11:17.137589+09:00",
+        "last_nonempty_count": 2,
+        "last_nonempty_hash": "582e3e4a70778a2f",
         "last_nonempty_keys": [
-          "30001314|0128|20261004|2026100401285|22:50",
-          "30001314|0128|20261004|2026100401286|22:50",
           "30001314|0128|20261004|2026100401286|23:20",
           "30001342|0128|20261004|2026100401286|23:00"
         ],
         "last_nonempty_latest_end_minutes": 1541,
         "last_nonempty_rows": [
-          {
-            "end_time": "25:11",
-            "movie_code": "30001314",
-            "movie_name": "암살자(들)",
-            "play_date": "20261004",
-            "remaining_seats": 172,
-            "schedule_id": "2026100401286",
-            "screen": "",
-            "start_time": "22:50",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 193
-          },
-          {
-            "end_time": "25:11",
-            "movie_code": "30001314",
-            "movie_name": "암살자(들)",
-            "play_date": "20261004",
-            "remaining_seats": 29,
-            "schedule_id": "2026100401285",
-            "screen": "",
-            "start_time": "22:50",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 31
-          },
           {
             "end_time": "25:19",
             "movie_code": "30001342",
@@ -1116,7 +1088,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261004",
-            "remaining_seats": 285,
+            "remaining_seats": 281,
             "schedule_id": "2026100401286",
             "screen": "",
             "start_time": "23:20",
