@@ -1061,9 +1061,9 @@
         ]
       },
       "0128|20261004": {
-        "last_nonempty_at": "2026-10-04T20:51:13.895972+09:00",
-        "last_nonempty_count": 11,
-        "last_nonempty_hash": "422c3adef9a06f01",
+        "last_nonempty_at": "2026-10-04T21:01:24.215588+09:00",
+        "last_nonempty_count": 10,
+        "last_nonempty_hash": "88ef5d649a2488ae",
         "last_nonempty_keys": [
           "30001314|0128|20261004|2026100401285|22:50",
           "30001314|0128|20261004|2026100401286|22:20",
@@ -1074,24 +1074,10 @@
           "30001342|0128|20261004|2026100401286|21:10",
           "30001342|0128|20261004|2026100401286|23:00",
           "30001351|0128|20261004|2026100401286|22:00",
-          "30001367|0128|20261004|2026100401285|20:40",
           "30001517|0128|20261004|2026100401285|21:35"
         ],
         "last_nonempty_latest_end_minutes": 1542,
         "last_nonempty_rows": [
-          {
-            "end_time": "22:29",
-            "movie_code": "30001367",
-            "movie_name": "극장판 치이카와-인어 섬의 비밀",
-            "play_date": "20261004",
-            "remaining_seats": 62,
-            "schedule_id": "2026100401285",
-            "screen": "",
-            "start_time": "20:40",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 193
-          },
           {
             "end_time": "23:29",
             "movie_code": "30001342",
@@ -1136,7 +1122,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261004",
-            "remaining_seats": 271,
+            "remaining_seats": 265,
             "schedule_id": "2026100401285",
             "screen": "",
             "start_time": "22:10",
@@ -1162,7 +1148,7 @@
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20261004",
-            "remaining_seats": 399,
+            "remaining_seats": 397,
             "schedule_id": "2026100401285",
             "screen": "",
             "start_time": "22:40",
