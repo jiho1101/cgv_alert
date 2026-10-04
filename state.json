@@ -1061,9 +1061,9 @@
         ]
       },
       "0128|20261004": {
-        "last_nonempty_at": "2026-10-04T21:51:16.057808+09:00",
-        "last_nonempty_count": 8,
-        "last_nonempty_hash": "94be6d0414927431",
+        "last_nonempty_at": "2026-10-04T22:21:18.995939+09:00",
+        "last_nonempty_count": 7,
+        "last_nonempty_hash": "e0330205a5adb3d8",
         "last_nonempty_keys": [
           "30001314|0128|20261004|2026100401285|22:50",
           "30001314|0128|20261004|2026100401286|22:20",
@@ -1071,30 +1071,16 @@
           "30001314|0128|20261004|2026100401286|23:20",
           "30001323|0128|20261004|2026100401285|22:40",
           "30001342|0128|20261004|2026100401285|22:10",
-          "30001342|0128|20261004|2026100401286|23:00",
-          "30001351|0128|20261004|2026100401286|22:00"
+          "30001342|0128|20261004|2026100401286|23:00"
         ],
         "last_nonempty_latest_end_minutes": 1542,
         "last_nonempty_rows": [
-          {
-            "end_time": "23:43",
-            "movie_code": "30001351",
-            "movie_name": "빈집의 연인들",
-            "play_date": "20261004",
-            "remaining_seats": 144,
-            "schedule_id": "2026100401286",
-            "screen": "",
-            "start_time": "22:00",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 146
-          },
           {
             "end_time": "24:29",
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261004",
-            "remaining_seats": 245,
+            "remaining_seats": 242,
             "schedule_id": "2026100401285",
             "screen": "",
             "start_time": "22:10",
@@ -1120,7 +1106,7 @@
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20261004",
-            "remaining_seats": 390,
+            "remaining_seats": 386,
             "schedule_id": "2026100401285",
             "screen": "",
             "start_time": "22:40",
@@ -1133,7 +1119,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261004",
-            "remaining_seats": 184,
+            "remaining_seats": 179,
             "schedule_id": "2026100401286",
             "screen": "",
             "start_time": "22:50",
@@ -1159,7 +1145,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261004",
-            "remaining_seats": 206,
+            "remaining_seats": 189,
             "schedule_id": "2026100401286",
             "screen": "",
             "start_time": "23:00",
