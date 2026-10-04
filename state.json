@@ -1061,34 +1061,20 @@
         ]
       },
       "0128|20261004": {
-        "last_nonempty_at": "2026-10-04T23:11:17.137589+09:00",
-        "last_nonempty_count": 2,
-        "last_nonempty_hash": "582e3e4a70778a2f",
+        "last_nonempty_at": "2026-10-04T23:21:17.465769+09:00",
+        "last_nonempty_count": 1,
+        "last_nonempty_hash": "85c15050e392152d",
         "last_nonempty_keys": [
-          "30001314|0128|20261004|2026100401286|23:20",
-          "30001342|0128|20261004|2026100401286|23:00"
+          "30001314|0128|20261004|2026100401286|23:20"
         ],
         "last_nonempty_latest_end_minutes": 1541,
         "last_nonempty_rows": [
-          {
-            "end_time": "25:19",
-            "movie_code": "30001342",
-            "movie_name": "타짜-벨제붑의 노래",
-            "play_date": "20261004",
-            "remaining_seats": 169,
-            "schedule_id": "2026100401286",
-            "screen": "",
-            "start_time": "23:00",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 224
-          },
           {
             "end_time": "25:41",
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261004",
-            "remaining_seats": 281,
+            "remaining_seats": 279,
             "schedule_id": "2026100401286",
             "screen": "",
             "start_time": "23:20",
