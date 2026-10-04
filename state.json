@@ -157,18 +157,19 @@
       "alerted": false,
       "first_failure_at": "2026-10-05T00:26:17.319773+09:00",
       "page_ids": [
-        "0128|20261218"
+        "0128|20261218",
+        "0128|20261230"
       ],
       "state": "pending"
     }
   },
   "public_api_guard": {
     "backoff_reason": "adaptive",
-    "backoff_until": "2026-10-05T00:31:17.319773+09:00",
+    "backoff_until": "2026-10-05T00:36:34.287754+09:00",
     "failure_count": 1,
-    "last_failure_at": "2026-10-05T00:26:17.319773+09:00",
+    "last_failure_at": "2026-10-05T00:31:34.287754+09:00",
     "last_status": 500,
-    "last_success_at": "2026-10-05T00:06:22.733026+09:00",
+    "last_success_at": "2026-10-05T00:31:34.287754+09:00",
     "retry_after_raw": "",
     "version": 1
   },
