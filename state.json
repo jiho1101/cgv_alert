@@ -152,14 +152,22 @@
     ]
   },
   "health": {
-    "pages": {}
+    "pages": {},
+    "run_warning": {
+      "alerted": false,
+      "first_failure_at": "2026-10-05T20:31:25.687261+09:00",
+      "page_ids": [
+        "0128|20261230"
+      ],
+      "state": "pending"
+    }
   },
   "public_api_guard": {
-    "backoff_reason": null,
-    "backoff_until": null,
-    "failure_count": 0,
-    "last_failure_at": "2026-10-05T15:31:19.880367+09:00",
-    "last_status": 200,
+    "backoff_reason": "adaptive",
+    "backoff_until": "2026-10-05T20:36:25.687261+09:00",
+    "failure_count": 1,
+    "last_failure_at": "2026-10-05T20:31:25.687261+09:00",
+    "last_status": 500,
     "last_success_at": "2026-10-05T15:36:13.696323+09:00",
     "retry_after_raw": "",
     "version": 1
@@ -1085,11 +1093,10 @@
         ]
       },
       "0128|20261005": {
-        "last_nonempty_at": "2026-10-05T19:51:17.637551+09:00",
-        "last_nonempty_count": 12,
-        "last_nonempty_hash": "02c264dc381182c7",
+        "last_nonempty_at": "2026-10-05T20:31:25.687261+09:00",
+        "last_nonempty_count": 11,
+        "last_nonempty_hash": "8bca10b5e4222ae3",
         "last_nonempty_keys": [
-          "30001314|0128|20261005|2026100501285|20:10",
           "30001314|0128|20261005|2026100501286|22:10",
           "30001314|0128|20261005|2026100501286|22:50",
           "30001323|0128|20261005|2026100501285|22:40",
@@ -1105,24 +1112,11 @@
         "last_nonempty_latest_end_minutes": 1542,
         "last_nonempty_rows": [
           {
-            "end_time": "22:31",
-            "movie_code": "30001314",
-            "movie_name": "암살자(들)",
-            "play_date": "20261005",
-            "remaining_seats": 250,
-            "schedule_id": "2026100501285",
-            "screen": "",
-            "start_time": "20:10",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 295
-          },
-          {
             "end_time": "22:39",
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261005",
-            "remaining_seats": 165,
+            "remaining_seats": 158,
             "schedule_id": "2026100501285",
             "screen": "",
             "start_time": "20:20",
@@ -1148,7 +1142,7 @@
             "movie_code": "30001367",
             "movie_name": "극장판 치이카와-인어 섬의 비밀",
             "play_date": "20261005",
-            "remaining_seats": 172,
+            "remaining_seats": 170,
             "schedule_id": "2026100501286",
             "screen": "",
             "start_time": "21:25",
@@ -1187,7 +1181,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261005",
-            "remaining_seats": 127,
+            "remaining_seats": 125,
             "schedule_id": "2026100501286",
             "screen": "",
             "start_time": "21:40",
@@ -1200,7 +1194,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261005",
-            "remaining_seats": 272,
+            "remaining_seats": 266,
             "schedule_id": "2026100501286",
             "screen": "",
             "start_time": "22:10",
@@ -1213,7 +1207,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261005",
-            "remaining_seats": 285,
+            "remaining_seats": 283,
             "schedule_id": "2026100501286",
             "screen": "",
             "start_time": "22:20",
@@ -1226,7 +1220,7 @@
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20261005",
-            "remaining_seats": 435,
+            "remaining_seats": 436,
             "schedule_id": "2026100501285",
             "screen": "",
             "start_time": "22:40",
@@ -1252,7 +1246,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261005",
-            "remaining_seats": 221,
+            "remaining_seats": 217,
             "schedule_id": "2026100501286",
             "screen": "",
             "start_time": "23:00",
