@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -7,12 +8,46 @@ import checker
 KST = ZoneInfo("Asia/Seoul")
 
 
+def fetch_with_transient_retry(state, site_no, play_ymd, now, attempts=3):
+    """Smoke에서만 일시 5xx/네트워크 실패를 짧게 재확인한다.
+
+    200 구조 오류, 4xx, 429는 감추지 않고 즉시 실패시켜 실제 계약 변경이나
+    호출 제한을 그대로 드러낸다.
+    """
+    result = None
+    for attempt in range(1, attempts + 1):
+        result = checker._fetch_public_page(
+            state, site_no, play_ymd, now
+        )
+        if result.get("accepted"):
+            return result
+
+        status = result.get("status")
+        transient = status is None or (
+            isinstance(status, int) and 500 <= status <= 599
+        )
+        if not transient or attempt >= attempts:
+            return result
+
+        delay = 3 * attempt
+        print(
+            "PRIMARY_SMOKE transient retry "
+            f"{attempt}/{attempts} · {play_ymd} · "
+            f"status={status} · {delay}s 대기"
+        )
+        time.sleep(delay)
+
+    return result or {}
+
+
 def main():
     now = datetime.now(KST)
     state = {"version": 2}
     today = now.strftime("%Y%m%d")
 
-    live = checker._fetch_public_page(state, "0128", today, now)
+    live = fetch_with_transient_retry(
+        state, "0128", today, now
+    )
     if not live.get("accepted"):
         raise RuntimeError(
             "production primary live source rejected: "
@@ -45,7 +80,7 @@ def main():
     if len(keys) != len(set(keys)):
         raise RuntimeError("production public parser generated duplicate keys")
 
-    future = checker._fetch_public_page(
+    future = fetch_with_transient_retry(
         state, "0128", "20261218", now
     )
     if not future.get("accepted"):
