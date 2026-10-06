@@ -2,10 +2,12 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "17";
+const COMMAND_VERSION = "18";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
+const GITHUB_DISPATCH_PROBE_KEY = "github_dispatch_probe_v1";
+const DISPATCH_ACK_GRACE_MS = 4 * 60 * 1000;
 
 const DISCORD_COMMANDS = [
   {
@@ -1087,7 +1089,40 @@ async function performEmergencyCheck(env, dryRun = false) {
   };
 }
 
-async function maybeRunEmergencyFallback(env, dispatchError = null) {
+
+async function previousDispatchGapReason(env) {
+  const [probeRow, statusRow] = await Promise.all([
+    getState(env, GITHUB_DISPATCH_PROBE_KEY),
+    getState(env, "status"),
+  ]);
+  const probe = probeRow?.value;
+  if (!probe?.success || !probe?.dispatched_at) return null;
+
+  const dispatchedAt = Date.parse(probe.dispatched_at);
+  if (!Number.isFinite(dispatchedAt)) return null;
+  if (Date.now() - dispatchedAt < DISPATCH_ACK_GRACE_MS) return null;
+
+  const lastRunAt = Date.parse(statusRow?.value?.last_run_at || "");
+  if (!Number.isFinite(lastRunAt) || lastRunAt < dispatchedAt) {
+    return "previous_dispatch_unacknowledged";
+  }
+  return null;
+}
+
+async function saveDispatchProbe(env, dispatchedAt, success, error = null) {
+  await putState(env, GITHUB_DISPATCH_PROBE_KEY, {
+    dispatched_at: dispatchedAt,
+    success: Boolean(success),
+    error: error ? String(error).slice(0, 500) : null,
+    recorded_at: new Date().toISOString(),
+  });
+}
+
+async function maybeRunEmergencyFallback(
+  env,
+  dispatchError = null,
+  forceReason = null,
+) {
   const [statusRow, emergencyRow] = await Promise.all([
     getState(env, "status"),
     getState(env, EMERGENCY_STATE_KEY),
@@ -1100,6 +1135,7 @@ async function maybeRunEmergencyFallback(env, dispatchError = null) {
     : Number.POSITIVE_INFINITY;
   if (
     !dispatchError &&
+    !forceReason &&
     Number.isFinite(lastRun) &&
     age < EMERGENCY_STALE_MS
   ) {
@@ -1116,7 +1152,9 @@ async function maybeRunEmergencyFallback(env, dispatchError = null) {
   const result = await performEmergencyCheck(env, false);
   return {
     ...result,
-    reason: dispatchError ? "dispatch_failed" : "github_status_stale",
+    reason:
+      forceReason ||
+      (dispatchError ? "dispatch_failed" : "github_status_stale"),
     github_age_seconds: Number.isFinite(age)
       ? Math.floor(age / 1000)
       : null,
@@ -1522,25 +1560,52 @@ export default {
           console.error("Discord command setup failed", error);
         }
 
-        let dispatchError = null;
+        let previousGapReason = null;
         try {
-          await triggerGitHub(env);
-        } catch (error) {
-          dispatchError = error;
-          console.error("CGV Alert workflow dispatch failed", error);
-        }
-
-        try {
+          previousGapReason = await previousDispatchGapReason(env);
           const emergency = await maybeRunEmergencyFallback(
             env,
-            dispatchError,
+            null,
+            previousGapReason,
           );
           console.log(
-            "CGV emergency fallback",
+            "CGV emergency pre-dispatch check",
             JSON.stringify(emergency),
           );
         } catch (error) {
-          console.error("CGV emergency fallback failed", error);
+          console.error("CGV emergency pre-dispatch check failed", error);
+        }
+
+        const dispatchedAt = new Date().toISOString();
+        try {
+          await triggerGitHub(env);
+          await saveDispatchProbe(env, dispatchedAt, true);
+        } catch (error) {
+          console.error("CGV Alert workflow dispatch failed", error);
+          try {
+            await saveDispatchProbe(
+              env,
+              dispatchedAt,
+              false,
+              error,
+            );
+          } catch (probeError) {
+            console.error("GitHub dispatch probe save failed", probeError);
+          }
+
+          try {
+            const emergency = await maybeRunEmergencyFallback(
+              env,
+              error,
+              "current_dispatch_failed",
+            );
+            console.log(
+              "CGV emergency dispatch-failure check",
+              JSON.stringify(emergency),
+            );
+          } catch (fallbackError) {
+            console.error("CGV emergency fallback failed", fallbackError);
+          }
         }
       })(),
     );
