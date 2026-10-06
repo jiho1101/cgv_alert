@@ -260,6 +260,8 @@ jobs:
               raise RuntimeError(str(payload))
           if not payload.get("structural_valid"):
               raise RuntimeError("Emergency fallback source structure invalid")
+          if not payload.get("notification_ready"):
+              raise RuntimeError("Emergency fallback Discord destination unavailable")
           print(
               "EMERGENCY_FALLBACK_SMOKE PASS · "
               f"pages={len(payload.get('source_pages') or [])} · "
