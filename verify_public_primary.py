@@ -112,8 +112,8 @@ def main():
             )
 
 
-    print("PRODUCTION_DRY_RUN START · force_all=True · Discord secrets not provided")
-    checker.run_checker(force_all=True)
+    print("PRODUCTION_DRY_RUN START · force_all=False · 핵심 주기 Production 경로 검증")
+    checker.run_checker(force_all=False)
     print("PRODUCTION_DRY_RUN PASS")
 
     print(
