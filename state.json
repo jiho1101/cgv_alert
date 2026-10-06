@@ -1123,28 +1123,14 @@
         ]
       },
       "0128|20261006": {
-        "last_nonempty_at": "2026-10-06T23:00:57.791956+09:00",
-        "last_nonempty_count": 2,
-        "last_nonempty_hash": "f2e6ec3a09116892",
+        "last_nonempty_at": "2026-10-06T23:10:55.190772+09:00",
+        "last_nonempty_count": 1,
+        "last_nonempty_hash": "005c87adf54abcf5",
         "last_nonempty_keys": [
-          "30001342|0128|20261006|2026100601286|23:00",
-          "30001376|0128|20261006|2026100601287|22:50"
+          "30001342|0128|20261006|2026100601286|23:00"
         ],
         "last_nonempty_latest_end_minutes": 1519,
         "last_nonempty_rows": [
-          {
-            "end_time": "24:41",
-            "movie_code": "30001376",
-            "movie_name": "부활남-더 레드",
-            "play_date": "20261006",
-            "remaining_seats": 135,
-            "schedule_id": "2026100601287",
-            "screen": "",
-            "start_time": "22:50",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 168
-          },
           {
             "end_time": "25:19",
             "movie_code": "30001342",
