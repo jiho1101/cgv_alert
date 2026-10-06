@@ -1123,32 +1123,18 @@
         ]
       },
       "0128|20261006": {
-        "last_nonempty_at": "2026-10-06T21:30:55.990275+09:00",
-        "last_nonempty_count": 6,
-        "last_nonempty_hash": "fdb2d0ede23ce2a7",
+        "last_nonempty_at": "2026-10-06T21:50:53.969977+09:00",
+        "last_nonempty_count": 5,
+        "last_nonempty_hash": "c715cf04bcf80d92",
         "last_nonempty_keys": [
           "30001314|0128|20261006|2026100601285|22:00",
           "30001323|0128|20261006|2026100601285|22:40",
-          "30001342|0128|20261006|2026100601285|21:30",
           "30001342|0128|20261006|2026100601286|22:10",
           "30001342|0128|20261006|2026100601286|23:00",
           "30001376|0128|20261006|2026100601287|22:50"
         ],
         "last_nonempty_latest_end_minutes": 1542,
         "last_nonempty_rows": [
-          {
-            "end_time": "23:49",
-            "movie_code": "30001342",
-            "movie_name": "타짜-벨제붑의 노래",
-            "play_date": "20261006",
-            "remaining_seats": 270,
-            "schedule_id": "2026100601285",
-            "screen": "",
-            "start_time": "21:30",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 295
-          },
           {
             "end_time": "24:21",
             "movie_code": "30001314",
@@ -1180,7 +1166,7 @@
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20261006",
-            "remaining_seats": 439,
+            "remaining_seats": 435,
             "schedule_id": "2026100601285",
             "screen": "",
             "start_time": "22:40",
@@ -1206,7 +1192,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261006",
-            "remaining_seats": 134,
+            "remaining_seats": 132,
             "schedule_id": "2026100601286",
             "screen": "",
             "start_time": "23:00",
