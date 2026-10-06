@@ -526,6 +526,11 @@ function mergeStatus(previous, incoming) {
         : (Array.isArray(old.priority_session_keys)
           ? old.priority_session_keys
           : []),
+      priority_seen_keys: Array.isArray(target.priority_seen_keys)
+        ? target.priority_seen_keys
+        : (Array.isArray(old.priority_seen_keys)
+          ? old.priority_seen_keys
+          : []),
       priority_session_snapshot_at:
         target.priority_session_snapshot_at ||
         old.priority_session_snapshot_at ||
@@ -711,6 +716,23 @@ function emergencyNormalize(text) {
     .replace(/[^0-9a-z가-힣]/gi, "");
 }
 
+function emergencyTodayYmd() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return String(values.year || "") +
+    String(values.month || "") +
+    String(values.day || "");
+}
+
 function emergencyInt(value, fallback = 0) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -718,6 +740,7 @@ function emergencyInt(value, fallback = 0) {
 
 function emergencyTargets(status) {
   const out = [];
+  const today = emergencyTodayYmd();
   for (const raw of status?.targets || []) {
     const theaterCode = String(raw?.theater_code || "");
     const dates = Array.isArray(raw?.priority_dates) ? raw.priority_dates : [];
@@ -727,7 +750,7 @@ function emergencyTargets(status) {
     if (!/^\d{4}$/.test(theaterCode) || !dates.length) continue;
     for (const value of dates) {
       const playDate = String(value || "");
-      if (!/^\d{8}$/.test(playDate)) continue;
+      if (!/^\d{8}$/.test(playDate) || playDate < today) continue;
       out.push({
         id: String(raw.id || ""),
         label: String(raw.label || raw.id || "영화"),
@@ -743,6 +766,9 @@ function emergencyTargets(status) {
           : [],
         priority_session_keys: Array.isArray(raw.priority_session_keys)
           ? raw.priority_session_keys.map(String)
+          : null,
+        priority_seen_keys: Array.isArray(raw.priority_seen_keys)
+          ? raw.priority_seen_keys.map(String)
           : null,
       });
     }
@@ -918,6 +944,42 @@ async function emergencyDiscordChannel(env) {
   return null;
 }
 
+async function emergencyOwnerDmChannel(env) {
+  if (!env.DISCORD_BOT_TOKEN) return null;
+  const guild = await getState(env, "discord_guild");
+  const guildId = String(guild?.value?.guild_id || "");
+  if (!guildId) return null;
+
+  try {
+    const guildResponse = await fetch(
+      "https://discord.com/api/v10/guilds/" + guildId,
+      { headers: { Authorization: "Bot " + env.DISCORD_BOT_TOKEN } },
+    );
+    if (!guildResponse.ok) return null;
+    const guildData = await guildResponse.json();
+    const ownerId = String(guildData?.owner_id || "");
+    if (!ownerId) return null;
+
+    const dmResponse = await fetch(
+      "https://discord.com/api/v10/users/@me/channels",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bot " + env.DISCORD_BOT_TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ recipient_id: ownerId }),
+      },
+    );
+    if (!dmResponse.ok) return null;
+    const dmData = await dmResponse.json();
+    return String(dmData?.id || "") || null;
+  } catch (error) {
+    console.error("Emergency owner DM lookup failed", error);
+    return null;
+  }
+}
+
 async function emergencySendDiscord(env, items) {
   const embeds = items.slice(0, 10).map((item) => ({
     title: "🚨 CGV 비상 감시 · 예매 오픈 감지",
@@ -950,10 +1012,28 @@ async function emergencySendDiscord(env, items) {
     if (webhook.status === 200 || webhook.status === 204) return true;
   }
 
+  if (!env.DISCORD_BOT_TOKEN) return false;
+
   const channelId = await emergencyDiscordChannel(env);
-  if (!channelId || !env.DISCORD_BOT_TOKEN) return false;
-  const response = await fetch(
-    "https://discord.com/api/v10/channels/" + channelId + "/messages",
+  if (channelId) {
+    const response = await fetch(
+      "https://discord.com/api/v10/channels/" + channelId + "/messages",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bot " + env.DISCORD_BOT_TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ embeds }),
+      },
+    );
+    if (response.ok) return true;
+  }
+
+  const dmChannelId = await emergencyOwnerDmChannel(env);
+  if (!dmChannelId) return false;
+  const dmResponse = await fetch(
+    "https://discord.com/api/v10/channels/" + dmChannelId + "/messages",
     {
       method: "POST",
       headers: {
@@ -963,7 +1043,7 @@ async function emergencySendDiscord(env, items) {
       body: JSON.stringify({ embeds }),
     },
   );
-  return response.ok;
+  return dmResponse.ok;
 }
 
 async function performEmergencyCheck(env, dryRun = false) {
@@ -1015,10 +1095,8 @@ async function performEmergencyCheck(env, dryRun = false) {
         ...(baseline[target.id] || []),
         ...(notified[target.id] || []),
       ]);
-      if (Array.isArray(target.priority_session_keys)) {
-        for (const key of target.priority_session_keys) base.add(key);
-      } else if (base.size === 0) {
-        for (const session of sessions) base.add(session.key);
+      if (Array.isArray(target.priority_seen_keys)) {
+        for (const key of target.priority_seen_keys) base.add(key);
       }
       const fresh = sessions.filter((session) => !base.has(session.key));
       if (!fresh.length) {
@@ -1035,14 +1113,31 @@ async function performEmergencyCheck(env, dryRun = false) {
   }
 
   if (dryRun) {
+    const [channelRow, guildRow] = await Promise.all([
+      getState(env, "discord_alert_channel"),
+      getState(env, "discord_guild"),
+    ]);
+    const notificationReady = Boolean(
+      env.DISCORD_WEBHOOK_URL ||
+      (
+        env.DISCORD_BOT_TOKEN &&
+        (
+          channelRow?.value?.channel_id ||
+          guildRow?.value?.guild_id
+        )
+      )
+    );
     return {
-      ok: structuralValid,
+      ok: structuralValid && notificationReady,
       dry_run: true,
       structural_valid: structuralValid,
+      notification_ready: notificationReady,
       source_pages: pageResults,
       target_results: targetResults,
       would_notify_count: newItems.length,
-      error: firstError,
+      error: firstError || (
+        notificationReady ? null : "Discord emergency destination unavailable"
+      ),
     };
   }
 
