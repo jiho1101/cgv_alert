@@ -440,6 +440,41 @@ def build_runtime_snapshot(
         if last_error and recent_error is None:
             recent_error = last_error
 
+        priority_dates = _priority_dates_for_target(target)
+        priority_primary_success = False
+        for page_id, result in page_results.items():
+            parts = page_id.split("|", 1)
+            if (
+                len(parts) == 2
+                and parts[0] == theater_code
+                and parts[1] in priority_dates
+                and result.get("ok")
+                and result.get("source_mode") == "public_primary"
+            ):
+                priority_primary_success = True
+                break
+
+        priority_session_keys = None
+        if priority_primary_success:
+            priority_session_keys = sorted(
+                {
+                    str(row.get("_key"))
+                    for play_ymd, rows in (found.get(target_id) or {}).items()
+                    if play_ymd in priority_dates
+                    for row in rows
+                    if row.get("_key") and not row.get("_fallback")
+                }
+            )
+
+        pinned_movie_code = str(
+            (
+                (state.get("public_movie_codes") or {})
+                .get(target_id, {})
+                .get("movie_code")
+                or ""
+            )
+        ).strip() or None
+
         target_items.append(
             {
                 "id": target_id,
@@ -465,6 +500,24 @@ def build_runtime_snapshot(
                 "api_guard_active": bool(guard_active),
                 "api_guard_until": guard_until,
                 "checked_page_count": len(matching_results),
+                "theater_code": theater_code,
+                "priority_dates": sorted(priority_dates),
+                "movie_aliases": list(
+                    target.get("movie_aliases")
+                    or [target.get("label", target_id)]
+                ),
+                "screen_keywords": list(target.get("screen_keywords") or []),
+                "require_sale_open": bool(
+                    target.get("require_sale_open", False)
+                ),
+                "min_remaining_seats": int(
+                    target.get("min_remaining_seats", 0) or 0
+                ),
+                "pinned_movie_code": pinned_movie_code,
+                "priority_session_keys": priority_session_keys,
+                "priority_session_snapshot_at": (
+                    now.isoformat() if priority_primary_success else None
+                ),
             }
         )
 
@@ -490,6 +543,57 @@ def write_runtime_status(snapshot):
     with RUNTIME_STATUS_PATH.open("w", encoding="utf-8") as f:
         json.dump(snapshot, f, ensure_ascii=False, indent=2)
         f.write("\n")
+
+
+def merge_emergency_seen_from_worker(state) -> bool:
+    """Cloudflare 비상 감시가 이미 알린 구조화 회차를 seen에 합친다."""
+    token = os.getenv("STATUS_API_TOKEN", "").strip()
+    browser_url = os.getenv("BROWSER_CHECK_URL", "").strip()
+    if not token or not browser_url:
+        return False
+
+    try:
+        parsed = urlparse(browser_url)
+        if not parsed.scheme or not parsed.netloc:
+            return False
+        endpoint = f"{parsed.scheme}://{parsed.netloc}/api/emergency-seen"
+        response = requests.get(
+            endpoint,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        if response.status_code != 200:
+            print(
+                "Cloudflare 비상 감시 seen 동기화 건너뜀 · "
+                f"HTTP {response.status_code}"
+            )
+            return False
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        print(
+            "Cloudflare 비상 감시 seen 동기화 경고 · "
+            f"{type(exc).__name__}"
+        )
+        return False
+
+    notified = payload.get("notified") if isinstance(payload, dict) else None
+    if not isinstance(notified, dict):
+        return False
+
+    seen_root = state.setdefault("seen", {})
+    changed = False
+    for target_id, keys in notified.items():
+        if not isinstance(keys, list):
+            continue
+        incoming = {str(key) for key in keys if str(key).strip()}
+        if not incoming:
+            continue
+        current = set(seen_root.get(str(target_id), []))
+        merged = current | incoming
+        if merged != current:
+            seen_root[str(target_id)] = sorted(merged)[-1000:]
+            changed = True
+    return changed
 
 
 def normalize(text: str) -> str:
@@ -3959,6 +4063,13 @@ def run_checker(force_all: bool = False):
                 config, state, targets, now, page_results, found=found
             )
         )
+
+        if merge_emergency_seen_from_worker(state):
+            save_state(state)
+            print(
+                "Cloudflare 비상 감시 알림 키를 seen에 합쳤습니다 · "
+                "GitHub 복구 뒤 중복 알림 방지"
+            )
 
         notification_items = []
         for target_id, target in target_by_id.items():

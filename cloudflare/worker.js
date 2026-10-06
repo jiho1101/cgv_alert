@@ -2,8 +2,10 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "16";
+const COMMAND_VERSION = "17";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
+const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
+const EMERGENCY_STALE_MS = 8 * 60 * 1000;
 
 const DISCORD_COMMANDS = [
   {
@@ -333,6 +335,15 @@ async function rememberGuildAndRegister(env, interaction) {
       });
     }
 
+    const channelId = String(interaction?.channel_id || "").trim();
+    if (channelId) {
+      await putState(env, "discord_alert_channel", {
+        guild_id: guildId,
+        channel_id: channelId,
+        learned_at: new Date().toISOString(),
+      });
+    }
+
     const current = await getState(
       env,
       `discord_commands:guild:${guildId}`,
@@ -508,6 +519,19 @@ function mergeStatus(previous, incoming) {
         target.last_primary_success_at ||
         old.last_primary_success_at ||
         null,
+      priority_session_keys: Array.isArray(target.priority_session_keys)
+        ? target.priority_session_keys
+        : (Array.isArray(old.priority_session_keys)
+          ? old.priority_session_keys
+          : []),
+      priority_session_snapshot_at:
+        target.priority_session_snapshot_at ||
+        old.priority_session_snapshot_at ||
+        null,
+      pinned_movie_code:
+        target.pinned_movie_code ||
+        old.pinned_movie_code ||
+        null,
     };
   });
 
@@ -679,6 +703,440 @@ async function handleBrowserCheck(request, env) {
   });
 }
 
+
+function emergencyNormalize(text) {
+  return String(text || "").toLocaleLowerCase("ko-KR")
+    .replace(/[^0-9a-z가-힣]/gi, "");
+}
+
+function emergencyInt(value, fallback = 0) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function emergencyTargets(status) {
+  const out = [];
+  for (const raw of status?.targets || []) {
+    const theaterCode = String(raw?.theater_code || "");
+    const dates = Array.isArray(raw?.priority_dates) ? raw.priority_dates : [];
+    const aliases = Array.isArray(raw?.movie_aliases)
+      ? raw.movie_aliases
+      : [raw?.label || ""];
+    if (!/^\d{4}$/.test(theaterCode) || !dates.length) continue;
+    for (const value of dates) {
+      const playDate = String(value || "");
+      if (!/^\d{8}$/.test(playDate)) continue;
+      out.push({
+        id: String(raw.id || ""),
+        label: String(raw.label || raw.id || "영화"),
+        theater_code: theaterCode,
+        theater_name: String(raw.theater_name || "CGV"),
+        play_date: playDate,
+        aliases: aliases.map(emergencyNormalize).filter(Boolean),
+        pinned_movie_code: String(raw.pinned_movie_code || ""),
+        require_sale_open: Boolean(raw.require_sale_open),
+        min_remaining_seats: emergencyInt(raw.min_remaining_seats, 0),
+        screen_keywords: Array.isArray(raw.screen_keywords)
+          ? raw.screen_keywords
+          : [],
+        priority_session_keys: Array.isArray(raw.priority_session_keys)
+          ? raw.priority_session_keys.map(String)
+          : null,
+      });
+    }
+  }
+  return out.filter((target) => target.id && target.aliases.length);
+}
+
+function emergencyStart(value) {
+  let raw = String(value || "").replace(/:/g, "");
+  if (!/^\d{3,4}$/.test(raw)) return null;
+  raw = raw.padStart(4, "0");
+  const hour = emergencyInt(raw.slice(0, 2), -1);
+  const minute = emergencyInt(raw.slice(2), -1);
+  if (hour < 0 || hour > 29 || minute < 0 || minute > 59) return null;
+  return String(hour).padStart(2, "0") + ":" + String(minute).padStart(2, "0");
+}
+
+async function emergencyFetchPage(theaterCode, playDate) {
+  const url = new URL("https://mcp.aka.page/api/cgv/timetable");
+  url.searchParams.set("playDate", playDate);
+  url.searchParams.set("theaterCode", theaterCode);
+  url.searchParams.set("limit", "200");
+  let response;
+  let payload = null;
+  try {
+    response = await fetch(url.toString(), {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15000),
+    });
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+  } catch (error) {
+    return { ok: false, status: null, rows: [], error: String(error) };
+  }
+
+  let rawRows = null;
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    if (Array.isArray(payload.data)) rawRows = payload.data;
+    else if (payload.data && typeof payload.data === "object") {
+      for (const key of ["timetable", "items", "results"]) {
+        if (Array.isArray(payload.data[key])) {
+          rawRows = payload.data[key];
+          break;
+        }
+      }
+    }
+    if (rawRows === null) {
+      for (const key of ["timetable", "items", "results"]) {
+        if (Array.isArray(payload[key])) {
+          rawRows = payload[key];
+          break;
+        }
+      }
+    }
+  }
+  if (response.status !== 200 || rawRows === null) {
+    return {
+      ok: false,
+      status: response.status,
+      rows: [],
+      error: "invalid response/status",
+    };
+  }
+
+  const rows = rawRows.map((row) => ({
+    movie_code: String(row?.movieCode || row?.movNo || ""),
+    movie_name: String(row?.movieName || row?.movNm || row?.prodNm || ""),
+    theater_code: String(row?.theaterCode || row?.siteNo || ""),
+    play_date: String(row?.playDate || row?.scnYmd || ""),
+    start_time: String(row?.startTime || row?.scnsrtTm || ""),
+    schedule_id: String(row?.scheduleId || row?.scnSseq || ""),
+    total_seats: row?.totalSeats ?? row?.stcnt,
+    remaining_seats:
+      row?.remainingSeats ?? row?.frSeatCnt ?? row?.frtmpSeatCnt,
+  }));
+  const identities = new Set();
+  for (const row of rows) {
+    if (
+      !row.movie_code || !row.movie_name || !row.theater_code ||
+      !row.play_date || !row.start_time || !row.schedule_id ||
+      row.theater_code !== theaterCode || row.play_date !== playDate
+    ) {
+      return {
+        ok: false,
+        status: response.status,
+        rows: [],
+        error: "invalid structure",
+      };
+    }
+    const identity = [
+      row.movie_code, row.theater_code, row.play_date,
+      row.schedule_id, row.start_time,
+    ].join("|");
+    if (identities.has(identity)) {
+      return {
+        ok: false,
+        status: response.status,
+        rows: [],
+        error: "identity collision",
+      };
+    }
+    identities.add(identity);
+  }
+  return { ok: true, status: response.status, rows, error: null };
+}
+
+function emergencySessions(rows, target) {
+  if ((target.screen_keywords || []).length) return [];
+  const aliases = new Set(target.aliases || []);
+  const pinned = String(target.pinned_movie_code || "");
+  const sessions = [];
+  const seen = new Set();
+  for (const row of rows) {
+    if (
+      row.theater_code !== target.theater_code ||
+      row.play_date !== target.play_date
+    ) continue;
+    const movieName = emergencyNormalize(row.movie_name);
+    if (pinned ? row.movie_code !== pinned : !aliases.has(movieName)) continue;
+    const start = emergencyStart(row.start_time);
+    if (!start) continue;
+    const total = emergencyInt(row.total_seats, -1);
+    const remaining = emergencyInt(row.remaining_seats, -1);
+    if (
+      target.require_sale_open &&
+      !(total > 0 && remaining > 0 && remaining <= total)
+    ) continue;
+    if (
+      target.min_remaining_seats > 0 &&
+      remaining < target.min_remaining_seats
+    ) continue;
+    const key = target.theater_code + "|" + target.play_date + "|" +
+      target.id + "|public|" + row.movie_code + "|" +
+      row.schedule_id + "|" + start;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    sessions.push({ key, start_time: start });
+  }
+  sessions.sort((a, b) => a.start_time.localeCompare(b.start_time));
+  return sessions;
+}
+
+async function emergencyDiscordChannel(env) {
+  const remembered = await getState(env, "discord_alert_channel");
+  const rememberedId = String(remembered?.value?.channel_id || "");
+  if (rememberedId) return rememberedId;
+  const guild = await getState(env, "discord_guild");
+  const guildId = String(guild?.value?.guild_id || "");
+  if (!guildId || !env.DISCORD_BOT_TOKEN) return null;
+  try {
+    const response = await fetch(
+      "https://discord.com/api/v10/guilds/" + guildId,
+      { headers: { Authorization: "Bot " + env.DISCORD_BOT_TOKEN } },
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    const channelId = String(data?.system_channel_id || "");
+    if (channelId) {
+      await putState(env, "discord_alert_channel", {
+        guild_id: guildId,
+        channel_id: channelId,
+        source: "system_channel",
+        learned_at: new Date().toISOString(),
+      });
+      return channelId;
+    }
+  } catch (error) {
+    console.error("Emergency channel lookup failed", error);
+  }
+  return null;
+}
+
+async function emergencySendDiscord(env, items) {
+  const embeds = items.slice(0, 10).map((item) => ({
+    title: "🚨 CGV 비상 감시 · 예매 오픈 감지",
+    description: "**" + item.target.label + "**",
+    color: 0xe67e22,
+    fields: [
+      { name: "극장", value: item.target.theater_name, inline: true },
+      { name: "상영일", value: item.target.play_date, inline: true },
+      {
+        name: "새 회차",
+        value: item.sessions.map((row) => "• " + row.start_time).join("\n"),
+        inline: false,
+      },
+      {
+        name: "감지 경로",
+        value: "GitHub Actions 실행 공백 중 Cloudflare 직접 구조화 감시",
+        inline: false,
+      },
+    ],
+    footer: { text: "좌석 수 변화는 신규 회차로 처리하지 않습니다." },
+  }));
+  if (!embeds.length) return false;
+
+  if (env.DISCORD_WEBHOOK_URL) {
+    const webhook = await fetch(env.DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ embeds }),
+    });
+    if (webhook.status === 200 || webhook.status === 204) return true;
+  }
+
+  const channelId = await emergencyDiscordChannel(env);
+  if (!channelId || !env.DISCORD_BOT_TOKEN) return false;
+  const response = await fetch(
+    "https://discord.com/api/v10/channels/" + channelId + "/messages",
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bot " + env.DISCORD_BOT_TOKEN,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ embeds }),
+    },
+  );
+  return response.ok;
+}
+
+async function performEmergencyCheck(env, dryRun = false) {
+  const statusRow = await getState(env, "status");
+  const status = statusRow?.value;
+  const targets = emergencyTargets(status);
+  if (!status || !targets.length) {
+    return { ok: false, dry_run: dryRun, error: "emergency config unavailable" };
+  }
+  const stateRow = await getState(env, EMERGENCY_STATE_KEY);
+  const previous = stateRow?.value || {};
+  const baseline = structuredClone(previous.baseline || {});
+  const notified = structuredClone(previous.notified || {});
+  const groups = new Map();
+  for (const target of targets) {
+    const pageKey = target.theater_code + "|" + target.play_date;
+    if (!groups.has(pageKey)) groups.set(pageKey, []);
+    groups.get(pageKey).push(target);
+  }
+
+  const pageResults = [];
+  const targetResults = [];
+  const newItems = [];
+  const current = new Map();
+  let structuralValid = true;
+  let firstError = null;
+
+  for (const [pageKey, pageTargets] of groups.entries()) {
+    const [theaterCode, playDate] = pageKey.split("|");
+    const page = await emergencyFetchPage(theaterCode, playDate);
+    pageResults.push({
+      theater_code: theaterCode,
+      play_date: playDate,
+      status: page.status,
+      structural_valid: page.ok,
+      rows: page.rows.length,
+      error: page.error,
+    });
+    if (!page.ok) {
+      structuralValid = false;
+      firstError = firstError || page.error;
+      continue;
+    }
+
+    for (const target of pageTargets) {
+      const sessions = emergencySessions(page.rows, target);
+      current.set(target.id, sessions);
+      const base = new Set([
+        ...(baseline[target.id] || []),
+        ...(notified[target.id] || []),
+      ]);
+      if (Array.isArray(target.priority_session_keys)) {
+        for (const key of target.priority_session_keys) base.add(key);
+      } else if (base.size === 0) {
+        for (const session of sessions) base.add(session.key);
+      }
+      const fresh = sessions.filter((session) => !base.has(session.key));
+      if (!fresh.length) {
+        for (const session of sessions) base.add(session.key);
+        baseline[target.id] = [...base].slice(-1000);
+      }
+      targetResults.push({
+        id: target.id,
+        sessions: sessions.length,
+        new_sessions: fresh.length,
+      });
+      if (fresh.length) newItems.push({ target, sessions: fresh });
+    }
+  }
+
+  if (dryRun) {
+    return {
+      ok: structuralValid,
+      dry_run: true,
+      structural_valid: structuralValid,
+      source_pages: pageResults,
+      target_results: targetResults,
+      would_notify_count: newItems.length,
+      error: firstError,
+    };
+  }
+
+  let alertSent = false;
+  if (newItems.length) alertSent = await emergencySendDiscord(env, newItems);
+  if (alertSent) {
+    for (const item of newItems) {
+      const known = new Set(notified[item.target.id] || []);
+      const base = new Set(baseline[item.target.id] || []);
+      for (const session of current.get(item.target.id) || []) {
+        known.add(session.key);
+        base.add(session.key);
+      }
+      notified[item.target.id] = [...known].slice(-1000);
+      baseline[item.target.id] = [...base].slice(-1000);
+    }
+  }
+
+  const now = new Date().toISOString();
+  await putState(env, EMERGENCY_STATE_KEY, {
+    ...previous,
+    version: 1,
+    active: true,
+    activated_at:
+      previous.active && previous.activated_at ? previous.activated_at : now,
+    last_checked_at: now,
+    last_github_run_at: status.last_run_at || null,
+    baseline,
+    notified,
+    source_pages: pageResults,
+    target_results: targetResults,
+    last_error:
+      firstError ||
+      (newItems.length && !alertSent ? "Discord alert failed" : null),
+    last_alert_at: alertSent ? now : previous.last_alert_at || null,
+  });
+  return {
+    ok: structuralValid && (!newItems.length || alertSent),
+    dry_run: false,
+    structural_valid: structuralValid,
+    active: true,
+    notified_count: alertSent ? newItems.length : 0,
+    error: firstError,
+  };
+}
+
+async function maybeRunEmergencyFallback(env, dispatchError = null) {
+  const [statusRow, emergencyRow] = await Promise.all([
+    getState(env, "status"),
+    getState(env, EMERGENCY_STATE_KEY),
+  ]);
+  const status = statusRow?.value;
+  const previous = emergencyRow?.value || {};
+  const lastRun = Date.parse(status?.last_run_at || "");
+  const age = Number.isFinite(lastRun)
+    ? Math.max(0, Date.now() - lastRun)
+    : Number.POSITIVE_INFINITY;
+  if (
+    !dispatchError &&
+    Number.isFinite(lastRun) &&
+    age < EMERGENCY_STALE_MS
+  ) {
+    if (previous.active) {
+      await putState(env, EMERGENCY_STATE_KEY, {
+        ...previous,
+        active: false,
+        recovered_at: new Date().toISOString(),
+        last_github_run_at: status.last_run_at || null,
+      });
+    }
+    return { ok: true, active: false, skipped: true };
+  }
+  const result = await performEmergencyCheck(env, false);
+  return {
+    ...result,
+    reason: dispatchError ? "dispatch_failed" : "github_status_stale",
+    github_age_seconds: Number.isFinite(age)
+      ? Math.floor(age / 1000)
+      : null,
+  };
+}
+
+function emergencyStatusText(emergency) {
+  if (emergency?.active) {
+    return "**활성** · 핵심 날짜 Cloudflare 직접 구조화 감시\n마지막 확인: " +
+      formatTime(emergency.last_checked_at) +
+      (emergency.last_error ? "\n최근 오류: " + emergency.last_error : "");
+  }
+  return "대기 · GitHub 실행 상태가 " +
+    Math.round(EMERGENCY_STALE_MS / 60000) +
+    "분 이상 갱신되지 않거나 dispatch 실패 시 자동 전환" +
+    (emergency?.last_checked_at
+      ? "\n최근 비상 확인: " + formatTime(emergency.last_checked_at)
+      : "");
+}
+
 function authorizedStatusUpdate(request, env) {
   const expected = env.STATUS_API_TOKEN;
   if (!expected) return false;
@@ -746,16 +1204,23 @@ function targetDetectionText(target) {
 }
 
 async function buildSystemStatus(env) {
-  const [statusRow, cronRow, monitoringStats, browserBudget] =
-    await Promise.all([
-      getState(env, "status"),
-      getState(env, "cron"),
-      getMonitoringStats(env),
-      browserBudgetState(env),
-    ]);
+  const [
+    statusRow,
+    cronRow,
+    monitoringStats,
+    browserBudget,
+    emergencyRow,
+  ] = await Promise.all([
+    getState(env, "status"),
+    getState(env, "cron"),
+    getMonitoringStats(env),
+    browserBudgetState(env),
+    getState(env, EMERGENCY_STATE_KEY),
+  ]);
 
   const status = statusRow?.value;
   const cron = cronRow?.value;
+  const emergency = emergencyRow?.value || null;
 
   if (!status) {
     return {
@@ -778,6 +1243,7 @@ async function buildSystemStatus(env) {
   ]);
   const fallbackActive =
     health === "fallback" ||
+    Boolean(emergency?.active) ||
     targets.some(
       (target) =>
         fallbackModes.has(String(target?.detection_mode || "")) ||
@@ -823,6 +1289,11 @@ async function buildSystemStatus(env) {
         inline: true,
       },
       {
+        name: "🚨 GitHub 장애 비상 감시",
+        value: emergencyStatusText(emergency),
+        inline: false,
+      },
+      {
         name: "🛡️ 마지막 감시 성공",
         value: formatTime(
           status.last_monitoring_success_at ||
@@ -865,7 +1336,7 @@ async function buildSystemStatus(env) {
       },
     ],
     footer: {
-      text: "CGV Alert · Cloudflare + GitHub Actions",
+      text: "CGV Alert · Cloudflare + GitHub Actions + Emergency Fallback",
     },
   };
 }
@@ -1051,7 +1522,26 @@ export default {
           console.error("Discord command setup failed", error);
         }
 
-        await triggerGitHub(env);
+        let dispatchError = null;
+        try {
+          await triggerGitHub(env);
+        } catch (error) {
+          dispatchError = error;
+          console.error("CGV Alert workflow dispatch failed", error);
+        }
+
+        try {
+          const emergency = await maybeRunEmergencyFallback(
+            env,
+            dispatchError,
+          );
+          console.log(
+            "CGV emergency fallback",
+            JSON.stringify(emergency),
+          );
+        } catch (error) {
+          console.error("CGV emergency fallback failed", error);
+        }
       })(),
     );
   },
@@ -1073,10 +1563,12 @@ export default {
       if (!authorizedStatusUpdate(request, env)) {
         return new Response("Unauthorized", { status: 401 });
       }
-      const [browserBudget, monitoringStats] = await Promise.all([
-        browserBudgetState(env),
-        getMonitoringStats(env),
-      ]);
+      const [browserBudget, monitoringStats, emergencyRow] =
+        await Promise.all([
+          browserBudgetState(env),
+          getMonitoringStats(env),
+          getState(env, EMERGENCY_STATE_KEY),
+        ]);
       return jsonResponse({
         ok: true,
         version: COMMAND_VERSION,
@@ -1090,7 +1582,45 @@ export default {
           ),
         },
         monitoring_stats_24h: monitoringStats,
+        emergency_fallback: {
+          stale_after_seconds: Math.floor(EMERGENCY_STALE_MS / 1000),
+          state: emergencyRow?.value || null,
+        },
         now: new Date().toISOString(),
+      });
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/emergency-check"
+    ) {
+      if (!authorizedStatusUpdate(request, env)) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      try {
+        const result = await performEmergencyCheck(env, true);
+        return jsonResponse(result, result.ok ? 200 : 502);
+      } catch (error) {
+        return jsonResponse(
+          { ok: false, dry_run: true, error: String(error) },
+          500,
+        );
+      }
+    }
+
+    if (
+      request.method === "GET" &&
+      url.pathname === "/api/emergency-seen"
+    ) {
+      if (!authorizedStatusUpdate(request, env)) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      const row = await getState(env, EMERGENCY_STATE_KEY);
+      return jsonResponse({
+        ok: true,
+        notified: row?.value?.notified || {},
+        active: Boolean(row?.value?.active),
+        updated_at: row?.updated_at || null,
       });
     }
 
@@ -1129,10 +1659,12 @@ export default {
     if (request.method === "GET" && url.pathname === "/health") {
       let discordCommandSetup;
       let discordCommandState = null;
-      const [monitoringStats, browserBudget] = await Promise.all([
-        getMonitoringStats(env),
-        browserBudgetState(env),
-      ]);
+      const [monitoringStats, browserBudget, emergencyRow] =
+        await Promise.all([
+          getMonitoringStats(env),
+          browserBudgetState(env),
+          getState(env, EMERGENCY_STATE_KEY),
+        ]);
 
       try {
         discordCommandSetup = await ensureCommandsRegistered(env);
@@ -1160,6 +1692,10 @@ export default {
           safe_limit_ms: 8 * 60 * 1000,
         },
         monitoring_stats_24h: monitoringStats,
+        emergency_fallback: {
+          stale_after_seconds: Math.floor(EMERGENCY_STALE_MS / 1000),
+          state: emergencyRow?.value || null,
+        },
         discord_commands: discordCommandSetup,
         discord_command_state: discordCommandState,
         now: new Date().toISOString(),

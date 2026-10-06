@@ -175,7 +175,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "16"
+          expected_version = "17"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:
@@ -207,7 +207,7 @@ jobs:
                   )
                   if version == expected_version and browser_binding:
                       print(
-                          "Cloudflare Worker v16 + Browser Run binding 확인 완료"
+                          "Cloudflare Worker v17 + Browser Run binding 확인 완료"
                       )
                       raise SystemExit(0)
               except requests.RequestException as exc:
@@ -230,6 +230,42 @@ jobs:
               f"마지막 상태: {last_status or '알 수 없음'}"
           )
           raise SystemExit(1)
+          PY
+
+      - name: Verify Cloudflare emergency fallback
+        if: github.event_name == 'push'
+        continue-on-error: true
+        env:
+          STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          token = os.environ.get("STATUS_API_TOKEN", "").strip()
+          if not token:
+              print("STATUS_API_TOKEN secret is missing; emergency smoke skipped.")
+              raise SystemExit(1)
+
+          response = requests.post(
+              "https://cgv-alert-trigger.choi1101jh.workers.dev/api/emergency-check",
+              headers={"Authorization": f"Bearer {token}"},
+              json={"dry_run": True},
+              timeout=20,
+          )
+          print(f"Emergency fallback smoke HTTP {response.status_code}")
+          response.raise_for_status()
+          payload = response.json()
+          if not payload.get("ok") or not payload.get("dry_run"):
+              raise RuntimeError(str(payload))
+          if not payload.get("structural_valid"):
+              raise RuntimeError("Emergency fallback source structure invalid")
+          print(
+              "EMERGENCY_FALLBACK_SMOKE PASS · "
+              f"pages={len(payload.get('source_pages') or [])} · "
+              f"targets={len(payload.get('target_results') or [])} · "
+              f"would_notify={payload.get('would_notify_count', 0)}"
+          )
           PY
 
       - name: Notify Discord when instant check finishes
