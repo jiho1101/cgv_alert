@@ -83,12 +83,29 @@ def main():
     future = fetch_with_transient_retry(
         state, "0128", "20261218", now
     )
+    future_transient = False
     if not future.get("accepted"):
-        raise RuntimeError(
-            "future-date public primary rejected unexpectedly: "
-            + str(future.get("error") or future.get("state"))
+        status = future.get("status")
+        future_transient = (
+            status is None
+            or status == 429
+            or (
+                isinstance(status, int)
+                and 500 <= status <= 599
+            )
         )
-    if not (future.get("rows") or []):
+        if not future_transient:
+            raise RuntimeError(
+                "future-date public primary rejected unexpectedly: "
+                + str(future.get("error") or future.get("state"))
+            )
+        print(
+            "PRIMARY_SMOKE DEGRADED · 20261218 일시 소스 장애 "
+            f"status={status} · 예매 없음으로 처리하지 않음 · "
+            "Production dry-run은 계속 검증"
+        )
+
+    if future.get("accepted") and not (future.get("rows") or []):
         if not future.get("empty_unconfirmed"):
             raise RuntimeError(
                 "empty future response was incorrectly treated as confirmed"
@@ -109,6 +126,8 @@ def main():
                 "sample_sessions": len(sessions),
                 "future_rows": len(future.get("rows") or []),
                 "future_state": future.get("state"),
+                "future_transient": future_transient,
+                "future_status": future.get("status"),
                 "future_empty_unconfirmed": bool(
                     future.get("empty_unconfirmed")
                 ),
