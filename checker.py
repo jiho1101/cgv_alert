@@ -466,6 +466,17 @@ def build_runtime_snapshot(
                 }
             )
 
+        priority_seen_keys = sorted(
+            {
+                str(key)
+                for key in (state.get("seen") or {}).get(target_id, [])
+                if any(
+                    f"|{play_ymd}|{target_id}|public|" in str(key)
+                    for play_ymd in priority_dates
+                )
+            }
+        )
+
         pinned_movie_code = str(
             (
                 (state.get("public_movie_codes") or {})
@@ -515,6 +526,7 @@ def build_runtime_snapshot(
                 ),
                 "pinned_movie_code": pinned_movie_code,
                 "priority_session_keys": priority_session_keys,
+                "priority_seen_keys": priority_seen_keys[-1000:],
                 "priority_session_snapshot_at": (
                     now.isoformat() if priority_primary_success else None
                 ),
@@ -4066,6 +4078,11 @@ def run_checker(force_all: bool = False):
 
         if merge_emergency_seen_from_worker(state):
             save_state(state)
+            write_runtime_status(
+                build_runtime_snapshot(
+                    config, state, targets, now, page_results, found=found
+                )
+            )
             print(
                 "Cloudflare 비상 감시 알림 키를 seen에 합쳤습니다 · "
                 "GitHub 복구 뒤 중복 알림 방지"
@@ -4142,6 +4159,11 @@ def run_checker(force_all: bool = False):
                     fallback_seen
                 )[-1000:]
             save_state(state)
+            write_runtime_status(
+                build_runtime_snapshot(
+                    config, state, targets, now, page_results, found=found
+                )
+            )
             print(
                 "중복 알림 방지 상태를 저장했습니다. "
                 "구조화 감지와 보조 후보 기록은 서로 분리됩니다."
