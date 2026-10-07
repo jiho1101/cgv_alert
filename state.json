@@ -152,14 +152,22 @@
     ]
   },
   "health": {
-    "pages": {}
+    "pages": {},
+    "run_warning": {
+      "alerted": false,
+      "first_failure_at": "2026-10-07T22:00:57.480903+09:00",
+      "page_ids": [
+        "0128|20261227"
+      ],
+      "state": "pending"
+    }
   },
   "public_api_guard": {
-    "backoff_reason": null,
-    "backoff_until": null,
-    "failure_count": 0,
-    "last_failure_at": "2026-10-07T20:31:11.381784+09:00",
-    "last_status": 200,
+    "backoff_reason": "adaptive",
+    "backoff_until": "2026-10-07T22:05:57.480903+09:00",
+    "failure_count": 1,
+    "last_failure_at": "2026-10-07T22:00:57.480903+09:00",
+    "last_status": 500,
     "last_success_at": "2026-10-07T20:35:59.094565+09:00",
     "retry_after_raw": "",
     "version": 1
@@ -1147,11 +1155,10 @@
         ]
       },
       "0128|20261007": {
-        "last_nonempty_at": "2026-10-07T21:30:56.236682+09:00",
-        "last_nonempty_count": 6,
-        "last_nonempty_hash": "11fa8218f4012a3b",
+        "last_nonempty_at": "2026-10-07T22:00:57.480903+09:00",
+        "last_nonempty_count": 5,
+        "last_nonempty_hash": "5b94e01adec81659",
         "last_nonempty_keys": [
-          "30001314|0128|20261007|2026100701285|21:40",
           "30001314|0128|20261007|2026100701286|22:30",
           "30001323|0128|20261007|2026100701285|22:40",
           "30001342|0128|20261007|2026100701286|23:00",
@@ -1160,19 +1167,6 @@
         ],
         "last_nonempty_latest_end_minutes": 1542,
         "last_nonempty_rows": [
-          {
-            "end_time": "24:01",
-            "movie_code": "30001314",
-            "movie_name": "암살자(들)",
-            "play_date": "20261007",
-            "remaining_seats": 137,
-            "schedule_id": "2026100701285",
-            "screen": "",
-            "start_time": "21:40",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 146
-          },
           {
             "end_time": "23:45",
             "movie_code": "30001400",
@@ -1204,7 +1198,7 @@
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20261007",
-            "remaining_seats": 428,
+            "remaining_seats": 429,
             "schedule_id": "2026100701285",
             "screen": "",
             "start_time": "22:40",
@@ -1230,7 +1224,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261007",
-            "remaining_seats": 282,
+            "remaining_seats": 280,
             "schedule_id": "2026100701286",
             "screen": "",
             "start_time": "23:00",
