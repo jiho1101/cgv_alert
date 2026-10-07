@@ -1147,34 +1147,20 @@
         ]
       },
       "0128|20261007": {
-        "last_nonempty_at": "2026-10-07T23:00:57.339554+09:00",
-        "last_nonempty_count": 2,
-        "last_nonempty_hash": "6a1962d95b9e9d78",
+        "last_nonempty_at": "2026-10-07T23:10:54.229868+09:00",
+        "last_nonempty_count": 1,
+        "last_nonempty_hash": "27ba231aeff35d0b",
         "last_nonempty_keys": [
-          "30001342|0128|20261007|2026100701286|23:00",
-          "30001567|0128|20261007|2026100701286|22:50"
+          "30001342|0128|20261007|2026100701286|23:00"
         ],
         "last_nonempty_latest_end_minutes": 1519,
         "last_nonempty_rows": [
-          {
-            "end_time": "24:29",
-            "movie_code": "30001567",
-            "movie_name": "입에 대한 앙케트",
-            "play_date": "20261007",
-            "remaining_seats": 260,
-            "schedule_id": "2026100701286",
-            "screen": "",
-            "start_time": "22:50",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 282
-          },
           {
             "end_time": "25:19",
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261007",
-            "remaining_seats": 267,
+            "remaining_seats": 265,
             "schedule_id": "2026100701286",
             "screen": "",
             "start_time": "23:00",
