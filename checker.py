@@ -1765,6 +1765,32 @@ def _guard_future_partial_drop(previous, rows, play_ymd: str, now: datetime):
     return merged_rows, True, len(removed), len(added)
 
 
+def _public_failure_reason(result):
+    """실제 HTTP 429/5xx와 구조 오류를 구분한다. 감시 주기는 변경하지 않는다."""
+    status = result.get("status")
+    state = str(result.get("state") or "unknown")
+    error = str(result.get("error") or "").strip()
+
+    if state == "adaptive_backoff":
+        return error or "제3자 API 호출 제한 보호 대기 중"
+    if status is None:
+        return (
+            f"제3자 API 네트워크 확인 실패: {error[:160]}"
+            if error else "제3자 API 응답 없음"
+        )
+    if status == 429:
+        retry_after = str(result.get("retry_after") or "").strip()
+        detail = f" · Retry-After={retry_after}" if retry_after else ""
+        return f"제3자 API HTTP 429 호출 제한{detail}"
+    if isinstance(status, int) and 500 <= status <= 599:
+        return f"제3자 API HTTP {status} 공급자 오류"
+    if status != 200:
+        return f"제3자 API HTTP {status} 응답 실패"
+    if error:
+        return error[:160]
+    return f"제3자 API HTTP 200 구조 검증 실패 ({state})"
+
+
 def _fetch_public_page(state, site_no: str, play_ymd: str, now: datetime):
     """현재 검증된 제3자 구조화 시간표를 production 1차 경로로 읽는다.
 
@@ -2480,9 +2506,18 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
                 if result.get("ok") and result.get("degraded")
                 else "구조화/보조 감지 모두 실패"
             )
+            error_text = str(result.get("error") or "")
+            first_cause = error_text.split("; ", 1)[0]
+            first_cause = first_cause.removeprefix("제3자 구조화 실패: ")
+            first_cause = summarize_cgv_error(first_cause, limit=150)
+            detail = (
+                f" · 원인: {first_cause}"
+                if first_cause and first_cause != "응답 내용 없음"
+                else ""
+            )
             details.append(
                 f"- {result.get('theater_name', 'CGV')} "
-                f"{result.get('play_ymd', '-')}: {mode}"
+                f"{result.get('play_ymd', '-')}: {mode}{detail}"
             )
         extra = (
             f"\n- 외 {len(unhealthy_ids) - 5}개 날짜"
@@ -2759,6 +2794,25 @@ def run_self_test(timeout: int):
     push 실행 직후 실제 감시 단계가 CGV를 조회하므로 self-test에서 같은
     사이트를 한 번 더 호출하지 않는다. 배포 때 불필요한 요청과 지연을 줄인다.
     """
+    # 감시 속도/호출량과 무관한 HTTP 원인 표시 검증.
+    assert "HTTP 429" in _public_failure_reason(
+        {"status": 429, "state": "invalid_structure", "retry_after": "6"}
+    )
+    assert "Retry-After=6" in _public_failure_reason(
+        {"status": 429, "state": "invalid_structure", "retry_after": "6"}
+    )
+    assert "HTTP 502" in _public_failure_reason(
+        {"status": 502, "state": "invalid_structure"}
+    )
+    assert "구조 검증 실패" in _public_failure_reason(
+        {"status": 200, "state": "invalid_structure"}
+    )
+    assert "보호 대기" in _public_failure_reason(
+        {"status": 429, "state": "adaptive_backoff",
+         "error": "제3자 API 429 보호 대기 중"}
+    )
+    print("API 원인 표시 자체점검 통과 · 429/502/200구조오류 구분")
+
     sample_target = {
         "id": "self-test",
         "label": "테스트 영화",
@@ -3775,8 +3829,7 @@ def run_checker(force_all: bool = False):
                 return page_cache[key]
 
             public_message = summarize_cgv_error(
-                public_result.get("error")
-                or f"제3자 구조화 검증 실패 ({public_result.get('state')})"
+                _public_failure_reason(public_result)
             )
             print(
                 f"경고: [{target['theater_name']}] {play_ymd} "
