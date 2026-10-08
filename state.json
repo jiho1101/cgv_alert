@@ -165,9 +165,9 @@
   },
   "public_api_guard": {
     "backoff_reason": "adaptive",
-    "backoff_until": "2026-10-09T08:20:51.777594+09:00",
+    "backoff_until": "2026-10-09T08:25:59.772076+09:00",
     "failure_count": 8,
-    "last_failure_at": "2026-10-09T07:20:51.777594+09:00",
+    "last_failure_at": "2026-10-09T07:25:59.772076+09:00",
     "last_status": 502,
     "last_success_at": "2026-10-09T06:30:51.973358+09:00",
     "retry_after_raw": "",
