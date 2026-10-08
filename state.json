@@ -164,13 +164,13 @@
     }
   },
   "public_api_guard": {
-    "backoff_reason": "retry_after",
-    "backoff_until": "2026-10-08T10:10:53.630125+09:00",
-    "failure_count": 6,
-    "last_failure_at": "2026-10-08T10:05:53.630125+09:00",
-    "last_status": 429,
+    "backoff_reason": "adaptive",
+    "backoff_until": "2026-10-08T11:15:54.370324+09:00",
+    "failure_count": 7,
+    "last_failure_at": "2026-10-08T10:15:54.370324+09:00",
+    "last_status": 502,
     "last_success_at": "2026-10-07T22:35:54.262668+09:00",
-    "retry_after_raw": "6",
+    "retry_after_raw": "",
     "version": 1
   },
   "public_baseline": {
