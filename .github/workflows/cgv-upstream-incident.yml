@@ -1,0 +1,106 @@
+name: Report CGV Upstream Outage
+
+# One-time report on creation; manual retry only thereafter.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cgv-upstream-incident.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Submit upstream provider incident ticket
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.error
+          import urllib.request
+
+          url = "https://mcp.aka.page/api/feedback/requests"
+          body = {
+              "type": "bug",
+              "severity": "critical",
+              "title": "CGV public timetable intermittent HTTP 502/429, 2026-10-08 KST",
+              "service": "cgv",
+              "toolName": "cgv_get_timetable",
+              "source": "api",
+              "description": (
+                  "Operational incident: GET /api/cgv/timetable for "
+                  "theaterCode=0128, playDate=20261218 returned HTTP 502 "
+                  "from 2026-10-08 09:15 KST, with occasional HTTP 429. "
+                  "10:45 KST: brief recovery to HTTP 200, then 11:00 KST "
+                  "another HTTP 502. Source health for same theater's current "
+                  "date was also intermittently degraded. GitHub Actions jobs "
+                  "continued every 5 minutes; the upstream source, not the job "
+                  "scheduler, is failing. Independent official backup returned "
+                  "HTTP 403. Consumer already respects 429 Retry-After and limits "
+                  "extended 5xx to a single primary probe every 5 minutes. "
+                  "Please diagnose and restore your public CGV relay route "
+                  "(CGV /v1/cgv/timetable), and confirm production deployment "
+                  "of the 2026-10-08 relay-recovery update described in "
+                  "docs/cgv-relay-recovery.md. Please identify whether 429 "
+                  "originates in upstream/relay/quota and give recommended "
+                  "Retry-After and stable availability expectations. We will "
+                  "not use IP rotation, proxy evasion, or unauthorized access."
+              ),
+              "reproduction": (
+                  "GET https://mcp.aka.page/api/cgv/timetable"
+                  "?playDate=20261218&theaterCode=0128&limit=200"
+              ),
+              "expected": (
+                  "Stable HTTP 200 with structured timetable data (including "
+                  "an empty unconfirmed future schedule when appropriate)."
+              ),
+              "actual": (
+                  "Repeated HTTP 502 and intermittent HTTP 429, including "
+                  "the 2026-10-08 KST incident period."
+              ),
+          }
+          request = urllib.request.Request(
+              url,
+              data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+              headers={
+                  "Accept": "application/json",
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  status = response.status
+                  payload = json.loads(response.read(65536).decode("utf-8"))
+          except urllib.error.HTTPError as error:
+              excerpt = error.read(1500).decode("utf-8", errors="replace")
+              raise SystemExit(
+                  f"Provider ticket submission HTTP {error.code}: {excerpt}"
+              ) from None
+          except (urllib.error.URLError, TimeoutError) as error:
+              raise SystemExit(
+                  f"Provider ticket submission unreachable: {type(error).__name__}"
+              ) from None
+          data = payload.get("data") or {}
+          if status not in (200, 201) or payload.get("success") is not True:
+              raise SystemExit(
+                  "Provider ticket not confirmed (non-success response): "
+                  + str(payload)[:1500]
+              )
+          incident_id = data.get("id")
+          if not incident_id:
+              raise SystemExit(
+                  "Provider returned success but no incident ID; cannot confirm submission"
+              )
+          print(
+              "UPSTREAM_CGV_INCIDENT_SUBMITTED "
+              + json.dumps(
+                  {"id": incident_id, "status": data.get("status"), "title": body["title"]},
+                  ensure_ascii=False,
+              )
+          )
+          PY
