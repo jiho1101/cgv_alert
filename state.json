@@ -154,19 +154,20 @@
   "health": {
     "pages": {},
     "run_warning": {
-      "alerted": false,
+      "alerted": true,
+      "alerted_at": "2026-10-08T15:10:53.715022+09:00",
       "first_failure_at": "2026-10-08T14:35:55.490720+09:00",
       "page_ids": [
         "0128|20261218"
       ],
-      "state": "pending"
+      "state": "failed"
     }
   },
   "public_api_guard": {
     "backoff_reason": "adaptive",
-    "backoff_until": "2026-10-08T16:05:54.470140+09:00",
-    "failure_count": 7,
-    "last_failure_at": "2026-10-08T15:05:54.470140+09:00",
+    "backoff_until": "2026-10-08T16:10:53.715022+09:00",
+    "failure_count": 8,
+    "last_failure_at": "2026-10-08T15:10:53.715022+09:00",
     "last_status": 502,
     "last_success_at": "2026-10-08T14:25:54.977526+09:00",
     "retry_after_raw": "",
