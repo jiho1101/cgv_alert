@@ -1477,7 +1477,14 @@ def _public_guard_failure(
         return False
 
     guard = _public_api_guard(state)
-    failures = min(int(guard.get("failure_count") or 0) + 1, 8)
+    # 한 실행 내 2~3회 단기 재시도는 연속 '실행 장애' 한 번이다.
+    # 실패 수를 호출별로 증폭하면 백오프가 불필요하게 1시간까지 늘어난다.
+    same_run = guard.get("last_failure_at") == now.isoformat()
+    previous_failures = int(guard.get("failure_count") or 0)
+    failures = min(
+        previous_failures if same_run and previous_failures else previous_failures + 1,
+        8,
+    )
 
     retry_seconds = _parse_retry_after_seconds(retry_after, now)
     if retry_seconds is not None:
@@ -1903,7 +1910,22 @@ def _fetch_priority_public_with_retry(
     """
     fetch = fetch_fn or _fetch_public_page
     sleep = sleep_fn or time.sleep
-    for attempt in range(3):
+
+    # 이미 전 주기에서 5xx가 반복됐다면 주기당 한 번만 확인한다.
+    # 외부 서비스 장기 장애에 매 주기 3배 요청을 보내지 않는다.
+    previous_guard = _public_api_guard(state)
+    previous_status = previous_guard.get("last_status")
+    try:
+        previous_status = int(previous_status or 0)
+    except (TypeError, ValueError):
+        previous_status = 0
+    recurring_5xx = (
+        500 <= previous_status <= 599
+        and int(previous_guard.get("failure_count") or 0) >= 2
+    )
+    max_attempts = 1 if recurring_5xx else 3
+
+    for attempt in range(max_attempts):
         result = fetch(state, site_no, play_ymd, now)
         if result.get("accepted"):
             return result
@@ -1916,7 +1938,7 @@ def _fetch_priority_public_with_retry(
         if (
             not temporary_server_error
             or result.get("retry_after")
-            or attempt == 2
+            or attempt >= max_attempts - 1
         ):
             return result
 
@@ -2849,6 +2871,50 @@ def run_self_test(timeout: int):
          "error": "제3자 API 429 보호 대기 중"}
     )
     print("API 원인 표시 자체점검 통과 · 429/502/200구조오류 구분")
+
+    # 같은 실행 내 여러 5xx 요청은 장애 횟수를 1회로 계산한다.
+    sample_state = {}
+    sample_now = datetime(2099, 12, 1, tzinfo=KST)
+    for _ in range(3):
+        _public_guard_failure(sample_state, 502, None, sample_now)
+    if sample_state["public_api_guard"]["failure_count"] != 1:
+        raise RuntimeError("단기 재시도 중 API 장애 횟수 중복 집계")
+    sample_next = sample_now + timedelta(minutes=5)
+    _public_guard_failure(sample_state, 502, None, sample_next)
+    if sample_state["public_api_guard"]["failure_count"] != 2:
+        raise RuntimeError("다음 주기 5xx 누적 횟수 집계 실패")
+
+    # 반복적인 5xx에서는 5분 주기 하나만 호출한다.
+    outage_calls = []
+    outage_delays = []
+    outage_result = _fetch_priority_public_with_retry(
+        sample_state, "0128", "20991218", sample_next,
+        fetch_fn=lambda *_: (
+            outage_calls.append(502) or
+            {"accepted": False, "status": 502, "retry_after": None}
+        ),
+        sleep_fn=outage_delays.append,
+    )
+    if (
+        outage_result.get("status") != 502
+        or len(outage_calls) != 1
+        or outage_delays
+    ):
+        raise RuntimeError("장기 5xx 주기당 1회 조회 제한 실패")
+
+    # 정상 응답 또는 즉시 회복 시에는 불필요한 추가 호출 없이 종료.
+    healthy_calls = []
+    healthy_result = _fetch_priority_public_with_retry(
+        sample_state, "0128", "20991218", sample_next,
+        fetch_fn=lambda *_: (
+            healthy_calls.append(200) or
+            {"accepted": True, "status": 200}
+        ),
+        sleep_fn=outage_delays.append,
+    )
+    if not healthy_result.get("accepted") or len(healthy_calls) != 1:
+        raise RuntimeError("장기 장애 중 정상 응답 즉시 수용 실패")
+    print("공급자 장기 5xx 호출 절감 자체점검 완료 · 주기당 1회/단기 재시도 집계 1회")
 
     # 핵심 날짜 서버 5xx만 즉시 제한적 재시도하고 429는 보존한다.
     transient_responses = iter([
