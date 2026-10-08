@@ -152,18 +152,7 @@
     ]
   },
   "health": {
-    "pages": {},
-    "run_warning": {
-      "alerted": true,
-      "alerted_at": "2026-10-08T20:30:58.697340+09:00",
-      "first_failure_at": "2026-10-08T20:00:54.647801+09:00",
-      "page_ids": [
-        "0128|20261218",
-        "0128|20261224"
-      ],
-      "recovery_started_at": "2026-10-08T20:35:53.498757+09:00",
-      "state": "recovering"
-    }
+    "pages": {}
   },
   "public_api_guard": {
     "backoff_reason": null,
@@ -1182,15 +1171,14 @@
         ]
       },
       "0128|20261008": {
-        "last_nonempty_at": "2026-10-08T20:40:52.850633+09:00",
-        "last_nonempty_count": 11,
-        "last_nonempty_hash": "839f353f134b261c",
+        "last_nonempty_at": "2026-10-08T20:50:58.134785+09:00",
+        "last_nonempty_count": 10,
+        "last_nonempty_hash": "ea9e0cd50628f8ab",
         "last_nonempty_keys": [
           "30001314|0128|20261008|2026100801284|23:10",
           "30001314|0128|20261008|2026100801285|21:00",
           "30001314|0128|20261008|2026100801285|21:50",
           "30001314|0128|20261008|2026100801286|22:30",
-          "30001323|0128|20261008|2026100801284|20:30",
           "30001323|0128|20261008|2026100801285|22:40",
           "30001342|0128|20261008|2026100801286|23:00",
           "30001376|0128|20261008|2026100801286|20:40",
@@ -1200,19 +1188,6 @@
         ],
         "last_nonempty_latest_end_minutes": 1542,
         "last_nonempty_rows": [
-          {
-            "end_time": "23:32",
-            "movie_code": "30001323",
-            "movie_name": "오디세이",
-            "play_date": "20261008",
-            "remaining_seats": 170,
-            "schedule_id": "2026100801284",
-            "screen": "",
-            "start_time": "20:30",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 193
-          },
           {
             "end_time": "22:31",
             "movie_code": "30001376",
@@ -1231,7 +1206,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261008",
-            "remaining_seats": 120,
+            "remaining_seats": 118,
             "schedule_id": "2026100801285",
             "screen": "",
             "start_time": "21:00",
@@ -1257,7 +1232,7 @@
             "movie_code": "30001567",
             "movie_name": "입에 대한 앙케트",
             "play_date": "20261008",
-            "remaining_seats": 272,
+            "remaining_seats": 270,
             "schedule_id": "2026100801286",
             "screen": "",
             "start_time": "21:35",
@@ -1296,7 +1271,7 @@
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20261008",
-            "remaining_seats": 412,
+            "remaining_seats": 410,
             "schedule_id": "2026100801285",
             "screen": "",
             "start_time": "22:40",
@@ -1322,7 +1297,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261008",
-            "remaining_seats": 27,
+            "remaining_seats": 25,
             "schedule_id": "2026100801284",
             "screen": "",
             "start_time": "23:10",
