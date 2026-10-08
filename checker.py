@@ -1891,6 +1891,43 @@ def _fetch_public_page(state, site_no: str, play_ymd: str, now: datetime):
     return result
 
 
+def _fetch_priority_public_with_retry(
+    state, site_no: str, play_ymd: str, now: datetime,
+    fetch_fn=None, sleep_fn=None,
+):
+    """핵심 날짜의 일시 5xx만 최대 두 번 짧게 재확인한다.
+
+    429/4xx/구조 오류/네트워크 실패는 즉시 종료하고 기존 보호 정책을
+    따른다. Retry-After가 있는 5xx도 공급자의 대기 지시를 존중한다.
+    정상 시 호출 수와 5분 스케줄에는 변화가 없다.
+    """
+    fetch = fetch_fn or _fetch_public_page
+    sleep = sleep_fn or time.sleep
+    for attempt in range(3):
+        result = fetch(state, site_no, play_ymd, now)
+        if result.get("accepted"):
+            return result
+
+        status = result.get("status")
+        temporary_server_error = (
+            isinstance(status, int)
+            and 500 <= status <= 599
+        )
+        if (
+            not temporary_server_error
+            or result.get("retry_after")
+            or attempt == 2
+        ):
+            return result
+
+        delay = (attempt + 1) * 2
+        print(
+            f"[{site_no}] {play_ymd} 핵심 날짜 HTTP {status} "
+            f"단기 재시도 {attempt + 1}/2 · {delay}초 후 재확인"
+        )
+        sleep(delay)
+
+
 def _public_movie_code_store(state):
     return state.setdefault("public_movie_codes", {})
 
@@ -2813,6 +2850,37 @@ def run_self_test(timeout: int):
     )
     print("API 원인 표시 자체점검 통과 · 429/502/200구조오류 구분")
 
+    # 핵심 날짜 서버 5xx만 즉시 제한적 재시도하고 429는 보존한다.
+    transient_responses = iter([
+        {"accepted": False, "status": 502, "retry_after": None},
+        {"accepted": False, "status": 502, "retry_after": None},
+        {"accepted": True, "status": 200},
+    ])
+    retry_delays = []
+    recovered = _fetch_priority_public_with_retry(
+        {}, "0128", "20991218", datetime(2099, 12, 1, tzinfo=KST),
+        fetch_fn=lambda *_: next(transient_responses),
+        sleep_fn=retry_delays.append,
+    )
+    if not recovered.get("accepted") or retry_delays != [2, 4]:
+        raise RuntimeError("핵심 날짜 5xx 단기 재시도 자체점검 실패")
+
+    for stop_status, retry_after in [(429, "6"), (403, None), (502, "120")]:
+        calls = []
+        stopped = _fetch_priority_public_with_retry(
+            {}, "0128", "20991218", datetime(2099, 12, 1, tzinfo=KST),
+            fetch_fn=lambda *_, status=stop_status, ra=retry_after: (
+                calls.append(status)
+                or {"accepted": False, "status": status, "retry_after": ra}
+            ),
+            sleep_fn=lambda *_: (_ for _ in ()).throw(
+                RuntimeError("제한 호출 재시도 금지")
+            ),
+        )
+        if len(calls) != 1 or stopped.get("status") != stop_status:
+            raise RuntimeError("429/403/Retry-After 우회 방지 자체점검 실패")
+    print("핵심 날짜 5xx 제한 재시도 자체점검 완료 · 429/403/Retry-After 즉시 중단")
+
     sample_target = {
         "id": "self-test",
         "label": "테스트 영화",
@@ -3717,7 +3785,11 @@ def run_checker(force_all: bool = False):
                         "핵심 날짜 5xx 보호 중 재확인 · "
                         "비핵심은 쉬고 핵심만 제3자 구조화 재시도"
                     )
-                    public_result = _fetch_public_page(
+                    public_result = (
+                        _fetch_priority_public_with_retry
+                        if priority_for_any
+                        else _fetch_public_page
+                    )(
                         state,
                         str(target["theater_code"]),
                         play_ymd,
@@ -3737,7 +3809,11 @@ def run_checker(force_all: bool = False):
 
                 public_result = public_cache.get(key)
                 if public_result is None:
-                    public_result = _fetch_public_page(
+                    public_result = (
+                        _fetch_priority_public_with_retry
+                        if priority_for_any
+                        else _fetch_public_page
+                    )(
                         state,
                         str(target["theater_code"]),
                         play_ymd,
