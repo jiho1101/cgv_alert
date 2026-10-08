@@ -1919,9 +1919,11 @@ def _fetch_priority_public_with_retry(
         previous_status = int(previous_status or 0)
     except (TypeError, ValueError):
         previous_status = 0
+    # 이미 한 번 5xx를 본 이후에는 즉시 3배 호출을 멈춘다.
+    # 다음 5분 핵심 조회는 그대로 유지하고 429 Retry-After는 존중한다.
     recurring_5xx = (
         500 <= previous_status <= 599
-        and int(previous_guard.get("failure_count") or 0) >= 2
+        and int(previous_guard.get("failure_count") or 0) >= 1
     )
     max_attempts = 1 if recurring_5xx else 3
 
