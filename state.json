@@ -152,17 +152,7 @@
     ]
   },
   "health": {
-    "pages": {},
-    "run_warning": {
-      "alerted": true,
-      "alerted_at": "2026-10-09T00:46:09.064219+09:00",
-      "first_failure_at": "2026-10-09T00:15:57.836254+09:00",
-      "page_ids": [
-        "0128|20261218"
-      ],
-      "recovery_started_at": "2026-10-09T10:20:55.785849+09:00",
-      "state": "recovering"
-    }
+    "pages": {}
   },
   "public_api_guard": {
     "backoff_reason": null,
