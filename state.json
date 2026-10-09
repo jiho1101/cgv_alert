@@ -161,16 +161,17 @@
         "0128|20261218",
         "0128|20261231"
       ],
-      "state": "failed"
+      "recovery_started_at": "2026-10-10T07:55:55.795448+09:00",
+      "state": "recovering"
     }
   },
   "public_api_guard": {
-    "backoff_reason": "adaptive",
-    "backoff_until": "2026-10-10T08:50:56.912576+09:00",
-    "failure_count": 8,
+    "backoff_reason": null,
+    "backoff_until": null,
+    "failure_count": 0,
     "last_failure_at": "2026-10-10T07:50:56.912576+09:00",
-    "last_status": 502,
-    "last_success_at": "2026-10-10T06:51:02.149235+09:00",
+    "last_status": 200,
+    "last_success_at": "2026-10-10T07:55:55.795448+09:00",
     "retry_after_raw": "",
     "version": 1
   },
