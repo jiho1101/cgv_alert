@@ -160,16 +160,15 @@
       "page_ids": [
         "0128|20261218"
       ],
-      "recovery_started_at": "2026-10-09T09:10:52.299145+09:00",
-      "state": "recovering"
+      "state": "failed"
     }
   },
   "public_api_guard": {
-    "backoff_reason": null,
-    "backoff_until": null,
-    "failure_count": 0,
-    "last_failure_at": "2026-10-09T09:05:54.809750+09:00",
-    "last_status": 200,
+    "backoff_reason": "adaptive",
+    "backoff_until": "2026-10-09T09:21:04.778962+09:00",
+    "failure_count": 1,
+    "last_failure_at": "2026-10-09T09:16:04.778962+09:00",
+    "last_status": 502,
     "last_success_at": "2026-10-09T09:10:52.299145+09:00",
     "retry_after_raw": "",
     "version": 1
