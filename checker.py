@@ -2492,7 +2492,7 @@ def update_page_health(state, page_results, now: datetime) -> bool:
 
 
 def notify_failed_pages(state, page_results, now: datetime) -> bool:
-    """5분 감시는 유지하되, 30분 지속 장애와 15분 연속 조회 재개 후 상태 알림만 보낸다.
+    """5분 감시는 유지하되, 30분 지속 장애와 60분 연속 조회 재개 후 상태 알림만 보낸다.
 
     복구 판단은 과거에 장애였던 모든 날짜가 아니라 이번 실행에서 실제로
     조회한 날짜를 기준으로 한다. 이미 지난 날짜나 현재 조회 차례가 아닌
@@ -2616,7 +2616,7 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
         incident["state"] = "recovering"
         print(
             "CGV 구조화 조회 정상화 확인 시작: "
-            "실제 조회 회차가 15분 동안 안정적으로 유지되면 조회 재개 알림을 보냅니다."
+            "실제 조회 회차가 60분 동안 안정적으로 유지되면 조회 재개 알림을 보냅니다."
         )
         return True
 
@@ -2626,12 +2626,12 @@ def notify_failed_pages(state, page_results, now: datetime) -> bool:
         incident["recovery_started_at"] = now.isoformat()
         return True
 
-    if now - recovery_started < timedelta(minutes=15):
+    if now - recovery_started < timedelta(minutes=60):
         return changed
 
     message = (
         "✅ **CGV 구조화 조회 재개**\n"
-        "- 1차 구조화 조회가 최근 15분 동안 정상 응답했습니다.\n"
+        "- 1차 구조화 조회가 최근 60분 동안 정상 응답했습니다.\n"
         "- 공급자 HTTP 502 장애가 재발할 수 있어 완전 복구를 보장하지 않습니다.\n"
         f"- 복구 확인: {now.strftime('%Y-%m-%d %H:%M:%S KST')}"
     )
