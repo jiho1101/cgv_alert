@@ -1271,29 +1271,15 @@
         ]
       },
       "0128|20261011": {
-        "last_nonempty_at": "2026-10-11T22:40:55.162832+09:00",
-        "last_nonempty_count": 3,
-        "last_nonempty_hash": "cad3853849680c90",
+        "last_nonempty_at": "2026-10-11T22:50:54.583817+09:00",
+        "last_nonempty_count": 2,
+        "last_nonempty_hash": "675b82e1bfd19fed",
         "last_nonempty_keys": [
-          "30001323|0128|20261011|2026101101285|22:30",
           "30001342|0128|20261011|2026101101286|22:40",
           "30001376|0128|20261011|2026101101285|23:00"
         ],
-        "last_nonempty_latest_end_minutes": 1532,
+        "last_nonempty_latest_end_minutes": 1499,
         "last_nonempty_rows": [
-          {
-            "end_time": "25:32",
-            "movie_code": "30001323",
-            "movie_name": "오디세이",
-            "play_date": "20261011",
-            "remaining_seats": 432,
-            "schedule_id": "2026101101285",
-            "screen": "",
-            "start_time": "22:30",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 441
-          },
           {
             "end_time": "24:59",
             "movie_code": "30001342",
@@ -1312,7 +1298,7 @@
             "movie_code": "30001376",
             "movie_name": "부활남-더 레드",
             "play_date": "20261011",
-            "remaining_seats": 138,
+            "remaining_seats": 136,
             "schedule_id": "2026101101285",
             "screen": "",
             "start_time": "23:00",
