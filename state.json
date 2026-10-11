@@ -1271,11 +1271,10 @@
         ]
       },
       "0128|20261011": {
-        "last_nonempty_at": "2026-10-11T20:50:56.237452+09:00",
-        "last_nonempty_count": 9,
-        "last_nonempty_hash": "33771bad2d1a00d2",
+        "last_nonempty_at": "2026-10-11T21:10:53.878926+09:00",
+        "last_nonempty_count": 8,
+        "last_nonempty_hash": "4a7a356d24ffd817",
         "last_nonempty_keys": [
-          "30001314|0128|20261011|2026101101285|20:50",
           "30001314|0128|20261011|2026101101285|21:30",
           "30001314|0128|20261011|2026101101286|22:20",
           "30001323|0128|20261011|2026101101285|22:30",
@@ -1287,19 +1286,6 @@
         ],
         "last_nonempty_latest_end_minutes": 1532,
         "last_nonempty_rows": [
-          {
-            "end_time": "23:11",
-            "movie_code": "30001314",
-            "movie_name": "암살자(들)",
-            "play_date": "20261011",
-            "remaining_seats": 267,
-            "schedule_id": "2026101101285",
-            "screen": "",
-            "start_time": "20:50",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 282
-          },
           {
             "end_time": "22:49",
             "movie_code": "30001367",
@@ -1344,7 +1330,7 @@
             "movie_code": "30001367",
             "movie_name": "극장판 치이카와-인어 섬의 비밀",
             "play_date": "20261011",
-            "remaining_seats": 184,
+            "remaining_seats": 182,
             "schedule_id": "2026101101286",
             "screen": "",
             "start_time": "22:15",
