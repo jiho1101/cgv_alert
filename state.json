@@ -1271,11 +1271,10 @@
         ]
       },
       "0128|20261011": {
-        "last_nonempty_at": "2026-10-11T19:50:52.667498+09:00",
-        "last_nonempty_count": 13,
-        "last_nonempty_hash": "9a2f21db955138db",
+        "last_nonempty_at": "2026-10-11T20:00:52.508890+09:00",
+        "last_nonempty_count": 12,
+        "last_nonempty_hash": "6b32863cbf479d20",
         "last_nonempty_keys": [
-          "30001314|0128|20261011|2026101101285|19:40",
           "30001314|0128|20261011|2026101101285|20:50",
           "30001314|0128|20261011|2026101101285|21:30",
           "30001314|0128|20261011|2026101101286|22:20",
@@ -1292,24 +1291,11 @@
         "last_nonempty_latest_end_minutes": 1532,
         "last_nonempty_rows": [
           {
-            "end_time": "22:01",
-            "movie_code": "30001314",
-            "movie_name": "암살자(들)",
-            "play_date": "20261011",
-            "remaining_seats": 202,
-            "schedule_id": "2026101101285",
-            "screen": "",
-            "start_time": "19:40",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 224
-          },
-          {
             "end_time": "22:19",
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261011",
-            "remaining_seats": 233,
+            "remaining_seats": 232,
             "schedule_id": "2026101101285",
             "screen": "",
             "start_time": "20:00",
@@ -1322,7 +1308,7 @@
             "movie_code": "30001367",
             "movie_name": "극장판 치이카와-인어 섬의 비밀",
             "play_date": "20261011",
-            "remaining_seats": 141,
+            "remaining_seats": 130,
             "schedule_id": "2026101101285",
             "screen": "",
             "start_time": "20:10",
@@ -1439,7 +1425,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261011",
-            "remaining_seats": 286,
+            "remaining_seats": 282,
             "schedule_id": "2026101101286",
             "screen": "",
             "start_time": "22:40",
