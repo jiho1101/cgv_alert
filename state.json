@@ -1271,9 +1271,9 @@
         ]
       },
       "0128|20261011": {
-        "last_nonempty_at": "2026-10-11T19:30:53.668156+09:00",
-        "last_nonempty_count": 14,
-        "last_nonempty_hash": "2755b83601c570e7",
+        "last_nonempty_at": "2026-10-11T19:50:52.667498+09:00",
+        "last_nonempty_count": 13,
+        "last_nonempty_hash": "9a2f21db955138db",
         "last_nonempty_keys": [
           "30001314|0128|20261011|2026101101285|19:40",
           "30001314|0128|20261011|2026101101285|20:50",
@@ -1287,24 +1287,10 @@
           "30001367|0128|20261011|2026101101286|21:00",
           "30001367|0128|20261011|2026101101286|22:15",
           "30001376|0128|20261011|2026101101285|23:00",
-          "30001400|0128|20261011|2026101101286|21:20",
-          "30001517|0128|20261011|2026101101284|19:25"
+          "30001400|0128|20261011|2026101101286|21:20"
         ],
         "last_nonempty_latest_end_minutes": 1532,
         "last_nonempty_rows": [
-          {
-            "end_time": "22:41",
-            "movie_code": "30001517",
-            "movie_name": "어벤져스-엔드게임 앙코르",
-            "play_date": "20261011",
-            "remaining_seats": 124,
-            "schedule_id": "2026101101284",
-            "screen": "",
-            "start_time": "19:25",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 168
-          },
           {
             "end_time": "22:01",
             "movie_code": "30001314",
@@ -1323,7 +1309,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261011",
-            "remaining_seats": 237,
+            "remaining_seats": 233,
             "schedule_id": "2026101101285",
             "screen": "",
             "start_time": "20:00",
@@ -1336,7 +1322,7 @@
             "movie_code": "30001367",
             "movie_name": "극장판 치이카와-인어 섬의 비밀",
             "play_date": "20261011",
-            "remaining_seats": 143,
+            "remaining_seats": 141,
             "schedule_id": "2026101101285",
             "screen": "",
             "start_time": "20:10",
@@ -1349,7 +1335,7 @@
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20261011",
-            "remaining_seats": 31,
+            "remaining_seats": 29,
             "schedule_id": "2026101101284",
             "screen": "",
             "start_time": "20:30",
@@ -1362,7 +1348,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261011",
-            "remaining_seats": 269,
+            "remaining_seats": 270,
             "schedule_id": "2026101101285",
             "screen": "",
             "start_time": "20:50",
@@ -1414,7 +1400,7 @@
             "movie_code": "30001367",
             "movie_name": "극장판 치이카와-인어 섬의 비밀",
             "play_date": "20261011",
-            "remaining_seats": 185,
+            "remaining_seats": 186,
             "schedule_id": "2026101101286",
             "screen": "",
             "start_time": "22:15",
