@@ -1295,11 +1295,10 @@
         ]
       },
       "0128|20261012": {
-        "last_nonempty_at": "2026-10-12T15:40:30.288897+09:00",
-        "last_nonempty_count": 26,
-        "last_nonempty_hash": "4fd9f731c13d4d80",
+        "last_nonempty_at": "2026-10-12T16:00:31.400583+09:00",
+        "last_nonempty_count": 25,
+        "last_nonempty_hash": "e6bae00b8543aece",
         "last_nonempty_keys": [
-          "30001314|0128|20261012|2026101201283|15:40",
           "30001314|0128|20261012|2026101201283|16:40",
           "30001314|0128|20261012|2026101201283|17:30",
           "30001314|0128|20261012|2026101201283|20:30",
@@ -1329,24 +1328,11 @@
         "last_nonempty_latest_end_minutes": 1479,
         "last_nonempty_rows": [
           {
-            "end_time": "18:01",
-            "movie_code": "30001314",
-            "movie_name": "암살자(들)",
-            "play_date": "20261012",
-            "remaining_seats": 272,
-            "schedule_id": "2026101201283",
-            "screen": "",
-            "start_time": "15:40",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 295
-          },
-          {
             "end_time": "18:19",
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261012",
-            "remaining_seats": 202,
+            "remaining_seats": 199,
             "schedule_id": "2026101201283",
             "screen": "",
             "start_time": "16:00",
@@ -1411,7 +1397,7 @@
             "movie_code": "30001323",
             "movie_name": "오디세이",
             "play_date": "20261012",
-            "remaining_seats": 426,
+            "remaining_seats": 425,
             "schedule_id": "2026101201283",
             "screen": "",
             "start_time": "17:10",
@@ -1424,7 +1410,7 @@
             "movie_code": "30001367",
             "movie_name": "극장판 치이카와-인어 섬의 비밀",
             "play_date": "20261012",
-            "remaining_seats": 255,
+            "remaining_seats": 253,
             "schedule_id": "2026101201284",
             "screen": "",
             "start_time": "17:20",
