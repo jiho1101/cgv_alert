@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "21";
+const COMMAND_VERSION = "22";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
@@ -1920,6 +1920,26 @@ export default {
         },
         now: new Date().toISOString(),
       });
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/independent-source-smoke"
+    ) {
+      if (!authorizedStatusUpdate(request, env)) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      // Read-only live test of the *Cloudflare* fetch environment.
+      // Never dispatch GitHub, mutate D1, or send any Discord alert.
+      const page = await emergencyFetchIndependentPage(
+        "0128", emergencyTodayYmd(),
+      );
+      return jsonResponse({
+        ok: page.ok,
+        source: page.source || "independent_static",
+        rows: page.rows.length,
+        error: page.error,
+      }, page.ok ? 200 : 502);
     }
 
     if (

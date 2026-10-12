@@ -193,7 +193,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "21"
+          expected_version = "22"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:
@@ -238,7 +238,7 @@ jobs:
                       and independent_backup
                   ):
                       print(
-                          "Cloudflare Worker v21 + independent backup + Browser binding 확인 완료"
+                          "Cloudflare Worker v22 + independent backup + Browser binding 확인 완료"
                       )
                       raise SystemExit(0)
               except requests.RequestException as exc:
@@ -299,6 +299,53 @@ jobs:
               f"targets={len(payload.get('target_results') or [])} · "
               f"would_notify={payload.get('would_notify_count', 0)}"
           )
+          PY
+
+      - name: Verify independent source from deployed Cloudflare Worker
+        if: github.event_name == 'push'
+        continue-on-error: true
+        env:
+          STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import time
+          import requests
+
+          token = os.environ.get("STATUS_API_TOKEN", "").strip()
+          if not token:
+              raise SystemExit("INDEPENDENT_WORKER_LIVE_SMOKE FAIL · STATUS_API_TOKEN missing")
+          url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/independent-source-smoke"
+          for attempt in range(1, 9):
+              try:
+                  response = requests.post(
+                      url,
+                      headers={"Authorization": f"Bearer {token}"},
+                      json={},
+                      timeout=18,
+                  )
+                  data = response.json()
+                  print(
+                      f"INDEPENDENT_WORKER_LIVE_SMOKE {attempt}/8 "
+                      f"HTTP {response.status_code} "
+                      f"source={data.get('source')} rows={data.get('rows')} "
+                      f"error={str(data.get('error') or '')[:150]}"
+                  )
+                  if (
+                      response.status_code == 200
+                      and data.get("ok")
+                      and data.get("source") == "independent_static"
+                      and int(data.get("rows") or 0) > 0
+                  ):
+                      print("INDEPENDENT_WORKER_LIVE_SMOKE PASS")
+                      raise SystemExit(0)
+              except (requests.RequestException, ValueError) as exc:
+                  print(
+                      f"INDEPENDENT_WORKER_LIVE_SMOKE {attempt}/8 "
+                      f"{type(exc).__name__}: {exc}"
+                  )
+              time.sleep(5)
+          raise SystemExit("INDEPENDENT_WORKER_LIVE_SMOKE FAIL")
           PY
 
       - name: Notify Discord when instant check finishes
