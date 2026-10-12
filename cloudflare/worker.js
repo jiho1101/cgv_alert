@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "20";
+const COMMAND_VERSION = "21";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
@@ -786,7 +786,128 @@ function emergencyStart(value) {
   return String(hour).padStart(2, "0") + ":" + String(minute).padStart(2, "0");
 }
 
-async function emergencyFetchPage(theaterCode, playDate) {
+
+// Independently published CGV timetables: read-only, static and potentially
+// delayed. Empty future dates are NEVER proof that booking is unavailable.
+export function independentSnapshotRows(manifest, snapshot, theaterCode, playDate, nowMs = Date.now()) {
+  const timestamp = (raw) => Date.parse(String(raw || ""));
+  if (!manifest || manifest.schema_version !== 1) throw new Error("manifest schema invalid");
+  const generated = timestamp(manifest.generated_at);
+  const source = timestamp(manifest.source_updated_at?.screenings);
+  if (!Number.isFinite(generated) || generated > nowMs + 120000 ||
+      nowMs - generated > 90 * 60000) {
+    throw new Error("independent manifest stale");
+  }
+  if (!Number.isFinite(source) || source > nowMs + 120000 ||
+      nowMs - source > 12 * 3600000) {
+    throw new Error("independent timetable source stale");
+  }
+  if (!snapshot || String(snapshot.cinema?.cinema_code) !== theaterCode ||
+      snapshot.cinema?.provider !== "CGV" || !Array.isArray(snapshot.screenings)) {
+    throw new Error("independent cinema mismatch");
+  }
+  const all = new Set();
+  const rows = [];
+  for (const entry of snapshot.screenings) {
+    const date = String(entry?.play_date || "").replace(/-/g, "");
+    const start = String(entry?.start_dt || "");
+    const movie = String(entry?.source_movie_code || "");
+    const name = String(entry?.movie_title || "");
+    const seats = Number(entry?.total_seat_cnt);
+    const left = Number(entry?.remain_seat_cnt);
+    if (entry?.provider !== "CGV" || String(entry?.cinema_code) !== theaterCode ||
+        !/^\d{8}$/.test(date) || !/^(?:[01]\d|2[0-9]):[0-5]\d$/.test(start) ||
+        !movie || !name || !Number.isSafeInteger(seats) || seats < 1 ||
+        !Number.isSafeInteger(left) || left < 0 || left > seats) {
+      throw new Error("invalid independent timetable row");
+    }
+    let booking;
+    try {
+      booking = new URL(String(entry?.url || ""));
+    } catch {
+      throw new Error("independent booking URL invalid");
+    }
+    const movNo = booking.searchParams.getAll("movNo");
+    const siteNo = booking.searchParams.getAll("siteNo");
+    const scnYmd = booking.searchParams.getAll("scnYmd");
+    const scnSseq = booking.searchParams.getAll("scnSseq");
+    const scnsNo = booking.searchParams.getAll("scnsNo");
+    if (booking.protocol !== "https:" || booking.hostname !== "cgv.co.kr" ||
+        booking.pathname !== "/cnm/movieBook/movie" ||
+        movNo.length !== 1 || movNo[0] !== movie ||
+        siteNo.length !== 1 || siteNo[0] !== theaterCode ||
+        scnYmd.length !== 1 || scnYmd[0] !== date ||
+        scnSseq.length !== 1 || !/^\d+$/.test(scnSseq[0]) ||
+        scnsNo.length !== 1 || !/^\d+$/.test(scnsNo[0])) {
+      throw new Error("independent CGV booking identity mismatch");
+    }
+    // Matches primary scheduleId: YYYYMMDD + siteNo + CGV scnSseq.
+    const scheduleId = date + theaterCode + scnSseq[0];
+    const identity = [movie, theaterCode, date, scheduleId, start].join("|");
+    if (all.has(identity)) throw new Error("independent identity collision");
+    all.add(identity);
+    if (date === playDate) {
+      rows.push({
+        movie_code: movie,
+        movie_name: name,
+        theater_code: theaterCode,
+        play_date: date,
+        start_time: start,
+        schedule_id: scheduleId,
+        total_seats: seats,
+        remaining_seats: left,
+      });
+    }
+  }
+  return rows;
+}
+
+async function emergencyFetchIndependentPage(theaterCode, playDate) {
+  const base = "https://data.moviebara.com/";
+  try {
+    const manifestRes = await fetch(base + "manifest.json", {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (manifestRes.status !== 200) throw new Error("manifest HTTP " + manifestRes.status);
+    const manifest = await manifestRes.json();
+    const artifact = manifest?.artifacts?.["cinemas/" + theaterCode + ".json"];
+    const digest = String(artifact?.sha256 || "");
+    const key = String(artifact?.key || "");
+    if (!/^[a-f0-9]{64}$/.test(digest) || key !== "objects/" + digest + ".json" ||
+        Number(artifact?.bytes || 0) > 2000000) {
+      throw new Error("independent cinema artifact unavailable");
+    }
+    const snapshotRes = await fetch(base + key, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (snapshotRes.status !== 200) throw new Error("snapshot HTTP " + snapshotRes.status);
+    const contentLength = Number(snapshotRes.headers.get("content-length") || 0);
+    if (contentLength > 2000000) throw new Error("snapshot size invalid");
+    // fetch expands gzip automatically. The checksum authenticates the
+    // published object key, while identity, schema and freshness are validated
+    // from the expanded JSON. Python primary fallback verifies wire SHA256.
+    const snapshot = await snapshotRes.json();
+    const rows = independentSnapshotRows(
+      manifest, snapshot, theaterCode, playDate,
+    );
+    if (!rows.length) {
+      return {
+        ok: false, status: 200, rows: [], source: "independent_static",
+        error: "independent future date not published (unconfirmed)",
+      };
+    }
+    return { ok: true, status: 200, rows, source: "independent_static", error: null };
+  } catch (error) {
+    return {
+      ok: false, status: null, rows: [], source: "independent_static",
+      error: "independent source: " + String(error?.message || error).slice(0, 180),
+    };
+  }
+}
+
+async function emergencyFetchPrimaryPage(theaterCode, playDate) {
   const url = new URL("https://mcp.aka.page/api/cgv/timetable");
   url.searchParams.set("playDate", playDate);
   url.searchParams.set("theaterCode", theaterCode);
@@ -875,7 +996,22 @@ async function emergencyFetchPage(theaterCode, playDate) {
     }
     identities.add(identity);
   }
-  return { ok: true, status: response.status, rows, error: null };
+  return { ok: true, status: response.status, rows, source: "public_primary", error: null };
+}
+
+async function emergencyFetchPage(theaterCode, playDate) {
+  const primary = await emergencyFetchPrimaryPage(theaterCode, playDate);
+  if (primary.ok && primary.rows.length) return primary;
+  // Try the independent publication when upstream returns 502/429/timeout
+  // or an unconfirmed future empty; do not treat a missing date as success.
+  const independent = await emergencyFetchIndependentPage(theaterCode, playDate);
+  if (independent.ok) return independent;
+  if (primary.ok) return primary;
+  return {
+    ...primary,
+    error: String(primary.error || "primary source unavailable") +
+      "; " + String(independent.error || "independent source unavailable"),
+  };
 }
 
 function emergencySessions(rows, target) {
@@ -1078,6 +1214,7 @@ async function performEmergencyCheck(env, dryRun = false) {
       theater_code: theaterCode,
       play_date: playDate,
       status: page.status,
+      source: page.source || "public_primary",
       structural_valid: page.ok,
       rows: page.rows.length,
       error: page.error,
@@ -1771,6 +1908,7 @@ export default {
         monitoring_stats_24h: monitoringStats,
         source_takeover: {
           enabled: true,
+          independent_backup: true,
           priority_failed_in_latest_run: priorityPrimaryFailed(
             statusRow?.value,
           ),

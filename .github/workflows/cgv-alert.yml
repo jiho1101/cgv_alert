@@ -193,7 +193,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "20"
+          expected_version = "21"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:
@@ -216,12 +216,16 @@ jobs:
                   source_takeover = bool(
                       (payload.get("source_takeover") or {}).get("enabled")
                   )
+                  independent_backup = bool(
+                      (payload.get("source_takeover") or {}).get("independent_backup")
+                  )
                   budget = payload.get("browser_budget") or {}
                   used_ms = int(budget.get("used_ms") or 0)
                   safe_limit_ms = int(budget.get("safe_limit_ms") or 0)
                   last_status = (
                       f"version={version}, browser_binding={browser_binding}, "
                       f"source_takeover={source_takeover}, "
+                      f"independent_backup={independent_backup}, "
                       f"browser_used_ms={used_ms}, safe_limit_ms={safe_limit_ms}"
                   )
                   print(
@@ -231,9 +235,10 @@ jobs:
                       version == expected_version
                       and browser_binding
                       and source_takeover
+                      and independent_backup
                   ):
                       print(
-                          "Cloudflare Worker v20 + source takeover + Browser binding 확인 완료"
+                          "Cloudflare Worker v21 + independent backup + Browser binding 확인 완료"
                       )
                       raise SystemExit(0)
               except requests.RequestException as exc:
