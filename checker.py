@@ -3655,12 +3655,9 @@ def run_checker(force_all: bool = False):
         )
     for target in targets:
         for play_ymd in planned_dates(target, now, force_all=force_all):
-            if (
-                not force_all
-                and _public_guard_active(state, now)
-                and not _is_priority_date(target, play_ymd)
-            ):
-                continue
+            # A 5xx/429 backoff suppresses primary API traffic, not the
+            # configured non-priority scan. The independent source can still
+            # detect openings without increasing upstream API requests.
             scheduled[str(target["theater_code"])][play_ymd].add(str(target["id"]))
 
     if not scheduled:
@@ -3874,13 +3871,60 @@ def run_checker(force_all: bool = False):
                 guard = _public_api_guard(state)
                 until = str(guard.get("backoff_until") or "-")
                 if not priority_for_any:
-                    print(
-                        f"[{target['theater_name']}] {play_ymd} "
-                        "제3자 API 보호 중 · 비핵심 날짜 이번 회차 건너뜀 · "
-                        f"보호 종료 {until}"
+                    # Continue scanning on the normal non-priority cadence.
+                    # Avoid the rate-limited/failed primary entirely here.
+                    independent, independent_rows = independent_for_page(
+                        str(target["theater_code"]), play_ymd
                     )
-                    page_cache[key] = None
-                    return None
+                    if independent_rows:
+                        page_cache[key] = {
+                            "mode": "public", "data": independent_rows,
+                        }
+                        page_results[page_id] = {
+                            "ok": True, "degraded": True,
+                            "source_mode": "independent_static",
+                            "public_primary_failed": True,
+                            "public_structured": True,
+                            "theater_name": target["theater_name"],
+                            "play_ymd": play_ymd,
+                            "independent_rows": len(independent_rows),
+                            "independent_snapshot_age_seconds":
+                                independent.get("snapshot_age_seconds"),
+                            "independent_source_age_seconds":
+                                independent.get("source_age_seconds"),
+                            "error": (
+                                "주 API 보호 중 독립 시간표로 확인 "
+                                f"(보호 종료 {until}; 실시간성 보장 없음)"
+                            ),
+                        }
+                        print(
+                            f"[{target['theater_name']}] {play_ymd} "
+                            "주 API 보호 중 독립 조회 성공 · "
+                            f"{len(independent_rows)}회차 · "
+                            f"원본 갱신 {independent.get('source_age_seconds')}초 전"
+                        )
+                    else:
+                        # No future rows is unconfirmed, not proof of closure.
+                        reason = str(
+                            independent.get("error") or
+                            "해당 날짜 독립 데이터 미게시 (예매 여부 미확정)"
+                        )
+                        page_cache[key] = None
+                        page_results[page_id] = {
+                            "ok": False, "degraded": True,
+                            "source_mode": "failed",
+                            "theater_name": target["theater_name"],
+                            "play_ymd": play_ymd,
+                            "error": (
+                                f"주 API 보호 중 {until}; "
+                                f"독립 조회 미확정: {reason}"
+                            ),
+                        }
+                        print(
+                            f"[{target['theater_name']}] {play_ymd} "
+                            f"주 API 보호 중 독립 조회 미확정 · {reason}"
+                        )
+                    return page_cache[key]
 
                 if not _public_guard_priority_probe_allowed(state, now):
                     print(
