@@ -1295,9 +1295,9 @@
         ]
       },
       "0128|20261012": {
-        "last_nonempty_at": "2026-10-12T13:20:27.439299+09:00",
-        "last_nonempty_count": 35,
-        "last_nonempty_hash": "51a4933f12ff37c3",
+        "last_nonempty_at": "2026-10-12T13:30:35.349994+09:00",
+        "last_nonempty_count": 34,
+        "last_nonempty_hash": "5dabd57f72d5f880",
         "last_nonempty_keys": [
           "30001314|0128|20261012|2026101201282|14:00",
           "30001314|0128|20261012|2026101201282|14:50",
@@ -1325,7 +1325,6 @@
           "30001342|0128|20261012|2026101201285|22:20",
           "30001367|0128|20261012|2026101201283|15:00",
           "30001367|0128|20261012|2026101201284|17:20",
-          "30001376|0128|20261012|2026101201282|13:10",
           "30001376|0128|20261012|2026101201283|15:20",
           "30001376|0128|20261012|2026101201284|17:40",
           "30001376|0128|20261012|2026101201285|20:00",
@@ -1337,19 +1336,6 @@
         ],
         "last_nonempty_latest_end_minutes": 1479,
         "last_nonempty_rows": [
-          {
-            "end_time": "15:01",
-            "movie_code": "30001376",
-            "movie_name": "부활남-더 레드",
-            "play_date": "20261012",
-            "remaining_seats": 141,
-            "schedule_id": "2026101201282",
-            "screen": "",
-            "start_time": "13:10",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 168
-          },
           {
             "end_time": "15:39",
             "movie_code": "30001342",
@@ -1381,7 +1367,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261012",
-            "remaining_seats": 280,
+            "remaining_seats": 279,
             "schedule_id": "2026101201282",
             "screen": "",
             "start_time": "14:00",
@@ -1407,7 +1393,7 @@
             "movie_code": "30001342",
             "movie_name": "타짜-벨제붑의 노래",
             "play_date": "20261012",
-            "remaining_seats": 141,
+            "remaining_seats": 138,
             "schedule_id": "2026101201282",
             "screen": "",
             "start_time": "14:20",
@@ -1511,7 +1497,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261012",
-            "remaining_seats": 292,
+            "remaining_seats": 291,
             "schedule_id": "2026101201283",
             "screen": "",
             "start_time": "16:40",
