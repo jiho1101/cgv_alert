@@ -13,6 +13,8 @@ on:
       - main
     paths:
       - "checker.py"
+      - "moviebara_fallback.py"
+      - "test_moviebara_fallback.py"
       - "config.json"
       - "requirements.txt"
       - "shadow_public_monitor.py"
@@ -54,7 +56,10 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Check Python syntax
-        run: python -m py_compile checker.py shadow_public_monitor.py
+        run: python -m py_compile checker.py shadow_public_monitor.py moviebara_fallback.py test_moviebara_fallback.py
+
+      - name: Test independent timetable fallback
+        run: python -m unittest -v test_moviebara_fallback.py
 
       - name: Check Cloudflare Worker syntax
         run: |

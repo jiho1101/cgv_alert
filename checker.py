@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
+from moviebara_fallback import SnapshotError, read_cinema_snapshot
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
@@ -276,6 +277,7 @@ def _runtime_detection_mode(
 
     for mode in (
         "cloudflare_fallback",
+        "independent_static",
         "text_fallback",
         "cgv_official",
     ):
@@ -404,6 +406,7 @@ def build_runtime_snapshot(
             detection_mode
             in {
                 "cgv_official",
+                "independent_static",
                 "text_fallback",
                 "cloudflare_fallback",
                 "api_protection",
@@ -3644,6 +3647,7 @@ def run_checker(force_all: bool = False):
     page_results = {}
     found = defaultdict(dict)
     public_cache = {}
+    independent_cache = {}
     public_sentinel_cache = {}
     public_state_changed = False
     movie_code_state_changed = False
@@ -3983,6 +3987,70 @@ def run_checker(force_all: bool = False):
 
             # Public structured source가 실패하거나, 직전 정상 회차가 갑자기
             # 0건으로 사라진 경우에만 기존 CGV 직접 구조화/HTML 보조 경로를 쓴다.
+
+            # Independent static CGV timetable feed, only after the live primary
+            # has failed. Its data can lag, so empty dates are NEVER trusted.
+            # Cache per theater to avoid repeated manifest requests for 14 dates.
+            site_no = str(target["theater_code"])
+            if site_no not in independent_cache:
+                try:
+                    independent_cache[site_no] = read_cinema_snapshot(site_no, now)
+                except (SnapshotError, requests.RequestException) as exc:
+                    independent_cache[site_no] = {
+                        "error": f"{type(exc).__name__}: {str(exc)[:150]}"
+                    }
+            independent = independent_cache[site_no]
+            independent_rows = [
+                row for row in independent.get("rows", [])
+                if row.get("play_date") == str(play_ymd)
+            ]
+            if independent_rows:
+                inspection = public_inspect_rows(independent_rows)
+                if public_structural_valid(200, None, True, inspection):
+                    page_cache[key] = {
+                        "mode": "public",
+                        "data": independent_rows,
+                    }
+                    page_results[page_id] = {
+                        "ok": True,
+                        "degraded": True,
+                        "source_mode": "independent_static",
+                        "public_primary_failed": True,
+                        "public_structured": True,
+                        "theater_name": target["theater_name"],
+                        "play_ymd": play_ymd,
+                        "independent_rows": len(independent_rows),
+                        "independent_snapshot_age_seconds": independent.get(
+                            "snapshot_age_seconds"
+                        ),
+                        "independent_source_age_seconds": independent.get(
+                            "source_age_seconds"
+                        ),
+                        "error": (
+                            f"주 공급자 조회 실패: {public_message}; "
+                            "공개 독립 스냅샷으로 확인 (실시간 보장 없음)"
+                        ),
+                    }
+                    print(
+                        f"[{target['theater_name']}] {play_ymd} "
+                        "독립 공개 시간표 보조 수집 성공 · "
+                        f"{len(independent_rows)}회차 · "
+                        f"스냅샷 {independent.get('snapshot_age_seconds')}초 전 · "
+                        "신규 회차는 기존 동일 키로 검사"
+                    )
+                    return page_cache[key]
+            elif independent.get("error"):
+                print(
+                    f"[{target['theater_name']}] {play_ymd} "
+                    f"독립 보조 소스도 실패: {independent['error']}"
+                )
+            else:
+                print(
+                    f"[{target['theater_name']}] {play_ymd} "
+                    "독립 보조 소스에 해당 날짜 회차 미게시 · "
+                    "0건을 예매 없음으로 확정하지 않음"
+                )
+
             legacy_browser = ensure_browser()
             try:
                 rows = legacy_browser.fetch_schedule(
