@@ -277,6 +277,7 @@ def _runtime_detection_mode(
 
     for mode in (
         "cloudflare_fallback",
+        "primary_independent_combined",
         "independent_static",
         "text_fallback",
         "cgv_official",
@@ -406,6 +407,7 @@ def build_runtime_snapshot(
             detection_mode
             in {
                 "cgv_official",
+                "primary_independent_combined",
                 "independent_static",
                 "text_fallback",
                 "cloudflare_fallback",
