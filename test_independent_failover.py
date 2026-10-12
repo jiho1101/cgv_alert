@@ -1,0 +1,99 @@
+"""Production pipeline recovery simulation. No network, secrets, or live Discord."""
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import checker
+
+
+class IndependentFailoverTests(unittest.TestCase):
+    def test_live_primary_502_independent_alert_once_even_after_seat_change(self):
+        target_id = "avengers-doomsday-ulsan-samsan"
+        target = {
+            "id": target_id,
+            "enabled": True,
+            "label": "어벤져스: 둠스데이",
+            "theater_code": "0128",
+            "theater_name": "CGV 울산삼산",
+            "date_range": {"start": "20991218", "end": "20991218"},
+            "movie_aliases": ["어벤져스: 둠스데이"],
+            "screen_keywords": [],
+            "require_sale_open": True,
+            "min_remaining_seats": 1,
+            "scan_strategy": {
+                "priority_range": {"start": "20991218", "end": "20991218"},
+                "priority_interval_minutes": 5,
+                "full_interval_minutes": 30,
+            },
+        }
+        public_row = {
+            "movie_code": "30009999",
+            "movie_name": "어벤져스: 둠스데이",
+            "theater_code": "0128",
+            "theater_name": "CGV울산삼산",
+            "play_date": "20991218",
+            "start_time": "10:20",
+            "end_time": "13:15",
+            "schedule_id": "2099121801281",
+            "screen": "IMAX관",
+            "remaining_seats": 439,
+            "total_seats": 440,
+        }
+        failed_primary = {
+            "accepted": False,
+            "status": 502,
+            "state": "invalid_structure",
+            "error": "simulated upstream HTTP 502",
+            "state_changed": False,
+            "guard_state_changed": False,
+            "rows": [],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            state_path = Path(tmp) / "state.json"
+            runtime_path = Path(tmp) / "runtime_status.json"
+            config_path.write_text(
+                json.dumps({"targets": [target], "request": {"timeout_seconds": 15}}),
+                encoding="utf-8",
+            )
+            state_path.write_text(
+                json.dumps({"version": 2, "seen": {}, "fallback_seen": {}}),
+                encoding="utf-8",
+            )
+            snapshot = {
+                "rows": [public_row],
+                "snapshot_age_seconds": 900,
+                "source_age_seconds": 3600,
+            }
+            with (
+                patch.object(checker, "CONFIG_PATH", config_path),
+                patch.object(checker, "STATE_PATH", state_path),
+                patch.object(checker, "RUNTIME_STATUS_PATH", runtime_path),
+                patch.object(checker, "planned_dates", return_value=["20991218"]),
+                patch.object(checker, "_fetch_priority_public_with_retry", return_value=failed_primary),
+                patch.object(checker, "read_cinema_snapshot", return_value=snapshot),
+                patch.object(checker, "merge_emergency_seen_from_worker", return_value=False),
+                patch.object(checker, "send_discord_embeds", return_value=True) as send,
+                patch.object(checker, "send_health_message", return_value=True),
+                patch.object(checker, "CgvBrowser", side_effect=AssertionError("unexpected browser")),
+            ):
+                checker.run_checker()
+                self.assertEqual(send.call_count, 1)
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                self.assertEqual(len(state["seen"][target_id]), 1)
+                self.assertIn("|public|30009999|2099121801281|10:20", state["seen"][target_id][0])
+                status = json.loads(runtime_path.read_text(encoding="utf-8"))
+                self.assertEqual(status["targets"][0]["detection_mode"], "independent_static")
+                self.assertIn(status["targets"][0]["health_status"], ("fallback", "warning"))
+
+                public_row["remaining_seats"] = 1
+                checker.run_checker()
+                self.assertEqual(send.call_count, 1, "Seat change must not send duplicate alerts")
+                after = json.loads(state_path.read_text(encoding="utf-8"))
+                self.assertEqual(len(after["seen"][target_id]), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
