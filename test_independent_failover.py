@@ -180,6 +180,22 @@ class IndependentFailoverTests(unittest.TestCase):
                 checker.run_checker()
                 self.assertEqual(send.call_count, 1, "Seat changes must not re-alert")
 
+                # Even HTTP 200 with [] is not proof that the priority movie
+                # is absent: a different new session may appear on the
+                # independent feed before the primary publishes it.
+                accepted_primary.update({
+                    "rows": [], "state": "empty_unconfirmed",
+                    "empty_unconfirmed": True,
+                })
+                independent_movie["schedule_id"] = "2099121801283"
+                with patch.object(
+                    checker, "_public_sentinel_should_check", return_value=False
+                ):
+                    checker.run_checker()
+                self.assertEqual(send.call_count, 2)
+                latest = json.loads(state_path.read_text(encoding="utf-8"))
+                self.assertEqual(len(latest["seen"][target_id]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
