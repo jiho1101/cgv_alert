@@ -17,6 +17,7 @@ on:
       - "requirements.txt"
       - "shadow_public_monitor.py"
       - "cloudflare/worker.js"
+      - "cloudflare/worker-takeover.test.mjs"
       - ".github/workflows/cgv-alert.yml"
 
 permissions:
