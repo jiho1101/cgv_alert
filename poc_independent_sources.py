@@ -1,40 +1,26 @@
-"""Read-only inspection of independently hosted public timetable snapshot."""
-import json
-import re
-import requests
-from urllib.parse import urljoin
-from urllib import robotparser
+"""Cross-check canonical seat and schedule identities across two different public hosts."""
+from collections import Counter
+from datetime import datetime, timezone
+from urllib.parse import parse_qs, urlparse
+import json, requests
 
-HOST="https://data.moviebara.com/"
 s=requests.Session()
-robots=s.get(urljoin(HOST,"robots.txt"),timeout=15)
-rp=robotparser.RobotFileParser()
-rp.parse(robots.text.splitlines())
-def safe_get(path):
-    url=urljoin(HOST,path)
-    if not rp.can_fetch("*",url):
-        raise ValueError("robots forbids "+path)
-    r=s.get(url,timeout=20,headers={"Accept":"application/json"})
-    r.raise_for_status()
-    return r.json()
-m=safe_get("manifest.json")
-art=m.get("artifacts") or {}
-print("FEED_MANIFEST",json.dumps({k:m.get(k) for k in ["generated_at","source_updated_at","changed_at","revision","counts","schema_version"]},ensure_ascii=False)[:1500])
-print("FEED_KEYS",json.dumps({"total":len(art),"cinema_0128":[k for k in art if "0128" in k][:40],"cinema_prefix":[k for k in art if k.startswith("cinemas/")][:50],"availability":[k for k in art if "availability/" in k][:35],"other":[k for k in art if "screening" in k or "schedule" in k][:30]},ensure_ascii=False)[:10000])
-def inspect(path):
-    item=art.get(path)
-    if not item:
-        print("NO_ARTIFACT",path)
-        return
-    data=safe_get(item["key"])
-    sample=data
-    if isinstance(data,dict):
-        for key,val in data.items():
-            if isinstance(val,list) and val:
-                sample={key:val[:2]}
-                break
-    print("FEED_ARTIFACT",json.dumps({"path":path,"bytes":item.get("bytes"),"keys":list(data)[:50] if isinstance(data,dict) else None,"sample":str(sample)[:2200]},ensure_ascii=False)[:4000])
-for path in ["availability/all.json","cinemas/index.json","cinemas/profiles.json","cinemas/0128.json"]:
-    inspect(path)
-for path in [k for k in art if k.startswith("cinemas/") and "0128" in k][:3]:
-    if path not in ["cinemas/0128.json"]:inspect(path)
+m=s.get("https://data.moviebara.com/manifest.json",timeout=20).json()
+data=m["artifacts"]["cinemas/0128.json"]
+c=s.get("https://data.moviebara.com/"+data["key"],timeout=20).json()
+rows=c.get("screenings") or []
+dates=Counter(str(x.get("play_date")) for x in rows)
+invalid=[r for r in rows if str(r.get("cinema_code"))!="0128" or str(r.get("provider"))!="CGV"]
+bookable=[r for r in rows if isinstance(r.get("remain_seat_cnt"),int) and isinstance(r.get("total_seat_cnt"),int) and 0<r["remain_seat_cnt"]<=r["total_seat_cnt"]]
+keys=[]
+for r in rows:
+    qs=parse_qs(urlparse(r.get("url") or "").query)
+    key=(r.get("source_movie_code"),str(r.get("play_date")).replace("-",""),(qs.get("scnsNo") or [""])[0],(qs.get("scnSseq") or [""])[0],r.get("start_dt"))
+    keys.append(key)
+print("CINEMA_0128_SUMMARY",json.dumps({"generated_at":m["generated_at"],"source_updated_at":m.get("source_updated_at",{}).get("screenings"),"artifact_last_changed":m.get("changed_at",{}).get("cinemas/0128.json"),"count":len(rows),"dates":dict(dates),"bookable":len(bookable),"non_CGV":len(invalid),"identity_collisions":len(keys)-len(set(keys)),"top_keys":keys[:4],"example":rows[:2],"cinema":c.get("cinema")},ensure_ascii=False)[:8000])
+api=s.get("https://mcp.aka.page/api/cgv/timetable",params={"playDate":datetime.now(timezone.utc).strftime("%Y%m%d"),"theaterCode":"0128","limit":200},timeout=15)
+payload=api.json() if api.status_code==200 else {}
+raw=payload.get("data")
+if isinstance(raw,dict):raw=raw.get("timetable",raw.get("items",[]))
+if not isinstance(raw,list):raw=[]
+print("PRIMARY_COMPARISON",json.dumps({"status":api.status_code,"count":len(raw),"rows":[{k:r.get(k) for k in ["movieCode","movieName","theaterCode","playDate","startTime","screenName","scheduleId","totalSeats","remainingSeats"]}for r in raw[:3]]},ensure_ascii=False))
