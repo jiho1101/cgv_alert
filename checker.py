@@ -3649,6 +3649,26 @@ def run_checker(force_all: bool = False):
     public_cache = {}
     independent_cache = {}
     public_sentinel_cache = {}
+
+    def independent_for_page(site_no, play_ymd):
+        """Cache one validated independent snapshot per theater and execution."""
+        if site_no not in independent_cache:
+            try:
+                independent_cache[site_no] = read_cinema_snapshot(site_no, now)
+            except (SnapshotError, requests.RequestException) as exc:
+                independent_cache[site_no] = {
+                    "error": f"{type(exc).__name__}: {str(exc)[:150]}"
+                }
+        snapshot = independent_cache[site_no]
+        rows = [
+            row for row in snapshot.get("rows", [])
+            if row.get("play_date") == str(play_ymd)
+        ]
+        if rows and not public_structural_valid(
+            200, None, True, public_inspect_rows(rows)
+        ):
+            return {"error": "independent page identity invalid"}, []
+        return snapshot, rows
     public_state_changed = False
     movie_code_state_changed = False
 
@@ -3917,6 +3937,62 @@ def run_checker(force_all: bool = False):
 
             if public_result.get("accepted"):
                 rows = public_result.get("rows") or []
+                independent_meta = {}
+                if priority_for_any:
+                    # A structurally valid HTTP 200 can still omit newly
+                    # published sessions. Cross-check the priority date every
+                    # five minutes, not only after HTTP 502/timeout.
+                    independent, independent_rows = independent_for_page(
+                        str(target["theater_code"]), play_ymd
+                    )
+                    independent_meta = {
+                        "independent_probe_ok": not bool(independent.get("error")),
+                        "independent_probe_error": independent.get("error"),
+                        "independent_rows": len(independent_rows),
+                        "independent_snapshot_age_seconds": independent.get(
+                            "snapshot_age_seconds"
+                        ),
+                        "independent_source_age_seconds": independent.get(
+                            "source_age_seconds"
+                        ),
+                    }
+                    primary_keys = {public_identity_key(row) for row in rows}
+                    additional = [
+                        row for row in independent_rows
+                        if public_identity_key(row) not in primary_keys
+                    ]
+                    if additional:
+                        merged_rows = rows + additional
+                        if public_structural_valid(
+                            200, None, True, public_inspect_rows(merged_rows)
+                        ):
+                            page_cache[key] = {
+                                "mode": "public", "data": merged_rows,
+                            }
+                            page_results[page_id] = {
+                                "ok": True,
+                                "degraded": True,
+                                "source_mode": "primary_independent_combined",
+                                "public_structured": True,
+                                "public_primary_failed": False,
+                                "primary_row_count": len(rows),
+                                "independent_extra_rows": len(additional),
+                                "theater_name": target["theater_name"],
+                                "play_ymd": play_ymd,
+                                "error": (
+                                    "주 공급자는 HTTP 200이지만 독립 공급자에 "
+                                    f"추가 회차 {len(additional)}건 확인 "
+                                    "(스냅샷 실시간성 보장 없음)"
+                                ),
+                                **independent_meta,
+                            }
+                            print(
+                                f"[{target['theater_name']}] {play_ymd} "
+                                "핵심 날짜 독립 교차검증 · 주 공급자 "
+                                f"{len(rows)}회차, 추가 {len(additional)}회차 · "
+                                f"원본 갱신 {independent.get('source_age_seconds')}초 전"
+                            )
+                            return page_cache[key]
                 page_cache[key] = {
                     "mode": "public",
                     "data": rows,
@@ -3924,6 +4000,7 @@ def run_checker(force_all: bool = False):
                 page_results[page_id] = {
                     "ok": True,
                     "degraded": False,
+                    **independent_meta,
                     "source_mode": "public_primary",
                     "public_state": public_result.get("state"),
                     "public_structured": True,
@@ -3992,18 +4069,9 @@ def run_checker(force_all: bool = False):
             # has failed. Its data can lag, so empty dates are NEVER trusted.
             # Cache per theater to avoid repeated manifest requests for 14 dates.
             site_no = str(target["theater_code"])
-            if site_no not in independent_cache:
-                try:
-                    independent_cache[site_no] = read_cinema_snapshot(site_no, now)
-                except (SnapshotError, requests.RequestException) as exc:
-                    independent_cache[site_no] = {
-                        "error": f"{type(exc).__name__}: {str(exc)[:150]}"
-                    }
-            independent = independent_cache[site_no]
-            independent_rows = [
-                row for row in independent.get("rows", [])
-                if row.get("play_date") == str(play_ymd)
-            ]
+            independent, independent_rows = independent_for_page(
+                site_no, play_ymd
+            )
             if independent_rows:
                 inspection = public_inspect_rows(independent_rows)
                 if public_structural_valid(200, None, True, inspection):
