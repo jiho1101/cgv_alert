@@ -31,9 +31,11 @@ assert.equal(priorityPrimaryFailed({
     priority_session_snapshot_at: null }, { ...base.targets[0],
     priority_session_snapshot_at: "2026-10-12T09:55:00+09:00" }],
 }, today), true, "One failed target is enough to activate backup");
-console.log("SOURCE_TAKEOVER_TEST PASS: source fail, healthy, not due, expired, mixed");
-\nassert.equal(priorityPrimaryFailed({
+
+assert.equal(priorityPrimaryFailed({
   ...base,
   targets: [{ ...base.targets[0],
     priority_session_snapshot_at: "2026-10-12T09:50:00+09:00" }],
 }, today), true, "Preserved previous success must not hide a new 502 incident");
+
+console.log("SOURCE_TAKEOVER_TEST PASS: current/stale success, failed, healthy, not due, expired, mixed");
