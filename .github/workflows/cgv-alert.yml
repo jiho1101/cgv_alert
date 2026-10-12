@@ -56,7 +56,9 @@ jobs:
         run: python -m py_compile checker.py shadow_public_monitor.py
 
       - name: Check Cloudflare Worker syntax
-        run: node --check cloudflare/worker.js
+        run: |
+          node --check cloudflare/worker.js
+          node cloudflare/worker-takeover.test.mjs
 
       - name: Apply staged monitoring intervals
         run: |
@@ -184,7 +186,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "18"
+          expected_version = "19"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:

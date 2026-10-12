@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "18";
+const COMMAND_VERSION = "19";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
@@ -1213,6 +1213,23 @@ async function saveDispatchProbe(env, dispatchedAt, success, error = null) {
   });
 }
 
+// A successful GitHub workflow is not evidence that its priority timetable was read.
+// A missed primary sample must trigger Cloudflare's independent execution path.
+export function priorityPrimaryFailed(status, todayYmd = emergencyTodayYmd()) {
+  const targets = Array.isArray(status?.targets) ? status.targets : [];
+  return targets.some((target) => {
+    const priorityDates = Array.isArray(target?.priority_dates)
+      ? target.priority_dates : [];
+    const priorityActive = priorityDates.some((date) => {
+      const value = String(date || "");
+      return /^\d{8}$/.test(value) && value >= String(todayYmd);
+    });
+    return priorityActive &&
+      Number(target?.checked_page_count || 0) > 0 &&
+      !target?.priority_session_snapshot_at;
+  });
+}
+
 async function maybeRunEmergencyFallback(
   env,
   dispatchError = null,
@@ -1228,9 +1245,11 @@ async function maybeRunEmergencyFallback(
   const age = Number.isFinite(lastRun)
     ? Math.max(0, Date.now() - lastRun)
     : Number.POSITIVE_INFINITY;
+  const sourceFailure = priorityPrimaryFailed(status);
   if (
     !dispatchError &&
     !forceReason &&
+    !sourceFailure &&
     Number.isFinite(lastRun) &&
     age < EMERGENCY_STALE_MS
   ) {
@@ -1249,7 +1268,8 @@ async function maybeRunEmergencyFallback(
     ...result,
     reason:
       forceReason ||
-      (dispatchError ? "dispatch_failed" : "github_status_stale"),
+      (dispatchError ? "dispatch_failed" :
+        sourceFailure ? "priority_source_failed" : "github_status_stale"),
     github_age_seconds: Number.isFinite(age)
       ? Math.floor(age / 1000)
       : null,
@@ -1262,9 +1282,9 @@ function emergencyStatusText(emergency) {
       formatTime(emergency.last_checked_at) +
       (emergency.last_error ? "\n최근 오류: " + emergency.last_error : "");
   }
-  return "대기 · GitHub 실행 상태가 " +
+  return "대기 · 핵심 날짜 수집 실패, GitHub dispatch 실패 또는 " +
     Math.round(EMERGENCY_STALE_MS / 60000) +
-    "분 이상 갱신되지 않거나 dispatch 실패 시 자동 전환" +
+    "분 이상 실행 상태 미갱신 시 자동 전환" +
     (emergency?.last_checked_at
       ? "\n최근 비상 확인: " + formatTime(emergency.last_checked_at)
       : "");
