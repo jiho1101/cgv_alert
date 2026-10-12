@@ -1,0 +1,31 @@
+name: CGV Independent 502 Failover Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "verify_independent_live_failover.py"
+      - ".github/workflows/cgv-independent-failover-smoke.yml"
+      - "moviebara_fallback.py"
+      - "checker.py"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Validate script
+        run: python -m py_compile verify_independent_live_failover.py
+      - name: LIVE CGV timetable / mock HTTP 502 / mock Discord
+        run: python verify_independent_live_failover.py
