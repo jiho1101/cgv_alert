@@ -159,18 +159,18 @@
       "first_failure_at": "2026-10-13T00:00:30.179298+09:00",
       "page_ids": [
         "0128|20261218",
+        "0128|20261227",
         "0128|20261230"
       ],
-      "recovery_started_at": "2026-10-13T03:55:33.749476+09:00",
-      "state": "recovering"
+      "state": "failed"
     }
   },
   "public_api_guard": {
-    "backoff_reason": null,
-    "backoff_until": null,
-    "failure_count": 0,
-    "last_failure_at": "2026-10-13T03:50:32.164977+09:00",
-    "last_status": 200,
+    "backoff_reason": "adaptive",
+    "backoff_until": "2026-10-13T04:05:32.657903+09:00",
+    "failure_count": 1,
+    "last_failure_at": "2026-10-13T04:00:32.657903+09:00",
+    "last_status": 502,
     "last_success_at": "2026-10-13T03:55:33.749476+09:00",
     "retry_after_raw": "",
     "version": 1
