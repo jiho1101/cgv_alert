@@ -1,30 +1,40 @@
-"""Static feed read-only discovery; follows independent site's robots policy."""
-from urllib import robotparser
+"""Read-only inspection of independently hosted public timetable snapshot."""
 import json
 import re
 import requests
+from urllib.parse import urljoin
+from urllib import robotparser
 
-HOST="https://data.moviebara.com"
+HOST="https://data.moviebara.com/"
 s=requests.Session()
-robots=s.get(HOST+"/robots.txt",timeout=12)
+robots=s.get(urljoin(HOST,"robots.txt"),timeout=15)
 rp=robotparser.RobotFileParser()
 rp.parse(robots.text.splitlines())
-print("STATIC_ROBOTS",json.dumps({"status":robots.status_code,"text":robots.text[-3200:],"can_read_profile":rp.can_fetch("*",HOST+"/cinemas/profiles.json"),"can_read_cinema":rp.can_fetch("*",HOST+"/cinemas/0128.json")},ensure_ascii=False))
-main=s.get("https://moviebara.com/static/js/main.js",timeout=15).text
-patterns=["cinemas/","/cinemas/","movies/","catalogue/","loadPage(","loadPages(","artifacts[","manifest.json","public-data","/manifest","index.json","screenings", "seats"]
-for token in patterns:
-    matches=list(re.finditer(re.escape(token),main))
-    print("JS_MARKER",json.dumps({"term":token,"count":len(matches),"contexts":[main[max(0,x.start()-170):x.end()+220][:410] for x in matches[:3]]},ensure_ascii=False)[:3400])
-paths=sorted(set(re.findall(r'["\\x27]([a-zA-Z0-9/_-]{1,85}\\.json)["\\x27]',main)))
-print("STATIC_DECLARED_JSON",json.dumps(paths[:110],ensure_ascii=False))
-for path in ["cinemas/profiles.json","cinemas/0128.json","manifest.json"]:
-    url=HOST+"/"+path
-    if robots.status_code!=200 or not rp.can_fetch("*",url):
-        print("STATIC_SKIP",path,"robots denied")
-        continue
-    try:
-        res=s.get(url,timeout=12,headers={"Accept":"application/json"})
-        js=res.json() if res.status_code==200 and "json" in res.headers.get("content-type","") else None
-        print("STATIC_PROBE",json.dumps({"path":path,"status":res.status_code,"type":res.headers.get("content-type",""),"len":len(res.content),"keys":list(js)[:20] if isinstance(js,dict) else None,"example":str(js)[:450] if isinstance(js,dict) else None},ensure_ascii=False)[:1500])
-    except requests.RequestException as e:
-        print("STATIC_ERR",path,type(e).__name__)
+def safe_get(path):
+    url=urljoin(HOST,path)
+    if not rp.can_fetch("*",url):
+        raise ValueError("robots forbids "+path)
+    r=s.get(url,timeout=20,headers={"Accept":"application/json"})
+    r.raise_for_status()
+    return r.json()
+m=safe_get("manifest.json")
+art=m.get("artifacts") or {}
+print("FEED_MANIFEST",json.dumps({k:m.get(k) for k in ["generated_at","source_updated_at","changed_at","revision","counts","schema_version"]},ensure_ascii=False)[:1500])
+print("FEED_KEYS",json.dumps({"total":len(art),"cinema_0128":[k for k in art if "0128" in k][:40],"cinema_prefix":[k for k in art if k.startswith("cinemas/")][:50],"availability":[k for k in art if "availability/" in k][:35],"other":[k for k in art if "screening" in k or "schedule" in k][:30]},ensure_ascii=False)[:10000])
+def inspect(path):
+    item=art.get(path)
+    if not item:
+        print("NO_ARTIFACT",path)
+        return
+    data=safe_get(item["key"])
+    sample=data
+    if isinstance(data,dict):
+        for key,val in data.items():
+            if isinstance(val,list) and val:
+                sample={key:val[:2]}
+                break
+    print("FEED_ARTIFACT",json.dumps({"path":path,"bytes":item.get("bytes"),"keys":list(data)[:50] if isinstance(data,dict) else None,"sample":str(sample)[:2200]},ensure_ascii=False)[:4000])
+for path in ["availability/all.json","cinemas/index.json","cinemas/profiles.json","cinemas/0128.json"]:
+    inspect(path)
+for path in [k for k in art if k.startswith("cinemas/") and "0128" in k][:3]:
+    if path not in ["cinemas/0128.json"]:inspect(path)
