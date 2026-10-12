@@ -6,7 +6,9 @@ No login, proxies, identity spoofing, or CGV access-restriction workarounds.
 """
 from datetime import datetime, timezone
 import hashlib
+import json
 import re
+import zlib
 from urllib.parse import parse_qs, urlparse
 
 import requests
@@ -32,21 +34,41 @@ def _utc_datetime(raw, label):
 
 
 def _response_json(session, path):
-    # Follow only this allowlisted host, never arbitrary URLs from a manifest.
+    # Published sha256/bytes are of the gzip object, not the expanded JSON.
+    # Keep the wire bytes for digest verification and cap expansion to 5MB.
     response = session.get(
         ROOT + path,
         timeout=12,
         headers={"Accept": "application/json"},
         allow_redirects=False,
+        stream=True,
     )
-    if response.status_code != 200:
-        raise SnapshotError(f"independent data HTTP {response.status_code}")
-    if len(response.content) > 2_000_000:
-        raise SnapshotError("independent data too large")
     try:
-        return response, response.json()
-    except ValueError:
-        raise SnapshotError("independent data is not JSON") from None
+        if response.status_code != 200:
+            raise SnapshotError(f"independent data HTTP {response.status_code}")
+        wire = response.raw.read(2_000_001, decode_content=False)
+        if len(wire) > 2_000_000:
+            raise SnapshotError("independent compressed object too large")
+        encoding = str(response.headers.get("Content-Encoding") or "").lower()
+        if encoding == "gzip":
+            decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+            expanded = decoder.decompress(wire, 5_000_001)
+            if len(expanded) > 5_000_000 or not decoder.eof:
+                raise SnapshotError("independent decompressed object too large")
+        elif encoding in ("", "identity"):
+            expanded = wire
+        else:
+            raise SnapshotError("unsupported independent content encoding")
+        if len(expanded) > 5_000_000:
+            raise SnapshotError("independent data too large")
+        try:
+            return wire, json.loads(expanded.decode("utf-8"))
+        except (ValueError, UnicodeError):
+            raise SnapshotError("independent data is not JSON") from None
+    except zlib.error:
+        raise SnapshotError("independent gzip data invalid") from None
+    finally:
+        response.close()
 
 
 def _as_int(value):
@@ -154,8 +176,8 @@ def read_cinema_snapshot(site_no, now, session=None):
     key = str(artifact.get("key") or "")
     if not _DIGEST.fullmatch(digest) or key != f"objects/{digest}.json":
         raise SnapshotError("manifest artifact identity invalid")
-    response, snapshot = _response_json(session, key)
-    if hashlib.sha256(response.content).hexdigest() != digest:
+    wire, snapshot = _response_json(session, key)
+    if hashlib.sha256(wire).hexdigest() != digest:
         raise SnapshotError("snapshot content digest mismatch")
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("screenings"), list):
         raise SnapshotError("cinema snapshot structure invalid")

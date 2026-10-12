@@ -2,6 +2,7 @@
 import unittest
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+import gzip
 import json
 from unittest.mock import Mock
 
@@ -20,17 +21,20 @@ ROW = {
 def mock_feed(rows, generated=None, source_updated=None, malformed_digest=False):
     snap = {"cinema": {"cinema_code": "0128", "provider": "CGV"}, "screenings": rows}
     raw = json.dumps(snap).encode()
-    digest = sha256(raw).hexdigest()
+    compressed = gzip.compress(raw, mtime=0)
+    digest = sha256(compressed).hexdigest()
     manifest = {
         "schema_version": 1,
         "generated_at": (generated or NOW - timedelta(minutes=20)).isoformat(),
         "source_updated_at": {"screenings": (source_updated or NOW - timedelta(hours=2)).isoformat()},
         "artifacts": {"cinemas/0128.json": {"sha256": digest, "key": f"objects/{digest}.json"}},
     }
-    resp1 = Mock(status_code=200, content=json.dumps(manifest).encode())
-    resp1.json.return_value = manifest
-    resp2 = Mock(status_code=200, content=(b"tampered" if malformed_digest else raw))
-    resp2.json.return_value = snap
+    resp1 = Mock(status_code=200, headers={})
+    resp1.raw.read.return_value = json.dumps(manifest).encode()
+    resp2 = Mock(status_code=200, headers={"Content-Encoding": "gzip"})
+    resp2.raw.read.return_value = (
+        gzip.compress(raw, mtime=1) if malformed_digest else compressed
+    )
     session = Mock()
     session.get.side_effect = [resp1, resp2]
     return session
