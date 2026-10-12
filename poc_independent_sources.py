@@ -1,21 +1,20 @@
-"""Read-only public-page transport discovery, respecting site robots rules."""
+"""Inspect declared public static-data paths, without using disallowed /api/ paths."""
 import json
 import re
-from urllib.parse import urlparse
 import requests
 
-BASE="https://moviebara.com"
 s=requests.Session()
-robots=s.get(BASE+"/robots.txt",timeout=15)
-print("ROBOTS",json.dumps({"status":robots.status_code,"body":robots.text},ensure_ascii=False))
-if robots.status_code!=200:
-    raise SystemExit("robots unavailable; no API probing")
-main=s.get(BASE+"/static/js/main.js",timeout=20)
-text=main.text
-urls=sorted(set(re.findall(r'https?://[a-zA-Z0-9./:_?-]+',text)))
-print("BUNDLE",json.dumps({"status":main.status_code,"bytes":len(text),"url_domains":sorted({urlparse(u).netloc for u in urls})[:35],
-    "relevant_urls":[u[:180] for u in urls if any(v in u for v in ["supabase","moviebara","cgv","api"])][:45]},ensure_ascii=False))
-for term in ["/api/","supabase","/showings","showings?","/schedules","showtime","remaining_seats","available_seats","seat_count","/cinemas","fetch(Oe","function Oe","graphql","rpc("]:
-    m=list(re.finditer(re.escape(term),text,re.IGNORECASE))
-    snippets=[re.sub(r"\\s+"," ",text[max(0,x.start()-140):x.end()+200])[:340] for x in m[:4]]
-    print("BUNDLE_TERM",json.dumps({"term":term,"count":len(m),"excerpts":snippets},ensure_ascii=False))
+for host in ["https://data.moviebara.com", "https://eta.moviebara.com"]:
+    try:
+        r=s.get(host+"/robots.txt",timeout=12)
+        print("DATA_ROBOTS",json.dumps({"host":host,"status":r.status_code,"body":r.text[:1800]},ensure_ascii=False))
+    except requests.RequestException as e:
+        print("DATA_ROBOTS_ERROR",host,type(e).__name__)
+
+r=s.get("https://moviebara.com/static/js/main.js",timeout=20)
+source=r.text
+terms=["REACT_APP_PUBLIC_DATA_BASE_URL", "data.moviebara.com", "REACT_APP_SUPABASE_URL", "getPublic", "showing", ".json", "/v1/", "/v2/", "screenings", "showtimes", "schedule", "cinemaSchedules", "seatAvailable", "availableSeats"]
+for token in terms:
+    hits=list(re.finditer(re.escape(token),source,re.IGNORECASE))
+    snippets=[re.sub(r"\\s+"," ",source[max(0,m.start()-200):min(len(source),m.end()+300)])[:540] for m in hits[:5]]
+    print("TOKEN",json.dumps({"term":token,"count":len(hits),"examples":snippets},ensure_ascii=False)[:3700])
