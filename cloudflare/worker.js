@@ -1217,6 +1217,7 @@ async function saveDispatchProbe(env, dispatchedAt, success, error = null) {
 // A missed primary sample must trigger Cloudflare's independent execution path.
 export function priorityPrimaryFailed(status, todayYmd = emergencyTodayYmd()) {
   const targets = Array.isArray(status?.targets) ? status.targets : [];
+  const runAt = Date.parse(status?.last_run_at || "");
   return targets.some((target) => {
     const priorityDates = Array.isArray(target?.priority_dates)
       ? target.priority_dates : [];
@@ -1224,9 +1225,14 @@ export function priorityPrimaryFailed(status, todayYmd = emergencyTodayYmd()) {
       const value = String(date || "");
       return /^\d{8}$/.test(value) && value >= String(todayYmd);
     });
+    const priorityAt = Date.parse(target?.priority_session_snapshot_at || "");
+    // saveStatus retains last successful timestamp; compare with *this* run,
+    // otherwise a single previous HTTP 200 hides all subsequent HTTP 502s.
+    const succeededThisRun = Number.isFinite(priorityAt) &&
+      Number.isFinite(runAt) && priorityAt >= runAt - 15000;
     return priorityActive &&
       Number(target?.checked_page_count || 0) > 0 &&
-      !target?.priority_session_snapshot_at;
+      !succeededThisRun;
   });
 }
 
