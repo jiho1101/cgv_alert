@@ -4289,7 +4289,10 @@ def run_checker(force_all: bool = False):
         for target_id, target in target_by_id.items():
             by_date = found.get(target_id, {})
             if not by_date:
-                print(f"[{target_id}] 예매 가능한 대상 회차 없음")
+                print(
+                    f"[{target_id}] 이번 실행에서 감지된 예매 가능 회차 없음 "
+                    "(조회 실패 또는 미확정 날짜 포함 가능; 조회 상태 별도 확인)"
+                )
                 continue
 
             seen = set(state["seen"].get(target_id, []))

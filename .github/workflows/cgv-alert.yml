@@ -162,6 +162,15 @@ jobs:
               print(f"Cloudflare 상태 동기화 경고: {type(exc).__name__}: {exc}")
           PY
 
+      - name: Preserve actual collection outcome
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cgv-runtime-${{ github.run_id }}
+          path: runtime_status.json
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Verify Cloudflare Worker runtime
         if: github.event_name == 'push'
         continue-on-error: true
