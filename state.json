@@ -1295,9 +1295,9 @@
         ]
       },
       "0128|20261012": {
-        "last_nonempty_at": "2026-10-12T19:40:30.789349+09:00",
-        "last_nonempty_count": 12,
-        "last_nonempty_hash": "e12e3d4ef8c457f1",
+        "last_nonempty_at": "2026-10-12T19:50:29.484527+09:00",
+        "last_nonempty_count": 11,
+        "last_nonempty_hash": "f90e2cbe4258b7be",
         "last_nonempty_keys": [
           "30001314|0128|20261012|2026101201283|20:30",
           "30001314|0128|20261012|2026101201284|20:10",
@@ -1309,24 +1309,10 @@
           "30001342|0128|20261012|2026101201285|22:20",
           "30001376|0128|20261012|2026101201285|20:00",
           "30001376|0128|20261012|2026101201286|22:30",
-          "30001400|0128|20261012|2026101201286|21:40",
-          "30001567|0128|20261012|2026101201285|19:30"
+          "30001400|0128|20261012|2026101201286|21:40"
         ],
         "last_nonempty_latest_end_minutes": 1479,
         "last_nonempty_rows": [
-          {
-            "end_time": "21:09",
-            "movie_code": "30001567",
-            "movie_name": "입에 대한 앙케트",
-            "play_date": "20261012",
-            "remaining_seats": 239,
-            "schedule_id": "2026101201285",
-            "screen": "",
-            "start_time": "19:30",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 282
-          },
           {
             "end_time": "21:59",
             "movie_code": "30001342",
@@ -1345,7 +1331,7 @@
             "movie_code": "30001376",
             "movie_name": "부활남-더 레드",
             "play_date": "20261012",
-            "remaining_seats": 139,
+            "remaining_seats": 136,
             "schedule_id": "2026101201285",
             "screen": "",
             "start_time": "20:00",
@@ -1358,7 +1344,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261012",
-            "remaining_seats": 136,
+            "remaining_seats": 135,
             "schedule_id": "2026101201284",
             "screen": "",
             "start_time": "20:10",
