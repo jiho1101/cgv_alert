@@ -197,5 +197,78 @@ class IndependentFailoverTests(unittest.TestCase):
                 self.assertEqual(len(latest["seen"][target_id]), 2)
 
 
+    def test_nonpriority_dates_continue_during_primary_backoff_without_primary_requests(self):
+        """5xx backoff must never suppress independent monitoring on due dates."""
+        play_date = "20991219"
+        target_id = "avengers-doomsday-ulsan-samsan"
+        target = {
+            "id": target_id, "enabled": True,
+            "label": "어벤져스: 둠스데이",
+            "theater_code": "0128", "theater_name": "CGV 울산삼산",
+            "date_range": {"start": play_date, "end": play_date},
+            "movie_aliases": ["어벤져스: 둠스데이"],
+            "screen_keywords": [], "require_sale_open": True,
+            "min_remaining_seats": 1,
+            "scan_strategy": {
+                "priority_range": {"start": "20991218", "end": "20991218"},
+                "priority_interval_minutes": 5, "full_interval_minutes": 30,
+            },
+        }
+        show = {
+            "movie_code": "30009999", "movie_name": "어벤져스: 둠스데이",
+            "theater_code": "0128", "theater_name": "CGV 울산삼산",
+            "play_date": play_date, "start_time": "13:20",
+            "schedule_id": "2099121901281", "screen": "IMAX",
+            "total_seats": 300, "remaining_seats": 299,
+        }
+        future = (checker.datetime.now(checker.KST) +
+                  checker.timedelta(hours=2)).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_path, state_path = root / "config.json", root / "state.json"
+            runtime_path = root / "runtime_status.json"
+            config_path.write_text(
+                json.dumps({"targets": [target], "request": {"timeout_seconds": 15}}),
+                encoding="utf-8",
+            )
+            state_path.write_text(json.dumps({
+                "version": 2, "seen": {}, "fallback_seen": {},
+                "public_api_guard": {
+                    "version": 1, "failure_count": 1, "last_status": 502,
+                    "backoff_until": future,
+                },
+            }), encoding="utf-8")
+            snapshot = {"rows": [show], "snapshot_age_seconds": 600,
+                        "source_age_seconds": 900}
+            with (
+                patch.object(checker, "CONFIG_PATH", config_path),
+                patch.object(checker, "STATE_PATH", state_path),
+                patch.object(checker, "RUNTIME_STATUS_PATH", runtime_path),
+                patch.object(checker, "planned_dates", return_value=[play_date]),
+                patch.object(checker, "_production_public_request",
+                             side_effect=AssertionError("Primary API must stay idle")),
+                patch.object(checker, "read_cinema_snapshot",
+                             return_value=snapshot) as independent,
+                patch.object(checker, "merge_emergency_seen_from_worker",
+                             return_value=False),
+                patch.object(checker, "send_discord_embeds",
+                             return_value=True) as send,
+                patch.object(checker, "send_health_message", return_value=True),
+                patch.object(checker, "CgvBrowser",
+                             side_effect=AssertionError("No blocked CGV browser")),
+            ):
+                checker.run_checker()
+                self.assertEqual(send.call_count, 1)
+                self.assertEqual(independent.call_count, 1)
+                runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+                self.assertEqual(runtime["targets"][0]["detection_mode"],
+                                 "independent_static")
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                self.assertEqual(len(state["seen"][target_id]), 1)
+                show["remaining_seats"] = 1
+                checker.run_checker()
+                self.assertEqual(send.call_count, 1, "No duplicate on seat change")
+
+
 if __name__ == "__main__":
     unittest.main()
