@@ -1,0 +1,36 @@
+name: CGV Independent Source Shadow
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "shadow_independent_source.py"
+      - ".github/workflows/cgv-independent-shadow.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  shadow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install read-only dependencies
+        run: pip install requests
+      - name: Independent seat-source shadow
+        run: python shadow_independent_source.py
+      - name: Preserve independent source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cgv-independent-shadow
+          path: independent_shadow_sample.json
+          if-no-files-found: warn
+          retention-days: 7
