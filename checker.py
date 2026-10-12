@@ -491,6 +491,31 @@ def build_runtime_snapshot(
             )
         ).strip() or None
 
+        priority_probe = next(
+            (
+                result for result in matching_results
+                if "independent_probe_ok" in result
+            ),
+            None,
+        )
+        priority_independent_probe = (
+            {
+                "ok": bool(priority_probe.get("independent_probe_ok")),
+                "rows": priority_probe.get("independent_rows"),
+                "source_age_seconds": priority_probe.get(
+                    "independent_source_age_seconds"
+                ),
+                "snapshot_age_seconds": priority_probe.get(
+                    "independent_snapshot_age_seconds"
+                ),
+                "extra_watched_rows": priority_probe.get(
+                    "independent_extra_rows", 0
+                ),
+                "error": priority_probe.get("independent_probe_error"),
+            }
+            if priority_probe is not None else None
+        )
+
         target_items.append(
             {
                 "id": target_id,
@@ -511,6 +536,7 @@ def build_runtime_snapshot(
                 "last_error": last_error,
                 "available_session_count": available_session_count,
                 "detection_mode": detection_mode,
+                "priority_independent_probe": priority_independent_probe,
                 "source_sentinel_status": sentinel_status,
                 "source_sentinel_reason": sentinel_reason,
                 "api_guard_active": bool(guard_active),
@@ -3958,11 +3984,46 @@ def run_checker(force_all: bool = False):
                             "source_age_seconds"
                         ),
                     }
+                    # Only target-matching differences affect alert routing.
+                    # Other movies can differ between feeds without treating
+                    # the watched titles as a degraded primary result.
+                    monitored = [
+                        target_by_id[target_id]
+                        for target_id in (target_ids or {str(target["id"])})
+                        if target_id in target_by_id
+                    ]
+                    def watched_movie(row):
+                        name = normalize(row.get("movie_name"))
+                        code = str(row.get("movie_code") or "")
+                        for watched in monitored:
+                            pinned = str(
+                                (state.get("public_movie_codes") or {})
+                                .get(str(watched["id"]), {})
+                                .get("movie_code") or ""
+                            )
+                            if pinned:
+                                if code == pinned:
+                                    return True
+                            elif name in target_aliases(watched):
+                                return True
+                        return False
+
                     primary_keys = {public_identity_key(row) for row in rows}
                     additional = [
                         row for row in independent_rows
                         if public_identity_key(row) not in primary_keys
+                        and watched_movie(row)
                     ]
+                    print(
+                        f"[{target['theater_name']}] {play_ymd} "
+                        "핵심 날짜 독립 공급자 교차 확인 · "
+                        f"조회 {len(independent_rows)}회차 · "
+                        f"추가 대상 회차 {len(additional)}개 · "
+                        f"원본 갱신 {independent.get('source_age_seconds')}초 전"
+                        if not independent.get("error") else
+                        f"[{target['theater_name']}] {play_ymd} "
+                        f"핵심 날짜 독립 조회 실패: {independent['error']}"
+                    )
                     if additional:
                         merged_rows = rows + additional
                         if public_structural_valid(
