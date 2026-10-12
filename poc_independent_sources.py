@@ -1,59 +1,21 @@
-"""Read-only discovery for independent movie schedule APIs. Do not attempt to bypass HTTP 403."""
-import hashlib
+"""Read-only public-page transport discovery, respecting site robots rules."""
 import json
 import re
-from html.parser import HTMLParser
-from urllib.parse import urljoin
+from urllib.parse import urlparse
 import requests
 
-BASE = "https://moviebara.com"
-URL = BASE + "/cinema/0128"
-SESSION = requests.Session()
-
-class AssetFinder(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.scripts = []
-        self.links = []
-    def handle_starttag(self, tag, attrs):
-        at = dict(attrs)
-        if tag == "script" and at.get("src"):
-            self.scripts.append(at["src"])
-        if tag == "link" and at.get("href"):
-            self.links.append(at["href"])
-
-for label, url in [
-    ("robots", BASE + "/robots.txt"),
-    ("page_today", URL + "?date=2026-10-12"),
-    ("page_priority", URL + "?date=2026-12-18"),
-]:
-    try:
-        r = SESSION.get(url, timeout=15, headers={"Accept": "text/html"})
-        text = r.text
-        finder=AssetFinder()
-        finder.feed(text[:100000])
-        print("DISCOVERY",json.dumps({
-            "label":label,"status":r.status_code,"len":len(text),
-            "hash":hashlib.sha256(text.encode()).hexdigest()[:16],
-            "script_srcs":finder.scripts[:15],
-            "css":finder.links[:6],
-            "contains_20261218":"20261218" in text or "2026-12-18" in text,
-            "seat_terms": {x:(x in text) for x in ["remainingSeats","remaining_seats","잔여석","잔여좌석"]},
-            "robots":text[:500] if label=="robots" else None,
-        },ensure_ascii=False))
-        if label=="page_today":
-            assets=[urljoin(BASE,x) for x in finder.scripts if x.endswith(".js") or ".js?" in x]
-    except requests.RequestException as e:
-        print("DISCOVERY_ERROR",label,type(e).__name__,str(e)[:200])
-try:
-    print("ASSET_URLS",json.dumps(assets[:8],ensure_ascii=False))
-    for url in assets[:2]:
-        r=SESSION.get(url,timeout=18)
-        body=r.text
-        print("ASSET", json.dumps({"status":r.status_code,"url":url,"size":len(body),
-            "markers":{k:body.count(k) for k in ["mcp.aka.page","/api/","showtimes","schedule","cinema/","supabase","graphql","cgv","remainingSeats"]},
-            "context":{k:[body[max(0,m.start()-80):min(len(body),m.start()+130)] for m in list(re.finditer(re.escape(k),body,flags=re.IGNORECASE))[:3]]
-              for k in ["mcp.aka.page","/api/","showtimes","schedule","/cinema/","remainingSeats"]}},
-            ensure_ascii=False)[:7000])
-except Exception as e:
-    print("ASSET_ERROR",type(e).__name__,str(e)[:250])
+BASE="https://moviebara.com"
+s=requests.Session()
+robots=s.get(BASE+"/robots.txt",timeout=15)
+print("ROBOTS",json.dumps({"status":robots.status_code,"body":robots.text},ensure_ascii=False))
+if robots.status_code!=200:
+    raise SystemExit("robots unavailable; no API probing")
+main=s.get(BASE+"/static/js/main.js",timeout=20)
+text=main.text
+urls=sorted(set(re.findall(r'https?://[a-zA-Z0-9./:_?-]+',text)))
+print("BUNDLE",json.dumps({"status":main.status_code,"bytes":len(text),"url_domains":sorted({urlparse(u).netloc for u in urls})[:35],
+    "relevant_urls":[u[:180] for u in urls if any(v in u for v in ["supabase","moviebara","cgv","api"])][:45]},ensure_ascii=False))
+for term in ["/api/","supabase","/showings","showings?","/schedules","showtime","remaining_seats","available_seats","seat_count","/cinemas","fetch(Oe","function Oe","graphql","rpc("]:
+    m=list(re.finditer(re.escape(term),text,re.IGNORECASE))
+    snippets=[re.sub(r"\\s+"," ",text[max(0,x.start()-140):x.end()+200])[:340] for x in m[:4]]
+    print("BUNDLE_TERM",json.dumps({"term":term,"count":len(m),"excerpts":snippets},ensure_ascii=False))
