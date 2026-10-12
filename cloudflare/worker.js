@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "19";
+const COMMAND_VERSION = "20";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
@@ -1749,11 +1749,12 @@ export default {
       if (!authorizedStatusUpdate(request, env)) {
         return new Response("Unauthorized", { status: 401 });
       }
-      const [browserBudget, monitoringStats, emergencyRow] =
+      const [browserBudget, monitoringStats, emergencyRow, statusRow] =
         await Promise.all([
           browserBudgetState(env),
           getMonitoringStats(env),
           getState(env, EMERGENCY_STATE_KEY),
+          getState(env, "status"),
         ]);
       return jsonResponse({
         ok: true,
@@ -1768,6 +1769,13 @@ export default {
           ),
         },
         monitoring_stats_24h: monitoringStats,
+        source_takeover: {
+          enabled: true,
+          priority_failed_in_latest_run: priorityPrimaryFailed(
+            statusRow?.value,
+          ),
+          latest_github_run_at: statusRow?.value?.last_run_at || null,
+        },
         emergency_fallback: {
           stale_after_seconds: Math.floor(EMERGENCY_STALE_MS / 1000),
           state: emergencyRow?.value || null,
