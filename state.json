@@ -1295,9 +1295,9 @@
         ]
       },
       "0128|20261012": {
-        "last_nonempty_at": "2026-10-12T17:50:36.900717+09:00",
-        "last_nonempty_count": 17,
-        "last_nonempty_hash": "6216f943f6228b72",
+        "last_nonempty_at": "2026-10-12T18:00:39.461615+09:00",
+        "last_nonempty_count": 16,
+        "last_nonempty_hash": "f6cbd8cb4a52ccf0",
         "last_nonempty_keys": [
           "30001314|0128|20261012|2026101201283|20:30",
           "30001314|0128|20261012|2026101201284|18:20",
@@ -1311,7 +1311,6 @@
           "30001342|0128|20261012|2026101201284|19:40",
           "30001342|0128|20261012|2026101201285|21:20",
           "30001342|0128|20261012|2026101201285|22:20",
-          "30001376|0128|20261012|2026101201284|17:40",
           "30001376|0128|20261012|2026101201285|20:00",
           "30001376|0128|20261012|2026101201286|22:30",
           "30001400|0128|20261012|2026101201286|21:40",
@@ -1320,24 +1319,11 @@
         "last_nonempty_latest_end_minutes": 1479,
         "last_nonempty_rows": [
           {
-            "end_time": "19:31",
-            "movie_code": "30001376",
-            "movie_name": "부활남-더 레드",
-            "play_date": "20261012",
-            "remaining_seats": 137,
-            "schedule_id": "2026101201284",
-            "screen": "",
-            "start_time": "17:40",
-            "theater_code": "0128",
-            "theater_name": "CGV 울산삼산",
-            "total_seats": 168
-          },
-          {
             "end_time": "20:41",
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261012",
-            "remaining_seats": 285,
+            "remaining_seats": 284,
             "schedule_id": "2026101201284",
             "screen": "",
             "start_time": "18:20",
@@ -1506,7 +1492,7 @@
             "movie_code": "30001314",
             "movie_name": "암살자(들)",
             "play_date": "20261012",
-            "remaining_seats": 292,
+            "remaining_seats": 294,
             "schedule_id": "2026101201285",
             "screen": "",
             "start_time": "22:00",
