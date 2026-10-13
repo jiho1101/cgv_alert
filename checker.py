@@ -3852,6 +3852,10 @@ def run_checker(force_all: bool = False):
             )
             return result
 
+        # Only one diagnostic non-priority primary probe per theater and run
+        # during 5xx backoff; 429 must never be probed.
+        nonpriority_primary_probe_sites = set()
+
         def get_source(target, play_ymd, target_ids=None):
             nonlocal public_state_changed
             key = (str(target["theater_code"]), play_ymd)
@@ -3871,62 +3875,95 @@ def run_checker(force_all: bool = False):
                 guard = _public_api_guard(state)
                 until = str(guard.get("backoff_until") or "-")
                 if not priority_for_any:
-                    # Continue scanning on the normal non-priority cadence.
-                    # Avoid the rate-limited/failed primary entirely here.
-                    independent, independent_rows = independent_for_page(
-                        str(target["theater_code"]), play_ymd
-                    )
-                    if independent_rows:
-                        page_cache[key] = {
-                            "mode": "public", "data": independent_rows,
-                        }
-                        page_results[page_id] = {
-                            "ok": True, "degraded": True,
-                            "source_mode": "independent_static",
-                            "public_primary_failed": True,
-                            "public_structured": True,
-                            "theater_name": target["theater_name"],
-                            "play_ymd": play_ymd,
-                            "independent_rows": len(independent_rows),
-                            "independent_snapshot_age_seconds":
-                                independent.get("snapshot_age_seconds"),
-                            "independent_source_age_seconds":
-                                independent.get("source_age_seconds"),
-                            "error": (
-                                "주 API 보호 중 독립 시간표로 확인 "
-                                f"(보호 종료 {until}; 실시간성 보장 없음)"
-                            ),
-                        }
+                    # A 502 on Dec 18 does not prove Dec 19-31 also failed.
+                    # Probe at most one non-priority day per theater per
+                    # scheduled scan. An accepted 200 restores normal polling.
+                    # Never probe under HTTP 429 / Retry-After protection.
+                    probe_result = None
+                    status_code = int(guard.get("last_status") or 0)
+                    site_no = str(target["theater_code"])
+                    if (
+                        500 <= status_code <= 599
+                        and site_no not in nonpriority_primary_probe_sites
+                    ):
+                        nonpriority_primary_probe_sites.add(site_no)
+                        probe_result = _fetch_public_page(
+                            state, site_no, play_ymd, now
+                        )
+                        public_cache[key] = probe_result
+                        public_state_changed = (
+                            public_state_changed
+                            or bool(probe_result.get("state_changed"))
+                            or bool(probe_result.get("guard_state_changed"))
+                        )
                         print(
                             f"[{target['theater_name']}] {play_ymd} "
-                            "주 API 보호 중 독립 조회 성공 · "
-                            f"{len(independent_rows)}회차 · "
-                            f"원본 갱신 {independent.get('source_age_seconds')}초 전"
+                            "5xx 기간 비핵심 날짜 독립 복구 확인 · "
+                            f"HTTP {probe_result.get('status')} · "
+                            f"신뢰 {'성공' if probe_result.get('accepted') else '실패'}"
                         )
+                    if probe_result and probe_result.get("accepted"):
+                        public_result = probe_result
                     else:
-                        # No future rows is unconfirmed, not proof of closure.
-                        reason = str(
-                            independent.get("error") or
-                            "해당 날짜 독립 데이터 미게시 (예매 여부 미확정)"
+                        # On a failed 5xx probe, use the independent feed.
+                        # With 429, use only the independent feed and respect
+                        # the upstream Retry-After request entirely.
+                        independent, independent_rows = independent_for_page(
+                            str(target["theater_code"]), play_ymd
                         )
-                        page_cache[key] = None
-                        page_results[page_id] = {
-                            "ok": False, "degraded": True,
-                            "source_mode": "failed",
-                            "theater_name": target["theater_name"],
-                            "play_ymd": play_ymd,
-                            "error": (
-                                f"주 API 보호 중 {until}; "
-                                f"독립 조회 미확정: {reason}"
-                            ),
-                        }
-                        print(
-                            f"[{target['theater_name']}] {play_ymd} "
-                            f"주 API 보호 중 독립 조회 미확정 · {reason}"
-                        )
-                    return page_cache[key]
+                        if independent_rows:
+                            page_cache[key] = {
+                                "mode": "public", "data": independent_rows,
+                            }
+                            page_results[page_id] = {
+                                "ok": True, "degraded": True,
+                                "source_mode": "independent_static",
+                                "public_primary_failed": True,
+                                "public_structured": True,
+                                "theater_name": target["theater_name"],
+                                "play_ymd": play_ymd,
+                                "independent_rows": len(independent_rows),
+                                "independent_snapshot_age_seconds":
+                                    independent.get("snapshot_age_seconds"),
+                                "independent_source_age_seconds":
+                                    independent.get("source_age_seconds"),
+                                "error": (
+                                    "주 API 보호 중 독립 시간표로 확인 "
+                                    f"(보호 종료 {until}; 실시간성 보장 없음)"
+                                ),
+                            }
+                            print(
+                                f"[{target['theater_name']}] {play_ymd} "
+                                "주 API 보호 중 독립 조회 성공 · "
+                                f"{len(independent_rows)}회차 · "
+                                f"원본 갱신 {independent.get('source_age_seconds')}초 전"
+                            )
+                        else:
+                            # No future rows is unconfirmed, not proof of closure.
+                            reason = str(
+                                independent.get("error") or
+                                "해당 날짜 독립 데이터 미게시 (예매 여부 미확정)"
+                            )
+                            page_cache[key] = None
+                            page_results[page_id] = {
+                                "ok": False, "degraded": True,
+                                "source_mode": "failed",
+                                "theater_name": target["theater_name"],
+                                "play_ymd": play_ymd,
+                                "error": (
+                                    f"주 API 보호 중 {until}; "
+                                    f"독립 조회 미확정: {reason}"
+                                ),
+                            }
+                            print(
+                                f"[{target['theater_name']}] {play_ymd} "
+                                f"주 API 보호 중 독립 조회 미확정 · {reason}"
+                            )
+                        return page_cache[key]
 
-                if not _public_guard_priority_probe_allowed(state, now):
+
+                elif not _public_guard_priority_probe_allowed(state, now):
+
                     print(
                         f"[{target['theater_name']}] {play_ymd} "
                         "핵심 날짜지만 429 호출 제한 보호 대기 중 · "
