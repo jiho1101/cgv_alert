@@ -197,7 +197,7 @@ class IndependentFailoverTests(unittest.TestCase):
                 self.assertEqual(len(latest["seen"][target_id]), 2)
 
 
-    def test_nonpriority_dates_continue_during_primary_backoff_without_primary_requests(self):
+    def test_nonpriority_backoff_probes_once_then_uses_independent_and_honors_429(self):
         """5xx backoff must never suppress independent monitoring on due dates."""
         play_date = "20991219"
         target_id = "avengers-doomsday-ulsan-samsan"
@@ -245,8 +245,11 @@ class IndependentFailoverTests(unittest.TestCase):
                 patch.object(checker, "STATE_PATH", state_path),
                 patch.object(checker, "RUNTIME_STATUS_PATH", runtime_path),
                 patch.object(checker, "planned_dates", return_value=[play_date]),
-                patch.object(checker, "_production_public_request",
-                             side_effect=AssertionError("Primary API must stay idle")),
+                patch.object(checker, "_fetch_public_page", return_value={
+                    "accepted": False, "status": 502,
+                    "state_changed": False, "guard_state_changed": False,
+                    "error": "simulated 502",
+                }) as primary,
                 patch.object(checker, "read_cinema_snapshot",
                              return_value=snapshot) as independent,
                 patch.object(checker, "merge_emergency_seen_from_worker",
@@ -260,6 +263,8 @@ class IndependentFailoverTests(unittest.TestCase):
                 checker.run_checker()
                 self.assertEqual(send.call_count, 1)
                 self.assertEqual(independent.call_count, 1)
+                self.assertEqual(primary.call_count, 1,
+                                 "At most one probe per theater per scan")
                 runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
                 self.assertEqual(runtime["targets"][0]["detection_mode"],
                                  "independent_static")
@@ -268,6 +273,89 @@ class IndependentFailoverTests(unittest.TestCase):
                 show["remaining_seats"] = 1
                 checker.run_checker()
                 self.assertEqual(send.call_count, 1, "No duplicate on seat change")
+                self.assertEqual(primary.call_count, 2,
+                                 "One 5xx recovery probe per due scan")
+                # Under HTTP 429 we must respect the upstream cooldown.
+                stored = json.loads(state_path.read_text(encoding="utf-8"))
+                stored["public_api_guard"]["last_status"] = 429
+                stored["public_api_guard"]["backoff_until"] = future
+                state_path.write_text(json.dumps(stored), encoding="utf-8")
+                checker.run_checker()
+                self.assertEqual(primary.call_count, 2,
+                                 "429 must not trigger a recovery probe")
+                self.assertEqual(send.call_count, 1)
+
+
+    def test_nonpriority_502_guard_probes_date_specific_primary_recovery(self):
+        """One non-priority 200 can still reveal a new session under 5xx guard."""
+        date = "20991219"
+        target_id = "avengers-doomsday-ulsan-samsan"
+        target = {
+            "id": target_id, "enabled": True,
+            "label": "어벤져스: 둠스데이",
+            "theater_code": "0128", "theater_name": "CGV 울산삼산",
+            "date_range": {"start": date, "end": date},
+            "movie_aliases": ["어벤져스: 둠스데이"],
+            "screen_keywords": [], "require_sale_open": True,
+            "min_remaining_seats": 1,
+            "scan_strategy": {
+                "priority_range": {"start": "20991218", "end": "20991218"},
+                "priority_interval_minutes": 5, "full_interval_minutes": 30,
+            },
+        }
+        show = {
+            "movie_code": "30009999", "movie_name": target["label"],
+            "theater_code": "0128", "theater_name": target["theater_name"],
+            "play_date": date, "start_time": "13:20",
+            "schedule_id": "2099121901281",
+            "total_seats": 300, "remaining_seats": 299,
+        }
+        response = {
+            "accepted": True, "status": 200, "rows": [show],
+            "state": "nonempty_trusted", "state_changed": False,
+            "guard_state_changed": False,
+            "inspection": checker.public_inspect_rows([show]),
+        }
+        future = (checker.datetime.now(checker.KST) +
+                  checker.timedelta(hours=2)).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_path, state_path = root / "config.json", root / "state.json"
+            runtime_path = root / "runtime_status.json"
+            config_path.write_text(json.dumps({"targets": [target]}),
+                                   encoding="utf-8")
+            state_path.write_text(json.dumps({
+                "version": 2, "seen": {}, "fallback_seen": {},
+                "public_api_guard": {
+                    "version": 1, "failure_count": 8, "last_status": 502,
+                    "backoff_until": future,
+                },
+            }), encoding="utf-8")
+            with (
+                patch.object(checker, "CONFIG_PATH", config_path),
+                patch.object(checker, "STATE_PATH", state_path),
+                patch.object(checker, "RUNTIME_STATUS_PATH", runtime_path),
+                patch.object(checker, "planned_dates", return_value=[date]),
+                patch.object(checker, "_fetch_public_page",
+                             return_value=response) as primary,
+                patch.object(checker, "read_cinema_snapshot",
+                             side_effect=AssertionError("No fallback needed")),
+                patch.object(checker, "merge_emergency_seen_from_worker",
+                             return_value=False),
+                patch.object(checker, "send_discord_embeds",
+                             return_value=True) as send,
+                patch.object(checker, "send_health_message", return_value=True),
+                patch.object(checker, "CgvBrowser",
+                             side_effect=AssertionError("No restricted browser")),
+            ):
+                checker.run_checker()
+                self.assertEqual(primary.call_count, 1)
+                self.assertEqual(send.call_count, 1)
+                result = json.loads(runtime_path.read_text(encoding="utf-8"))
+                self.assertEqual(result["targets"][0]["detection_mode"],
+                                 "public_primary")
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                self.assertEqual(len(state["seen"][target_id]), 1)
 
 
 if __name__ == "__main__":
