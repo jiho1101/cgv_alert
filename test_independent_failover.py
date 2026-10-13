@@ -287,7 +287,7 @@ class IndependentFailoverTests(unittest.TestCase):
 
 
     def test_nonpriority_502_guard_probes_date_specific_primary_recovery(self):
-        """One non-priority 200 can still reveal a new session under 5xx guard."""
+        """A non-priority 200 missing the target must merge independent rows."""
         date = "20991219"
         target_id = "avengers-doomsday-ulsan-samsan"
         target = {
@@ -310,11 +310,14 @@ class IndependentFailoverTests(unittest.TestCase):
             "schedule_id": "2099121901281",
             "total_seats": 300, "remaining_seats": 299,
         }
+        unrelated = {**show, "movie_code": "30008888",
+                     "movie_name": "Other Movie",
+                     "schedule_id": "2099121901283", "start_time": "14:50"}
         response = {
-            "accepted": True, "status": 200, "rows": [show],
+            "accepted": True, "status": 200, "rows": [unrelated],
             "state": "nonempty_trusted", "state_changed": False,
             "guard_state_changed": False,
-            "inspection": checker.public_inspect_rows([show]),
+            "inspection": checker.public_inspect_rows([unrelated]),
         }
         future = (checker.datetime.now(checker.KST) +
                   checker.timedelta(hours=2)).isoformat()
@@ -339,7 +342,10 @@ class IndependentFailoverTests(unittest.TestCase):
                 patch.object(checker, "_fetch_public_page",
                              return_value=response) as primary,
                 patch.object(checker, "read_cinema_snapshot",
-                             side_effect=AssertionError("No fallback needed")),
+                             return_value={
+                                 "rows": [show], "snapshot_age_seconds": 600,
+                                 "source_age_seconds": 900,
+                             }) as independent,
                 patch.object(checker, "merge_emergency_seen_from_worker",
                              return_value=False),
                 patch.object(checker, "send_discord_embeds",
@@ -351,9 +357,10 @@ class IndependentFailoverTests(unittest.TestCase):
                 checker.run_checker()
                 self.assertEqual(primary.call_count, 1)
                 self.assertEqual(send.call_count, 1)
+                self.assertEqual(independent.call_count, 1)
                 result = json.loads(runtime_path.read_text(encoding="utf-8"))
                 self.assertEqual(result["targets"][0]["detection_mode"],
-                                 "public_primary")
+                                 "primary_independent_combined")
                 state = json.loads(state_path.read_text(encoding="utf-8"))
                 self.assertEqual(len(state["seen"][target_id]), 1)
 
