@@ -6,6 +6,7 @@ import re
 import sys
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -3675,11 +3676,21 @@ def run_checker(force_all: bool = False):
     independent_cache = {}
     public_sentinel_cache = {}
 
+    # Parallelize supplier reads, never notification decisions.
+    # The verified publication is fetched once per theater per run.
+    independent_executor = ThreadPoolExecutor(
+        max_workers=min(len(scheduled), 4), thread_name_prefix="cgv-publisher"
+    )
+    independent_futures = {
+        site_no: independent_executor.submit(read_cinema_snapshot, site_no, now)
+        for site_no in scheduled
+    }
+
     def independent_for_page(site_no, play_ymd):
-        """Cache one validated independent snapshot per theater and execution."""
+        """Cache one independently validated, prefetched snapshot per theater."""
         if site_no not in independent_cache:
             try:
-                independent_cache[site_no] = read_cinema_snapshot(site_no, now)
+                independent_cache[site_no] = independent_futures[site_no].result()
             except (SnapshotError, requests.RequestException) as exc:
                 independent_cache[site_no] = {
                     "error": f"{type(exc).__name__}: {str(exc)[:150]}"
@@ -4650,8 +4661,11 @@ def run_checker(force_all: bool = False):
                 "구조화 감지와 보조 후보 기록은 서로 분리됩니다."
             )
     finally:
-        if browser is not None:
-            browser.close()
+        try:
+            if browser is not None:
+                browser.close()
+        finally:
+            independent_executor.shutdown(wait=True)
 
 
 def main():
