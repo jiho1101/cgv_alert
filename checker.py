@@ -4047,96 +4047,97 @@ def run_checker(force_all: bool = False):
             if public_result.get("accepted"):
                 rows = public_result.get("rows") or []
                 independent_meta = {}
-                if priority_for_any or str(target["theater_code"]) in independent_cache:
-                    # One verified theater snapshot is cached per run. Use it
-                    # on all due dates, since a valid HTTP 200 can omit new
-                    # sessions even when the priority date already failed.
-                    independent, independent_rows = independent_for_page(
-                        str(target["theater_code"]), play_ymd
-                    )
-                    independent_meta = {
-                        "independent_probe_ok": not bool(independent.get("error")),
-                        "independent_probe_error": independent.get("error"),
-                        "independent_rows": len(independent_rows),
-                        "independent_snapshot_age_seconds": independent.get(
-                            "snapshot_age_seconds"
-                        ),
-                        "independent_source_age_seconds": independent.get(
-                            "source_age_seconds"
-                        ),
-                    }
-                    # Only target-matching differences affect alert routing.
-                    # Other movies can differ between feeds without treating
-                    # the watched titles as a degraded primary result.
-                    monitored = [
-                        target_by_id[target_id]
-                        for target_id in (target_ids or {str(target["id"])})
-                        if target_id in target_by_id
-                    ]
-                    def watched_movie(row):
-                        name = normalize(row.get("movie_name"))
-                        code = str(row.get("movie_code") or "")
-                        for watched in monitored:
-                            pinned = str(
-                                (state.get("public_movie_codes") or {})
-                                .get(str(watched["id"]), {})
-                                .get("movie_code") or ""
-                            )
-                            if pinned:
-                                if code == pinned:
-                                    return True
-                            elif name in target_aliases(watched):
+                # On every due date, cross-check against one validated cinema
+                # snapshot cached per execution (never per-date downloads).
+                # One verified theater snapshot is cached per run. Use it
+                # on all due dates, since a valid HTTP 200 can omit new
+                # sessions even when the priority date already failed.
+                independent, independent_rows = independent_for_page(
+                    str(target["theater_code"]), play_ymd
+                )
+                independent_meta = {
+                    "independent_probe_ok": not bool(independent.get("error")),
+                    "independent_probe_error": independent.get("error"),
+                    "independent_rows": len(independent_rows),
+                    "independent_snapshot_age_seconds": independent.get(
+                        "snapshot_age_seconds"
+                    ),
+                    "independent_source_age_seconds": independent.get(
+                        "source_age_seconds"
+                    ),
+                }
+                # Only target-matching differences affect alert routing.
+                # Other movies can differ between feeds without treating
+                # the watched titles as a degraded primary result.
+                monitored = [
+                    target_by_id[target_id]
+                    for target_id in (target_ids or {str(target["id"])})
+                    if target_id in target_by_id
+                ]
+                def watched_movie(row):
+                    name = normalize(row.get("movie_name"))
+                    code = str(row.get("movie_code") or "")
+                    for watched in monitored:
+                        pinned = str(
+                            (state.get("public_movie_codes") or {})
+                            .get(str(watched["id"]), {})
+                            .get("movie_code") or ""
+                        )
+                        if pinned:
+                            if code == pinned:
                                 return True
-                        return False
+                        elif name in target_aliases(watched):
+                            return True
+                    return False
 
-                    primary_keys = {public_identity_key(row) for row in rows}
-                    additional = [
-                        row for row in independent_rows
-                        if public_identity_key(row) not in primary_keys
-                        and watched_movie(row)
-                    ]
-                    print(
-                        f"[{target['theater_name']}] {play_ymd} "
-                        f"{'핵심' if priority_for_any else '비핵심'} 날짜 독립 공급자 교차 확인 · "
-                        f"조회 {len(independent_rows)}회차 · "
-                        f"추가 대상 회차 {len(additional)}개 · "
-                        f"원본 갱신 {independent.get('source_age_seconds')}초 전"
-                        if not independent.get("error") else
-                        f"[{target['theater_name']}] {play_ymd} "
-                        f"{'핵심' if priority_for_any else '비핵심'} 날짜 독립 조회 실패: {independent['error']}"
-                    )
-                    if additional:
-                        merged_rows = rows + additional
-                        if public_structural_valid(
-                            200, None, True, public_inspect_rows(merged_rows)
-                        ):
-                            page_cache[key] = {
-                                "mode": "public", "data": merged_rows,
-                            }
-                            page_results[page_id] = {
-                                "ok": True,
-                                "degraded": True,
-                                "source_mode": "primary_independent_combined",
-                                "public_structured": True,
-                                "public_primary_failed": False,
-                                "primary_row_count": len(rows),
-                                "independent_extra_rows": len(additional),
-                                "theater_name": target["theater_name"],
-                                "play_ymd": play_ymd,
-                                "error": (
-                                    "주 공급자는 HTTP 200이지만 독립 공급자에 "
-                                    f"추가 회차 {len(additional)}건 확인 "
-                                    "(스냅샷 실시간성 보장 없음)"
-                                ),
-                                **independent_meta,
-                            }
-                            print(
-                                f"[{target['theater_name']}] {play_ymd} "
-                                f"{'핵심' if priority_for_any else '비핵심'} 날짜 독립 교차검증 · 주 공급자 "
-                                f"{len(rows)}회차, 추가 {len(additional)}회차 · "
-                                f"원본 갱신 {independent.get('source_age_seconds')}초 전"
-                            )
-                            return page_cache[key]
+                primary_keys = {public_identity_key(row) for row in rows}
+                additional = [
+                    row for row in independent_rows
+                    if public_identity_key(row) not in primary_keys
+                    and watched_movie(row)
+                ]
+                print(
+                    f"[{target['theater_name']}] {play_ymd} "
+                    f"{'핵심' if priority_for_any else '비핵심'} 날짜 독립 공급자 교차 확인 · "
+                    f"조회 {len(independent_rows)}회차 · "
+                    f"추가 대상 회차 {len(additional)}개 · "
+                    f"원본 갱신 {independent.get('source_age_seconds')}초 전"
+                    if not independent.get("error") else
+                    f"[{target['theater_name']}] {play_ymd} "
+                    f"{'핵심' if priority_for_any else '비핵심'} 날짜 독립 조회 실패: {independent['error']}"
+                )
+                if additional:
+                    merged_rows = rows + additional
+                    if public_structural_valid(
+                        200, None, True, public_inspect_rows(merged_rows)
+                    ):
+                        page_cache[key] = {
+                            "mode": "public", "data": merged_rows,
+                        }
+                        page_results[page_id] = {
+                            "ok": True,
+                            "degraded": True,
+                            "source_mode": "primary_independent_combined",
+                            "public_structured": True,
+                            "public_primary_failed": False,
+                            "primary_row_count": len(rows),
+                            "independent_extra_rows": len(additional),
+                            "theater_name": target["theater_name"],
+                            "play_ymd": play_ymd,
+                            "error": (
+                                "주 공급자는 HTTP 200이지만 독립 공급자에 "
+                                f"추가 회차 {len(additional)}건 확인 "
+                                "(스냅샷 실시간성 보장 없음)"
+                            ),
+                            **independent_meta,
+                        }
+                        print(
+                            f"[{target['theater_name']}] {play_ymd} "
+                            f"{'핵심' if priority_for_any else '비핵심'} 날짜 독립 교차검증 · 주 공급자 "
+                            f"{len(rows)}회차, 추가 {len(additional)}회차 · "
+                            f"원본 갱신 {independent.get('source_age_seconds')}초 전"
+                        )
+                        return page_cache[key]
                 page_cache[key] = {
                     "mode": "public",
                     "data": rows,
