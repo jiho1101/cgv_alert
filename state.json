@@ -173,7 +173,8 @@
         "0128|20261230",
         "0128|20261231"
       ],
-      "state": "failed"
+      "recovery_started_at": "2026-10-13T13:35:32.992807+09:00",
+      "state": "recovering"
     }
   },
   "public_api_guard": {
