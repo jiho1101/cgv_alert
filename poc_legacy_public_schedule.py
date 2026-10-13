@@ -22,6 +22,10 @@ endpoints = [
      "https://cgv.co.kr/api/v1/booking/searchSchByMov",
      {"coCd": "A", "siteNo": "0128", "scnYmd": today,
       "movNo": "30001323", "rtctlScopCd": "08"}),
+    # Another publicly documented official feature: dates, not seats.
+    ("public_available_dates_by_theater", "GET",
+     "https://cgv.co.kr/api/v1/booking/searchSiteScnscYmdListBySite",
+     {"coCd": "A420", "siteNo": "0128"}),
 ]
 report = {"date": today, "theater": "0128", "endpoint_results": []}
 with requests.Session() as session:
