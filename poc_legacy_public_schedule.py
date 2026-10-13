@@ -17,6 +17,11 @@ endpoints = [
     ("new_public_structured_schedule", "GET",
      "https://cgv.co.kr/api/v1/booking/searchMovScnInfo",
      {"coCd": "A", "siteNo": "0128", "scnYmd": today, "rtctlScopCd": "08"}),
+    # Independently documented first-party movie schedule route.
+    ("public_movie_specific_schedule", "GET",
+     "https://cgv.co.kr/api/v1/booking/searchSchByMov",
+     {"coCd": "A", "siteNo": "0128", "scnYmd": today,
+      "movNo": "30001323", "rtctlScopCd": "08"}),
 ]
 report = {"date": today, "theater": "0128", "endpoint_results": []}
 with requests.Session() as session:
