@@ -4047,10 +4047,10 @@ def run_checker(force_all: bool = False):
             if public_result.get("accepted"):
                 rows = public_result.get("rows") or []
                 independent_meta = {}
-                if priority_for_any:
-                    # A structurally valid HTTP 200 can still omit newly
-                    # published sessions. Cross-check the priority date every
-                    # five minutes, not only after HTTP 502/timeout.
+                if priority_for_any or str(target["theater_code"]) in independent_cache:
+                    # One verified theater snapshot is cached per run. Use it
+                    # on all due dates, since a valid HTTP 200 can omit new
+                    # sessions even when the priority date already failed.
                     independent, independent_rows = independent_for_page(
                         str(target["theater_code"]), play_ymd
                     )
@@ -4097,13 +4097,13 @@ def run_checker(force_all: bool = False):
                     ]
                     print(
                         f"[{target['theater_name']}] {play_ymd} "
-                        "핵심 날짜 독립 공급자 교차 확인 · "
+                        f"{'핵심' if priority_for_any else '비핵심'} 날짜 독립 공급자 교차 확인 · "
                         f"조회 {len(independent_rows)}회차 · "
                         f"추가 대상 회차 {len(additional)}개 · "
                         f"원본 갱신 {independent.get('source_age_seconds')}초 전"
                         if not independent.get("error") else
                         f"[{target['theater_name']}] {play_ymd} "
-                        f"핵심 날짜 독립 조회 실패: {independent['error']}"
+                        f"{'핵심' if priority_for_any else '비핵심'} 날짜 독립 조회 실패: {independent['error']}"
                     )
                     if additional:
                         merged_rows = rows + additional
@@ -4132,7 +4132,7 @@ def run_checker(force_all: bool = False):
                             }
                             print(
                                 f"[{target['theater_name']}] {play_ymd} "
-                                "핵심 날짜 독립 교차검증 · 주 공급자 "
+                                f"{'핵심' if priority_for_any else '비핵심'} 날짜 독립 교차검증 · 주 공급자 "
                                 f"{len(rows)}회차, 추가 {len(additional)}회차 · "
                                 f"원본 갱신 {independent.get('source_age_seconds')}초 전"
                             )
