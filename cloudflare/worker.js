@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "22";
+const COMMAND_VERSION = "23";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
@@ -364,12 +364,25 @@ async function rememberGuildAndRegister(env, interaction) {
 }
 
 
-function classifyMonitoringSample(status) {
+export function classifyMonitoringSample(status) {
+  if (status?.collection_evidence_version === 1) {
+    const outcome = status.collection?.outcome;
+    if (outcome === "not_due") return null;
+    if (outcome === "failed" || outcome === "partial") return "failed";
+    if (outcome === "unconfirmed") return "unconfirmed";
+    if (outcome === "collected") {
+      return (status.targets || []).some(t =>
+        ["independent_static", "primary_independent_combined", "cgv_official"].includes(t.detection_mode)
+      ) ? "fallback" : "structured";
+    }
+    return "unconfirmed";
+  }
   const modes = (status?.targets || [])
     .map((target) => String(target?.detection_mode || ""))
     .filter(Boolean);
 
   if (modes.includes("failed")) return "failed";
+  if (modes.includes("empty_unconfirmed")) return "unconfirmed";
 
   const fallbackModes = new Set([
     "cgv_official",
@@ -383,7 +396,6 @@ function classifyMonitoringSample(status) {
 
   const structuredModes = new Set([
     "public_primary",
-    "empty_unconfirmed",
     "structured",
   ]);
   if (modes.some((mode) => structuredModes.has(mode))) return "structured";
@@ -395,30 +407,32 @@ function classifyMonitoringSample(status) {
   return null;
 }
 
-function summarizeMonitoringSamples(samples) {
+export function summarizeMonitoringSamples(samples) {
   const now = Date.now();
   const cutoff = now - 24 * 60 * 60 * 1000;
   const recent = (Array.isArray(samples) ? samples : []).filter((sample) => {
     const at = Date.parse(sample?.at || "");
-    return Number.isFinite(at) && at >= cutoff && at <= now + 5 * 60 * 1000;
+    return sample?.evidence_version === 1 && Number.isFinite(at) && at >= cutoff && at <= now + 5 * 60 * 1000;
   });
 
   const counts = {
     structured: 0,
     fallback: 0,
     failed: 0,
+    unconfirmed: 0,
   };
   for (const sample of recent) {
     if (sample?.mode in counts) counts[sample.mode] += 1;
   }
 
-  const total = counts.structured + counts.fallback + counts.failed;
+  const total = counts.structured + counts.fallback + counts.failed + counts.unconfirmed;
   const monitoringSuccess = counts.structured + counts.fallback;
   return {
     total,
     structured: counts.structured,
     fallback: counts.fallback,
     failed: counts.failed,
+    unconfirmed: counts.unconfirmed,
     monitoring_success_rate:
       total > 0 ? Math.round((monitoringSuccess / total) * 1000) / 10 : null,
     structured_rate:
@@ -449,7 +463,7 @@ async function recordMonitoringSample(env, incoming) {
     const ts = Date.parse(sample?.at || "");
     return Number.isFinite(ts) && ts >= cutoff && sample?.at !== at;
   });
-  samples.push({ at, mode });
+  samples.push({ at, mode, evidence_version: incoming?.collection_evidence_version || 0 });
 
   // 5분 주기 기준 하루 최대 288회이므로 여유 있게 제한한다.
   const bounded = samples
@@ -488,7 +502,7 @@ function monitoringStatsText(stats) {
       ? "-"
       : `${stats.structured_rate}%`;
   return [
-    `새 체계 조회 ${stats.total}회 · 구조화 ${stats.structured} · 보조 ${stats.fallback} · 실패 ${stats.failed}`,
+    `새 체계 조회 ${stats.total}회 · 구조화 ${stats.structured} · 보조 ${stats.fallback} · 실패 ${stats.failed} · 미확정 ${stats.unconfirmed || 0}`,
     `감시 성공률 ${success} · 구조화 비율 ${structured}`,
   ].join("\n");
 }
@@ -552,7 +566,11 @@ function mergeStatus(previous, incoming) {
       incoming.last_cgv_success_at ||
       previous?.last_cgv_success_at ||
       null,
-    last_cgv_success_at:
+    legacy_last_cgv_success_at: previous?.legacy_last_cgv_success_at ||
+      (previous?.collection_evidence_version !== 1 ? previous?.last_cgv_success_at : null) || null,
+    last_cgv_success_at: incoming.collection_evidence_version === 1 ?
+      (incoming.last_cgv_success_at ||
+       (previous?.collection_evidence_version === 1 ? previous?.last_cgv_success_at : null) || null) :
       incoming.last_cgv_success_at ||
       previous?.last_cgv_success_at ||
       incoming.last_primary_success_at ||

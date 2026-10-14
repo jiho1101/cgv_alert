@@ -1,0 +1,44 @@
+name: CGV Recovery Validation
+on:
+  push:
+    branches: [recovery/2026-10-14-evidence]
+    paths: [collection_outcome.py, checker.py, test_collection_outcome.py, recovery_validation.py, cloudflare/worker.js, cloudflare/worker-takeover.test.mjs, .github/workflows/recovery-validation.yml]
+  workflow_dispatch:
+    inputs:
+      discord_smoke:
+        type: boolean
+        default: false
+        description: Send one clearly labeled test message (never an opening alert)
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python -m unittest -v test_collection_outcome.py test_moviebara_fallback.py test_independent_failover.py
+      - run: python checker.py --self-test
+      - run: node cloudflare/worker-takeover.test.mjs
+      - name: Read live source age and deployed Worker; safe Discord delivery test
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
+          SMOKE: ${{ github.event_name == 'push' || inputs.discord_smoke }}
+        run: |
+          if [ "$SMOKE" = "true" ]; then
+            python recovery_validation.py --discord-smoke
+          else
+            python recovery_validation.py
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cgv-recovery-validation-${{ github.run_id }}
+          path: recovery_validation.json
+          retention-days: 14
+          if-no-files-found: error

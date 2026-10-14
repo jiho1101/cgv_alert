@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
+from collection_outcome import annotate as annotate_collection
 from moviebara_fallback import SnapshotError, read_cinema_snapshot
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, WebDriverException
@@ -544,6 +545,7 @@ def build_runtime_snapshot(
                 "api_guard_until": guard_until,
                 "checked_page_count": len(matching_results),
                 "theater_code": theater_code,
+                "watched_dates": sorted(target_dates),
                 "priority_dates": sorted(priority_dates),
                 "movie_aliases": list(
                     target.get("movie_aliases")
@@ -565,7 +567,7 @@ def build_runtime_snapshot(
             }
         )
 
-    return {
+    snapshot = {
         "last_run_at": now.isoformat(),
         "last_primary_success_at": (
             now.isoformat() if any_primary_success else None
@@ -581,6 +583,7 @@ def build_runtime_snapshot(
         "active_count": len(target_items),
         "targets": target_items,
     }
+    return annotate_collection(snapshot, page_results, now)
 
 
 def write_runtime_status(snapshot):
@@ -2020,7 +2023,7 @@ def resolve_public_movie_code(
         if str(row.get("play_date") or "") != str(play_ymd):
             continue
         theater_code = str(row.get("theater_code") or "")
-        if theater_code and theater_code != str(target["theater_code"]):
+        if theater_code != str(target["theater_code"]):
             continue
 
         movie_name = str(row.get("movie_name") or "").strip()
@@ -2174,7 +2177,14 @@ def extract_sessions(api_rows: list, target, play_ymd: str):
             continue
 
         row_date = str(row.get("scnYmd") or "")
-        if row_date and row_date != str(play_ymd):
+        if row_date != str(play_ymd):
+            continue
+
+        if str(row.get("siteNo") or "") != str(target["theater_code"]):
+            continue
+        if row.get("cntlYn") == "Y" or row.get("salYn") == "N":
+            continue
+        if any(word in str(row.get("salsStusNm") or "") for word in ("예매종료", "판매종료", "판매중지")):
             continue
 
         movie_name = str(row.get("movNm") or "")
@@ -2186,7 +2196,7 @@ def extract_sessions(api_rows: list, target, play_ymd: str):
             alias
             and (
                 alias == movie_norm
-                or (product_norm and (alias == product_norm or product_norm.startswith(alias)))
+                or (product_norm and alias == product_norm)
             )
             for alias in aliases
         ):
@@ -2209,7 +2219,12 @@ def extract_sessions(api_rows: list, target, play_ymd: str):
             if not any(keyword in screen_haystack for keyword in screen_keywords):
                 continue
 
-        remaining = _safe_int(row.get("frSeatCnt"), 0)
+        remaining = _safe_int(row.get("frSeatCnt"), -1)
+        total = _safe_int(row.get("stcnt"), -1)
+        if target.get("require_sale_open") and not (total > 0 and 0 < remaining <= total):
+            continue
+        if not row.get("movNo") or not row.get("scnsNo") or not row.get("scnSseq"):
+            continue
         if min_remaining and remaining < min_remaining:
             continue
 
@@ -2235,6 +2250,11 @@ def extract_sessions(api_rows: list, target, play_ymd: str):
                 "PlayYmd": str(play_ymd),
                 "ScreenNm": screen_name,
                 "RemainingSeats": remaining,
+                "TotalSeats": total,
+                "MovieNo": str(row["movNo"]),
+                "ScreenNo": str(row["scnsNo"]),
+                "ScheduleSequence": str(row["scnSseq"]),
+                "_sale_open_evidence": total > 0 and 0 < remaining <= total,
                 "_key": (
                     f"{target['theater_code']}|{play_ymd}|{target['id']}|"
                     f"{screen_name}|{display}"
@@ -2992,6 +3012,7 @@ def run_self_test(timeout: int):
     sample_rows = [
         {
             "scnYmd": "20990101",
+            "siteNo": "0128", "movNo": "TEST", "scnsNo": "001", "scnSseq": "1", "stcnt": 100,
             "movNm": "테스트 영화",
             "scnsNm": "1관",
             "scnsrtTm": "1230",
@@ -2999,6 +3020,7 @@ def run_self_test(timeout: int):
         },
         {
             "scnYmd": "20990101",
+            "siteNo": "0128", "movNo": "TEST", "scnsNo": "001", "scnSseq": "1", "stcnt": 100,
             "movNm": "다른 영화",
             "scnsNm": "2관",
             "scnsrtTm": "1300",
@@ -3929,6 +3951,7 @@ def run_checker(force_all: bool = False):
                             page_results[page_id] = {
                                 "ok": True, "degraded": True,
                                 "source_mode": "independent_static",
+                                "row_count": len(independent_rows),
                                 "public_primary_failed": True,
                                 "public_structured": True,
                                 "theater_name": target["theater_name"],
@@ -4129,6 +4152,7 @@ def run_checker(force_all: bool = False):
                             "ok": True,
                             "degraded": True,
                             "source_mode": "primary_independent_combined",
+                            "row_count": len(merged_rows),
                             "public_structured": True,
                             "public_primary_failed": False,
                             "primary_row_count": len(rows),
@@ -4158,6 +4182,7 @@ def run_checker(force_all: bool = False):
                     "degraded": False,
                     **independent_meta,
                     "source_mode": "public_primary",
+                    "row_count": len(rows),
                     "public_state": public_result.get("state"),
                     "public_structured": True,
                     "empty_unconfirmed": bool(
@@ -4239,6 +4264,7 @@ def run_checker(force_all: bool = False):
                         "ok": True,
                         "degraded": True,
                         "source_mode": "independent_static",
+                                "row_count": len(independent_rows),
                         "public_primary_failed": True,
                         "public_structured": True,
                         "theater_name": target["theater_name"],
@@ -4275,6 +4301,20 @@ def run_checker(force_all: bool = False):
                     "0건을 예매 없음으로 확정하지 않음"
                 )
 
+            if os.getenv("CGV_OFFICIAL_AUTOMATION_AUTHORIZED", "").strip() != "1":
+                page_results[page_id] = {
+                    "ok": False, "source_mode": "failed",
+                    "theater_name": target["theater_name"], "play_ymd": play_ymd,
+                    "error": (
+                        f"주 공급자 실패: {public_message}; "
+                        f"독립 공급자: {independent.get('error') or '해당 날짜 미게시'}; "
+                        "CGV 공식 자동 수집 권한 미확인(robots.txt 일반 수집 Disallow /). "
+                        "공식 경로를 다른 전송 방식으로 우회하지 않음"
+                    ),
+                }
+                print(f"[{site_no}] {play_ymd} 실제 수집 실패 · {page_results[page_id]['error']}")
+                return None
+
             legacy_browser = ensure_browser()
             try:
                 rows = legacy_browser.fetch_schedule(
@@ -4290,6 +4330,7 @@ def run_checker(force_all: bool = False):
                     "ok": True,
                     "degraded": True,
                     "source_mode": "cgv_official",
+                    "row_count": len(rows),
                     "public_primary_failed": True,
                     "theater_name": target["theater_name"],
                     "play_ymd": play_ymd,
@@ -4300,6 +4341,13 @@ def run_checker(force_all: bool = False):
                 }
             except RuntimeError as primary_exc:
                 primary_message = summarize_cgv_error(primary_exc)
+                if is_access_restriction_error(primary_message):
+                    page_results[page_id] = {
+                        "ok": False, "source_mode": "failed",
+                        "theater_name": target["theater_name"], "play_ymd": play_ymd,
+                        "error": f"CGV 접근 제한: {primary_message}; 텍스트/Cloudflare 우회 중단",
+                    }
+                    return None
                 print(
                     f"경고: [{target['theater_name']}] {play_ymd} "
                     f"CGV 공식 구조화도 실패. 보조 감지로 재확인: "
@@ -4580,6 +4628,10 @@ def run_checker(force_all: bool = False):
         notification_items = []
         for target_id, target in target_by_id.items():
             by_date = found.get(target_id, {})
+            if target.get("require_sale_open"):
+                by_date = {date: [row for row in rows if row.get("_sale_open_evidence")]
+                           for date, rows in by_date.items()}
+                by_date = {date: rows for date, rows in by_date.items() if rows}
             if not by_date:
                 print(
                     f"[{target_id}] 이번 실행에서 감지된 예매 가능 회차 없음 "
@@ -4596,6 +4648,8 @@ def run_checker(force_all: bool = False):
                 for play_ymd in sorted(by_date)
                 for row in by_date[play_ymd]
             ]
+            if target.get("require_sale_open"):
+                all_sessions = [row for row in all_sessions if row.get("_sale_open_evidence")]
             new_sessions = [
                 row
                 for row in all_sessions
