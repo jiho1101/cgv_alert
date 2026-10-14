@@ -4,6 +4,8 @@ An unpublished future date is not collection evidence. This module makes no
 network requests and never changes notification/deduplication state.
 """
 import json
+import os
+import sys
 from pathlib import Path
 
 
@@ -98,9 +100,38 @@ def annotate(snapshot, page_results, now):
 
 
 def workflow_exit_code(snapshot):
-    # No scheduled work is not a collection failure. Unpublished future dates
-    # are reported as unknown, not artificially declared failures or successes.
+    # The actual data-collection verdict never depends on notification policy.
     return 1 if snapshot.get("collection", {}).get("failed", 0) else 0
+
+
+def known_supplier_outage(snapshot):
+    """Only silence *known external outages*, never unclassified code failures.
+
+    CI may finish without emailing on a known incident. Runtime/Worker status,
+    page evidence and the true collection outcome remain unchanged.
+    """
+    pages = [p for p in snapshot.get("collection_pages", []) if p.get("outcome") == "failed"]
+    if not pages or snapshot.get("collection_evidence_version") != 1:
+        return False
+    for page in pages:
+        reason = str(page.get("error") or "")
+        if not (
+            "주 공급자 실패:" in reason
+            and "독립 공급자:" in reason
+            and any(mark in reason for mark in (
+                "HTTP 502", "HTTP 503", "HTTP 504", "HTTP 429",
+                "manifest stale", "해당 날짜 미게시", "CGV 접근 제한",
+            ))
+        ):
+            return False
+    return True
+
+
+def ci_exit_code(snapshot):
+    """GitHub email policy differs from truthful collection accounting."""
+    if workflow_exit_code(snapshot) == 0:
+        return 0
+    return 0 if known_supplier_outage(snapshot) else 1
 
 
 if __name__ == "__main__":
@@ -111,4 +142,18 @@ if __name__ == "__main__":
     if snapshot.get("collection_evidence_version") != 1:
         raise SystemExit("COLLECTION_OUTCOME FAIL: evidence missing")
     print("COLLECTION_OUTCOME", json.dumps(snapshot["collection"], ensure_ascii=False))
-    raise SystemExit(workflow_exit_code(snapshot))
+    if "--mute-known-upstream" in sys.argv and known_supplier_outage(snapshot):
+        message = (
+            "KNOWN_EXTERNAL_OUTAGE: source remains DOWN; all failed pages and "
+            "their real errors are retained in runtime_status.json and Cloudflare. "
+            "Expected upstream outage does not generate repeated Actions failure email."
+        )
+        print(f"::warning::{message}")
+        print(message)
+        path = os.environ.get("GITHUB_STEP_SUMMARY")
+        if path:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write("### CGV 수집 상태: 장애 지속 (알림 메일만 억제)\\n\\n")
+                f.write("실제 회차 수집 실패. 이것은 복구 완료가 아닙니다.\\n\\n")
+                f.write("상세 정보: \`runtime_status.json\` artifact 및 Cloudflare 운영 상태.\\n")
+    raise SystemExit(ci_exit_code(snapshot) if "--mute-known-upstream" in sys.argv else workflow_exit_code(snapshot))
