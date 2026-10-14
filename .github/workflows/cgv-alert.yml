@@ -667,6 +667,6 @@ jobs:
           echo "Failed to save monitoring state after 3 attempts"
           exit 1
 
-      - name: Fail workflow on actual collection errors after preserving state
+      - name: Keep truthful collection status; mute emails for known supplier outages
         if: always()
-        run: python collection_outcome.py
+        run: python collection_outcome.py --mute-known-upstream
