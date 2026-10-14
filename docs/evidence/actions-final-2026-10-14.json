@@ -1,0 +1,49 @@
+{
+  "pre_repair": [
+    "2026-10-14T02:51:52.8259844Z 제3자 API 한도 보호 활성화 · HTTP 502 · 비핵심 날짜 일시 축소 · 12:50:53 KST까지",
+    "2026-10-14T02:51:52.8260423Z 경고: [CGV 울산삼산] 20261218 제3자 구조화 1차 감지 신뢰 실패. 기존 CGV 직접 경로로 재확인: 제3자 API HTTP 502 공급자 오류",
+    "2026-10-14T02:51:52.8261325Z [CGV 울산삼산] 20261218 독립 보조 소스도 실패: SnapshotError: manifest stale (18077s)",
+    "2026-10-14T02:51:52.8262142Z CGV 상영정보 API 403 확인: 추가 구조화 재시도 없이 보조 감지로 즉시 전환합니다.",
+    "2026-10-14T02:51:52.8262650Z 경고: [CGV 울산삼산] 20261218 CGV 공식 구조화도 실패. 보조 감지로 재확인: CGV 상영정보 API 접근 거부 (HTTP 403)",
+    "2026-10-14T02:51:52.8266297Z 주의: 이번 실행에서 두 확인 경로가 모두 실패한 날짜가 1개 있습니다. 다음 5분 실행에서 다시 시도합니다. 첫 오류: 제3자 구조화 실패: 제3자 API HTTP 502 공급자 오류; CGV 구조화 실패: CGV 상영정보 API 접근 거부 (HTTP 403); 보조 감지도 실패: CGV 예매 페이지 보조 확인 시간 초과; 명시적 접근 제한이므로 Cloudflare 비상 경로는 우회 용도로 사용하지 않음",
+    "2026-10-14T02:51:52.8267641Z [avengers-doomsday-ulsan-samsan] 이번 실행에서 감지된 예매 가능 회차 없음 (조회 실패 또는 미확정 날짜 포함 가능; 조회 상태 별도 확인)",
+    "2026-10-14T02:51:52.8268358Z [dune-part-three-ulsan-samsan] 이번 실행에서 감지된 예매 가능 회차 없음 (조회 실패 또는 미확정 날짜 포함 가능; 조회 상태 별도 확인)",
+    "2026-10-14T02:51:52.8611046Z \u001b[36;1m        timeout=15,\u001b[0m",
+    "2026-10-14T02:51:55.3882639Z SHA256 digest of uploaded artifact zip is c35fd7de7fb13e87dd229c01a01819d00719403c483647d2173a5cfacd92c6df",
+    "2026-10-14T02:51:55.6272502Z \u001b[36;1m\u001b[0m",
+    "2026-10-14T02:51:55.6277403Z \u001b[36;1m    else:\u001b[0m",
+    "2026-10-14T02:51:55.6285025Z \u001b[36;1m\u001b[0m"
+  ],
+  "validation_1": [
+    "2026-10-14T03:07:59.5761242Z RECOVERY_VALIDATION {\"observed_at\": \"2026-10-14T03:07:58.063235+00:00\", \"production_recovered\": false, \"independent_source\": {\"accepted\": false, \"error\": \"manifest stale (19101s)\"}, \"worker\": {\"http_status\": 200, \"version\": \"22\", \"browser_binding\": true, \"monitoring_stats_24h\": {\"total\": 293, \"structured\": 12, \"fallback\": 0, \"failed\": 281, \"monitoring_success_rate\": 4.1, \"structured_rate\": 4.1}, \"emergency_last_checked_at\": \"2026-10-14T03:05:30.916Z\"}, \"discord\": {\"ok\": true, \"http_status\": 200, \"message_id\": \"1559764682657759243\"}}"
+  ],
+  "validation_2": [
+    "2026-10-14T03:11:18.6068573Z RECOVERY_VALIDATION {\"observed_at\": \"2026-10-14T03:11:17.507584+00:00\", \"production_recovered\": false, \"independent_source\": {\"accepted\": false, \"error\": \"manifest stale (19301s)\"}, \"worker\": {\"http_status\": 200, \"version\": \"23\", \"browser_binding\": true, \"monitoring_stats_24h\": {\"total\": 1, \"structured\": 0, \"fallback\": 0, \"failed\": 1, \"unconfirmed\": 0, \"monitoring_success_rate\": 0, \"structured_rate\": 0}, \"emergency_last_checked_at\": \"2026-10-14T03:10:35.920Z\"}}"
+  ],
+  "production_1": [
+    "2026-10-14T03:09:51.9589213Z Cloudflare runtime 확인 1/12 · version=22, browser_binding=True, source_takeover=True, independent_backup=True, browser_used_ms=0, safe_limit_ms=480000",
+    "2026-10-14T03:09:51.9592177Z Cloudflare runtime 확인 2/12 · version=22, browser_binding=True, source_takeover=True, independent_backup=True, browser_used_ms=0, safe_limit_ms=480000",
+    "2026-10-14T03:09:51.9594750Z Cloudflare runtime 확인 3/12 · version=22, browser_binding=True, source_takeover=True, independent_backup=True, browser_used_ms=0, safe_limit_ms=480000",
+    "2026-10-14T03:09:51.9597042Z Cloudflare runtime 확인 4/12 · version=23, browser_binding=True, source_takeover=True, independent_backup=True, browser_used_ms=0, safe_limit_ms=480000",
+    "2026-10-14T03:10:42.2027413Z Monitoring state saved",
+    "2026-10-14T03:10:42.2431122Z COLLECTION_OUTCOME {\"outcome\": \"failed\", \"checked_pages\": 1, \"collected\": 0, \"unconfirmed\": 0, \"failed\": 1}"
+  ],
+  "production_2": [
+    "2026-10-14T03:12:39.7262401Z Cloudflare runtime 확인 1/12 · version=23, browser_binding=True, source_takeover=True, independent_backup=True, browser_used_ms=0, safe_limit_ms=480000",
+    "2026-10-14T03:13:25.9469206Z Monitoring state saved",
+    "2026-10-14T03:13:25.9911288Z COLLECTION_OUTCOME {\"outcome\": \"failed\", \"checked_pages\": 1, \"collected\": 0, \"unconfirmed\": 0, \"failed\": 1}"
+  ],
+  "final_validation": [
+    "2026-10-14T03:18:48.1280735Z Ran 23 tests in 0.039s",
+    "2026-10-14T03:18:50.2871122Z RECOVERY_VALIDATION {\"observed_at\": \"2026-10-14T03:18:48.618939+00:00\", \"production_recovered\": false, \"independent_source\": {\"accepted\": false, \"error\": \"manifest stale (19752s)\"}, \"worker\": {\"http_status\": 200, \"version\": \"23\", \"browser_binding\": true, \"monitoring_stats_24h\": {\"total\": 3, \"structured\": 0, \"fallback\": 0, \"failed\": 3, \"unconfirmed\": 0, \"monitoring_success_rate\": 0, \"structured_rate\": 0}, \"emergency_last_checked_at\": \"2026-10-14T03:15:35.010Z\"}}"
+  ],
+  "scheduled_production": [
+    "2026-10-14T03:15:51.8071713Z [0128] 20261218 실제 수집 실패 · 주 공급자 실패: 제3자 API HTTP 502 공급자 오류; 독립 공급자: SnapshotError: manifest stale (19573s); CGV 공식 자동 수집 권한 미확인(robots.txt 일반 수집 Disallow /). 공식 경로를 다른 전송 방식으로 우회하지 않음",
+    "2026-10-14T03:15:55.8607063Z Monitoring state saved",
+    "2026-10-14T03:15:55.8899211Z COLLECTION_OUTCOME {\"outcome\": \"failed\", \"checked_pages\": 1, \"collected\": 0, \"unconfirmed\": 0, \"failed\": 1}"
+  ],
+  "preservation": {
+    "config_unchanged": true,
+    "missing_original_dedup_keys": 0
+  }
+}
