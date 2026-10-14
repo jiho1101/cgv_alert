@@ -115,7 +115,7 @@ def known_supplier_outage(snapshot):
         return False
     for page in pages:
         reason = str(page.get("error") or "")
-        if not (
+        primary_down = (
             "주 공급자 실패: 제3자 API" in reason
             and "독립 공급자:" in reason
             and any(mark in reason for mark in (
@@ -123,7 +123,12 @@ def known_supplier_outage(snapshot):
                 "HTTP 503", "HTTP 504", "HTTP 520", "HTTP 522",
                 "보호 대기",
             ))
-        ):
+        )
+        guard_down = (
+            reason.startswith("주 API 보호 중 ")
+            and "독립 조회 미확정: SnapshotError: manifest stale" in reason
+        )
+        if not (primary_down or guard_down):
             return False
     return True
 
