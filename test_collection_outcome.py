@@ -52,6 +52,17 @@ class CollectionOutcomeTests(unittest.TestCase):
     def test_official_zero_rows_are_unconfirmed(self):
         self.assertEqual(page_outcome({"ok": True, "source_mode": "cgv_official", "row_count": 0}), "unconfirmed")
 
+    def test_public_missing_theater_and_past_session_are_rejected(self):
+        target = {"id": "watch", "theater_code": "0128", "movie_aliases": ["오디세이"],
+                  "require_sale_open": True}
+        row = {"theater_code": "0128", "play_date": "20991218", "movie_code": "30001323",
+               "movie_name": "오디세이", "schedule_id": "2099121801282", "start_time": "13:30",
+               "total_seats": 441, "remaining_seats": 433}
+        self.assertEqual(len(checker.extract_public_sessions([row], target, "20991218")), 1)
+        self.assertEqual(checker.extract_public_sessions([dict(row, theater_code="")], target, "20991218"), [])
+        old = dict(row, play_date="20201014")
+        self.assertEqual(checker.extract_public_sessions([old], target, "20201014"), [])
+
     def test_exact_identity_and_seat_evidence_required(self):
         target = {"id": "odyssey", "theater_code": "0128", "movie_aliases": ["오디세이"],
                   "require_sale_open": True, "min_remaining_seats": 1}
