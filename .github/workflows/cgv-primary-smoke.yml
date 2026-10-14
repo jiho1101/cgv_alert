@@ -2,13 +2,6 @@ name: CGV Primary Smoke
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "checker.py"
-      - "verify_public_primary.py"
-      - ".github/workflows/cgv-primary-smoke.yml"
 
 permissions:
   contents: read
