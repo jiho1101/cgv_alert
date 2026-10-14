@@ -2,13 +2,6 @@ name: CGV Independent 502 Failover Smoke
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "verify_independent_live_failover.py"
-      - ".github/workflows/cgv-independent-failover-smoke.yml"
-      - "moviebara_fallback.py"
-      - "checker.py"
 
 permissions:
   contents: read
