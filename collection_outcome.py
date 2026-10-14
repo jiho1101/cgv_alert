@@ -153,7 +153,7 @@ if __name__ == "__main__":
         path = os.environ.get("GITHUB_STEP_SUMMARY")
         if path:
             with open(path, "a", encoding="utf-8") as f:
-                f.write("### CGV 수집 상태: 장애 지속 (알림 메일만 억제)\\n\\n")
-                f.write("실제 회차 수집 실패. 이것은 복구 완료가 아닙니다.\\n\\n")
-                f.write("상세 정보: \`runtime_status.json\` artifact 및 Cloudflare 운영 상태.\\n")
+                f.write("### CGV 수집 상태: 장애 지속 (알림 메일만 억제)\n\n")
+                f.write("실제 회차 수집 실패. 이것은 복구 완료가 아닙니다.\n\n")
+                f.write("상세 정보: runtime_status.json artifact 및 Cloudflare 운영 상태.\n")
     raise SystemExit(ci_exit_code(snapshot) if "--mute-known-upstream" in sys.argv else workflow_exit_code(snapshot))
