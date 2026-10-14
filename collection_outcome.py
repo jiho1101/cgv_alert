@@ -116,11 +116,12 @@ def known_supplier_outage(snapshot):
     for page in pages:
         reason = str(page.get("error") or "")
         if not (
-            "주 공급자 실패:" in reason
+            "주 공급자 실패: 제3자 API" in reason
             and "독립 공급자:" in reason
             and any(mark in reason for mark in (
-                "HTTP 502", "HTTP 503", "HTTP 504", "HTTP 429",
-                "manifest stale", "해당 날짜 미게시", "CGV 접근 제한",
+                "HTTP 403", "HTTP 429", "HTTP 500", "HTTP 502",
+                "HTTP 503", "HTTP 504", "HTTP 520", "HTTP 522",
+                "보호 대기",
             ))
         ):
             return False
