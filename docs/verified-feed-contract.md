@@ -119,3 +119,34 @@ Known code-test coverage: disabled=no requests; identity/seat/status/coverage
 validation; stale/future clocks; duplicate/ambiguous keys; false bookable;
 403/429/redirect/5xx without retries; normalized production pipeline and
 legacy key preservation. Live source and 24h stability remain unverified.
+
+## Post-merge Production verification
+
+Implementation commit: 4ee46b49f997f7e8d567d8aa63864d34ce1b7fe0.
+PR #4 merged as 93989d8ca1f5b19f62a1f6b750fc6fe6553681f0.
+Main contract run 38509076577 passed all 38 tests and Worker checks;
+live-shadow was skipped because no qualified publisher was configured.
+
+Production run 38509188753 (2026-10-14 04:01 UTC) executed the new code.
+All optional feed settings were empty, so no feed request was made.
+Actual outcome: failed; 14 checked pages, 0 collected, 14 failed. Primary
+HTTP 502 and stale backup manifest (22,284 seconds) remained recorded.
+The existing known-outage email suppression explains the green Actions result;
+it does not represent collection recovery. Runtime status upload completed.
+
+Compared f2bd59c with post-run main a84e225: config.json and Worker code were
+identical, and all previous seen/fallback_seen keys remained present. Secrets
+were not changed and no D1 mutation was introduced by this change.
+
+The official UI legal notice allows personal use/storage of site information,
+but it does not specify an unattended feed, cadence or service guarantee.
+The page's calendar heading also displayed an inconsistent year/month; visible
+seat text alone cannot establish complete dated first-party session identity.
+Neither that notice nor successful UI rendering was treated as a verified
+automated integration. No 24-hour success rate or opening latency was measured.
+
+Remaining external prerequisites: an authorized unattended read-only endpoint
+or publisher, its access credentials and permission scope for theater 0128,
+complete session/movie/screen identities and sale/seat status, and independently
+verified upstream observations no more than five minutes old. These were not
+obtained during this task. No verified replacement source is active.
