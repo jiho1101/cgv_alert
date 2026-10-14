@@ -12,6 +12,8 @@ on:
     branches:
       - main
     paths:
+      - "collection_outcome.py"
+      - "test_collection_outcome.py"
       - "checker.py"
       - "moviebara_fallback.py"
       - "test_moviebara_fallback.py"
@@ -60,7 +62,7 @@ jobs:
         run: python -m py_compile checker.py shadow_public_monitor.py moviebara_fallback.py test_moviebara_fallback.py test_independent_failover.py
 
       - name: Test independent timetable fallback
-        run: python -m unittest -v test_moviebara_fallback.py test_independent_failover.py
+        run: python -m unittest -v test_moviebara_fallback.py test_independent_failover.py test_collection_outcome.py
 
       - name: Check Cloudflare Worker syntax
         run: |
@@ -194,7 +196,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "22"
+          expected_version = "23"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:
@@ -261,7 +263,7 @@ jobs:
                       and independent_backup
                   ):
                       print(
-                          "Cloudflare Worker v22 + independent backup + Browser binding 확인 완료"
+                          "Cloudflare Worker v23 + independent backup + Browser binding 확인 완료"
                       )
                       raise SystemExit(0)
               except requests.RequestException as exc:
@@ -663,3 +665,7 @@ jobs:
 
           echo "Failed to save monitoring state after 3 attempts"
           exit 1
+
+      - name: Fail workflow on actual collection errors after preserving state
+        if: always()
+        run: python collection_outcome.py

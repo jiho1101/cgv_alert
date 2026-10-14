@@ -1,4 +1,22 @@
 import assert from "node:assert/strict";
+import { classifyMonitoringSample, summarizeMonitoringSamples } from "./worker.js";
+assert.equal(classifyMonitoringSample({collection_evidence_version: 1,
+  collection: {outcome: "unconfirmed"}}), "unconfirmed");
+assert.equal(classifyMonitoringSample({collection_evidence_version: 1,
+  collection: {outcome: "partial"}}), "failed");
+assert.equal(classifyMonitoringSample({collection_evidence_version: 1,
+  collection: {outcome: "not_due"}}), null);
+assert.equal(classifyMonitoringSample({targets: [{detection_mode: "empty_unconfirmed"}]}), "unconfirmed");
+const statsAt = new Date().toISOString();
+const truthfulStats = summarizeMonitoringSamples([
+  {at: statsAt, mode: "structured"}, // Historical transport-only sample.
+  {at: statsAt, mode: "unconfirmed", evidence_version: 1},
+  {at: statsAt, mode: "failed", evidence_version: 1},
+]);
+assert.equal(truthfulStats.total, 2);
+assert.equal(truthfulStats.unconfirmed, 1);
+assert.equal(truthfulStats.monitoring_success_rate, 0);
+console.log("ACTUAL_COLLECTION_STATS PASS: empty/partial/not_due/legacy evidence");
 import { priorityPrimaryFailed } from "./worker.js";
 
 const today = "20261012";
