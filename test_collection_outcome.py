@@ -56,6 +56,16 @@ class CollectionOutcomeTests(unittest.TestCase):
         self.assertFalse(known_supplier_outage(status))
         self.assertEqual(ci_exit_code(status), 1)
 
+    def test_parser_exception_with_stale_backup_is_not_muted(self):
+        status = self.snapshot({
+            "0128|20991218": {"ok": False, "error": (
+                "주 공급자 실패: 제3자 API ValueError: broken parser; "
+                "독립 공급자: SnapshotError: manifest stale (19912s)"
+            )}
+        })
+        self.assertFalse(known_supplier_outage(status))
+        self.assertEqual(ci_exit_code(status), 1)
+
     def test_missing_evidence_remains_action_failure(self):
         self.assertFalse(known_supplier_outage({
             "collection": {"outcome": "failed", "failed": 1},
