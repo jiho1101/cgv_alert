@@ -70,4 +70,10 @@ Path("independent_shadow_sample.json").write_text(
 )
 print("INDEPENDENT_SHADOW_SAMPLE", json.dumps(sample, ensure_ascii=False))
 if not sample["secondary"]["ok"]:
+    reason = str(sample["secondary"].get("error") or "")
+    if "manifest stale" in reason or "source stale" in reason:
+        # A documented, ongoing source outage is still collected as evidence,
+        # but should not cause an email every scheduled shadow execution.
+        print(f"::warning::CGV independent source remains stale: {reason}")
+        raise SystemExit(0)
     raise SystemExit("independent source shadow failed")
