@@ -17,7 +17,7 @@ def page_outcome(result):
     if result.get("source_mode") in {"text_fallback", "cloudflare_fallback"}:
         return "unconfirmed"
     if result.get("source_mode") in {
-        "public_primary", "cgv_official", "independent_static",
+        "public_primary", "cgv_official", "independent_static", "verified_feed",
         "primary_independent_combined",
     }:
         return "collected"
@@ -54,9 +54,13 @@ def annotate(snapshot, page_results, now):
             "response_ok": bool(result.get("ok")),
             "row_count": result.get("row_count"),
             "empty_unconfirmed": bool(result.get("empty_unconfirmed")),
-            "source_age_seconds": result.get("independent_source_age_seconds"),
+            "source_age_seconds": result.get("source_age_seconds", result.get("independent_source_age_seconds")),
+            "source_id": result.get("source_id"),
+            "source_origin": result.get("source_origin"),
+            "source_observed_at": result.get("source_observed_at"),
             "error": result.get("error"),
         })
+    snapshot["verified_feed_configured"] = os.getenv("CGV_VERIFIED_FEED_ENABLED", "") == "1"
     snapshot["collection_evidence_version"] = 1
     snapshot["collection"] = summarize(list(page_results.values()))
     snapshot["collection_pages"] = pages
@@ -65,10 +69,10 @@ def annotate(snapshot, page_results, now):
     )
     actual = [r for r in page_results.values() if page_outcome(r) == "collected"]
     snapshot["last_monitoring_success_at"] = now.isoformat() if actual else None
-    primary = any(r.get("source_mode") == "public_primary" for r in actual)
+    primary = any(r.get("source_mode") in {"public_primary", "verified_feed"} for r in actual)
     snapshot["last_primary_success_at"] = now.isoformat() if primary else None
     snapshot["last_cgv_success_at"] = (
-        now.isoformat() if any(r.get("source_mode") == "cgv_official" for r in actual) else None
+        now.isoformat() if any(r.get("source_mode") == "cgv_official" or r.get("source_origin") == "cgv_first_party" for r in actual) else None
     )
     for target in snapshot.get("targets", []):
         matching = [r for key, r in page_results.items()
@@ -79,7 +83,7 @@ def annotate(snapshot, page_results, now):
             now.isoformat() if any(page_outcome(r) == "collected" for r in matching) else None
         )
         primary_now = any(page_outcome(r) == "collected" and
-                          r.get("source_mode") == "public_primary" for r in matching)
+                          r.get("source_mode") in {"public_primary", "verified_feed"} for r in matching)
         target["last_primary_success_at"] = now.isoformat() if primary_now else None
         target["last_structured_success_at"] = target["last_primary_success_at"]
         outcome = target["collection"]["outcome"]

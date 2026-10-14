@@ -1,0 +1,52 @@
+name: Verified CGV Feed Boundary
+on:
+  push:
+    branches: [recovery/source-inlet-2026-10-14, main]
+    paths: [verified_feed.py, verify_feed_live.py, test_verified_feed.py, .github/workflows/verified-feed.yml]
+  workflow_dispatch:
+    inputs:
+      live_probe:
+        type: boolean
+        default: false
+        description: Shadow-read the authorized publisher twice; never sends alerts
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Preserve existing behavior and validate new feed boundary
+        run: python -m unittest -v test_collection_outcome.py test_moviebara_fallback.py test_independent_failover.py test_verified_feed.py
+      - run: python -m py_compile checker.py verified_feed.py verify_feed_live.py
+      - run: node cloudflare/worker-takeover.test.mjs
+  live-shadow:
+    if: github.event_name == 'workflow_dispatch' && inputs.live_probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - name: Two independent real observations, no notifications or state writes
+        env:
+          CGV_VERIFIED_FEED_ENABLED: '1'
+          CGV_VERIFIED_FEED_URL: ${{ secrets.CGV_VERIFIED_FEED_URL }}
+          CGV_VERIFIED_FEED_TOKEN: ${{ secrets.CGV_VERIFIED_FEED_TOKEN }}
+          CGV_VERIFIED_FEED_SOURCE_ID: ${{ vars.CGV_VERIFIED_FEED_SOURCE_ID }}
+          CGV_VERIFIED_FEED_PERMISSION: ${{ vars.CGV_VERIFIED_FEED_PERMISSION }}
+        run: python verify_feed_live.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verified-cgv-live-${{ github.run_id }}
+          path: verified_feed_live.json
+          retention-days: 14
+          if-no-files-found: error

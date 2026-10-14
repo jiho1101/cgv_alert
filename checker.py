@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
+from verified_feed import FeedError, enabled as verified_feed_enabled, read_verified_feed
 from collection_outcome import annotate as annotate_collection
 from moviebara_fallback import SnapshotError, read_cinema_snapshot
 from selenium import webdriver
@@ -278,6 +279,7 @@ def _runtime_detection_mode(
     }
 
     for mode in (
+        "verified_feed",
         "cloudflare_fallback",
         "primary_independent_combined",
         "independent_static",
@@ -346,7 +348,8 @@ def build_runtime_snapshot(
                 matching_health.append(entry)
 
         sentinel_incident = sentinel_sites.get(theater_code)
-        sentinel_unhealthy = bool(sentinel_incident)
+        using_verified = bool(matching_results) and all(r.get("source_mode") == "verified_feed" for r in matching_results)
+        sentinel_unhealthy = bool(sentinel_incident) and not using_verified
         sentinel_checked_healthy = any(
             result.get("source_sentinel_checked")
             and result.get("source_sentinel_healthy") is True
@@ -418,6 +421,8 @@ def build_runtime_snapshot(
             or guard_active
         ):
             health_status = "fallback"
+        elif using_verified:
+            health_status = "normal"
         elif matching_health:
             health_status = "warning"
         else:
@@ -456,7 +461,7 @@ def build_runtime_snapshot(
                 and parts[0] == theater_code
                 and parts[1] in priority_dates
                 and result.get("ok")
-                and result.get("source_mode") == "public_primary"
+                and result.get("source_mode") in {"public_primary", "verified_feed"}
                 and not result.get("empty_unconfirmed")
                 and int(result.get("row_count") or 0) > 0
             ):
@@ -2101,6 +2106,8 @@ def extract_public_sessions(
         if not isinstance(row, dict):
             continue
 
+        if row.get("_verified_feed") and not row.get("_bookable"):
+            continue
         row_date = str(row.get("play_date") or "")
         theater_code = str(row.get("theater_code") or "")
         if row_date != str(play_ymd):
@@ -2161,12 +2168,13 @@ def extract_public_sessions(
                 "MovieNmKor": movie_name or target.get("label", "영화"),
                 "PlayStartTm": start_raw,
                 "PlayYmd": str(play_ymd),
-                "ScreenNm": "상영관 정보 미제공",
+                "ScreenNm": row.get("screen") if row.get("_verified_feed") else "상영관 정보 미제공",
                 "RemainingSeats": remaining,
                 "TotalSeats": total,
                 "_public_structured": True,
                 "_sale_open_evidence": True,
                 "_key": stable_key,
+                "_dedup_aliases": ([f"{target['theater_code']}|{play_ymd}|{target['id']}|{row.get('screen')}|{display}"] if row.get("_verified_feed") else []),
             }
         )
 
@@ -3714,6 +3722,7 @@ def run_checker(force_all: bool = False):
     public_cache = {}
     independent_cache = {}
     public_sentinel_cache = {}
+    verified_feed_cache = {}
 
     # Parallelize supplier reads, never notification decisions.
     # The verified publication is fetched once per theater per run.
@@ -3722,13 +3731,15 @@ def run_checker(force_all: bool = False):
     )
     independent_futures = {
         site_no: independent_executor.submit(read_cinema_snapshot, site_no, now)
-        for site_no in scheduled
+        for site_no in scheduled if not verified_feed_enabled()
     }
 
     def independent_for_page(site_no, play_ymd):
         """Cache one independently validated, prefetched snapshot per theater."""
         if site_no not in independent_cache:
             try:
+                if site_no not in independent_futures:
+                    independent_futures[site_no] = independent_executor.submit(read_cinema_snapshot, site_no, now)
                 independent_cache[site_no] = independent_futures[site_no].result()
             except (SnapshotError, requests.RequestException) as exc:
                 independent_cache[site_no] = {
@@ -3913,6 +3924,42 @@ def run_checker(force_all: bool = False):
 
             if key in page_cache:
                 return page_cache[key]
+
+            # Optional permissioned publisher: one request per theater/run,
+            # before the existing primary, using the SAME normalized dedup keys.
+            # Disabled until a real source passes external authorization and
+            # repeated live shadow qualification; never fabricate a feed here.
+            site_no = str(target["theater_code"])
+            if verified_feed_enabled():
+                if site_no not in verified_feed_cache:
+                    guard = (state.get("verified_feed_guard") or {}).get(site_no, {})
+                    until = guard.get("until")
+                    try:
+                        if until and datetime.fromisoformat(until) > now:
+                            raise FeedError("feed access/rate-limit backoff active")
+                        verified_feed_cache[site_no] = read_verified_feed(site_no, now)
+                    except FeedError as exc:
+                        verified_feed_cache[site_no] = {"error": str(exc)}
+                        if exc.retry_after_seconds:
+                            state.setdefault("verified_feed_guard", {})[site_no] = {
+                                "until": (now + timedelta(seconds=exc.retry_after_seconds)).isoformat()
+                            }
+                            public_state_changed = True
+                        print(f"[{site_no}] permissioned feed unavailable: {exc}")
+                feed = verified_feed_cache[site_no] or {}
+                if not feed.get("error") and play_ymd in feed.get("complete_dates", set()):
+                    rows = [r for r in feed["rows"] if r["play_date"] == play_ymd]
+                    page_cache[key] = {"mode": "public", "data": rows}
+                    page_results[page_id] = {
+                        "ok": True, "source_mode": "verified_feed", "row_count": len(rows),
+                        "public_structured": True, "empty_unconfirmed": not rows,
+                        "theater_name": target["theater_name"], "play_ymd": play_ymd,
+                        "source_id": feed["source_id"], "source_origin": feed["origin"],
+                        "source_observed_at": feed["observed_at"],
+                        "source_age_seconds": feed["source_age_seconds"],
+                    }
+                    print(f"[{site_no}] {play_ymd} permissioned feed: {len(rows)} rows, observed {feed['observed_at']}")
+                    return page_cache[key]
 
             priority_for_any = any(
                 target_id in target_by_id
@@ -4624,11 +4671,13 @@ def run_checker(force_all: bool = False):
         if health_changed:
             save_state(state)
 
-        write_runtime_status(
-            build_runtime_snapshot(
-                config, state, targets, now, page_results, found=found
-            )
-        )
+        runtime = build_runtime_snapshot(config, state, targets, now, page_results, found=found)
+        runtime["verified_feed"] = {
+            "configured": verified_feed_enabled(),
+            "sites": {site: {k: v for k, v in feed.items() if k not in {"rows", "complete_dates"}}
+                      for site, feed in verified_feed_cache.items()},
+        }
+        write_runtime_status(runtime)
 
         if merge_emergency_seen_from_worker(state):
             save_state(state)
@@ -4670,8 +4719,7 @@ def run_checker(force_all: bool = False):
             new_sessions = [
                 row
                 for row in all_sessions
-                if row["_key"]
-                not in (
+                if not set([row["_key"]] + row.get("_dedup_aliases", [])).intersection(
                     fallback_seen
                     if row.get("_fallback")
                     else seen
