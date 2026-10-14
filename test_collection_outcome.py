@@ -64,15 +64,54 @@ class CollectionOutcomeTests(unittest.TestCase):
             )}
         }
         for day in range(19, 32):
+            backup = ("SnapshotError: manifest stale (20487s)" if day % 2 else
+                      "해당 날짜 독립 데이터 미게시 (예매 여부 미확정)")
             results[f"0128|209912{day:02d}"] = {"ok": False, "error": (
                 "주 API 보호 중 2026-10-14T13:31:03+09:00; "
-                "독립 조회 미확정: SnapshotError: manifest stale (20487s)"
+                f"독립 조회 미확정: {backup}"
             )}
         status = self.snapshot(results)
         self.assertEqual(status["collection"]["failed"], 14)
         self.assertTrue(known_supplier_outage(status))
         self.assertEqual(workflow_exit_code(status), 1)
         self.assertEqual(ci_exit_code(status), 0)
+
+    def test_real_30_minute_full_scan_with_unpublished_dates_does_not_email(self):
+        results = {
+            "0128|20991218": {"ok": False, "error": (
+                "주 공급자 실패: 제3자 API HTTP 502 공급자 오류; "
+                "독립 공급자: 해당 날짜 미게시; CGV 공식 자동 수집 권한 미확인"
+            )}
+        }
+        for day in range(19, 32):
+            results[f"0128|209912{day:02d}"] = {"ok": False, "error": (
+                "주 API 보호 중 2026-10-14T18:31:20+09:00; "
+                "독립 조회 미확정: 해당 날짜 독립 데이터 미게시 (예매 여부 미확정)"
+            )}
+        status = self.snapshot(results)
+        self.assertEqual(status["collection"]["failed"], 14)
+        self.assertTrue(known_supplier_outage(status))
+        self.assertEqual(workflow_exit_code(status), 1)
+        self.assertEqual(ci_exit_code(status), 0)
+        self.assertEqual(status["health_summary"], "error")
+
+    def test_new_upstream_failure_does_not_restart_failure_email_flood(self):
+        status = self.snapshot({"0128|20991218": {
+            "ok": False,
+            "error": "External feed temporarily unavailable: HTTP 503",
+        }})
+        self.assertFalse(known_supplier_outage(status))
+        self.assertEqual(workflow_exit_code(status), 1)
+        self.assertEqual(ci_exit_code(status), 0)
+        self.assertEqual(status["collection"]["outcome"], "failed")
+
+    def test_corrupted_telemetry_is_still_a_ci_failure(self):
+        status = self.snapshot({"0128|20991218": {
+            "ok": False,
+            "error": "주 공급자 실패: 제3자 API HTTP 502; 독립 공급자: 미게시",
+        }})
+        status["collection"]["failed"] = 0
+        self.assertEqual(ci_exit_code(status), 1)
 
     def test_parser_exception_with_stale_backup_is_not_muted(self):
         status = self.snapshot({
