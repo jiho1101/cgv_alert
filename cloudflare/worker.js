@@ -522,7 +522,12 @@ function mergeStatus(previous, incoming) {
     return {
       ...old,
       ...target,
-      last_success_at: target.last_success_at || old.last_success_at || null,
+      legacy_last_success_at: old.legacy_last_success_at ||
+        (previous?.collection_evidence_version !== 1 ? old.last_success_at : null) || null,
+      last_success_at: incoming.collection_evidence_version === 1 ?
+        (target.last_success_at ||
+         (previous?.collection_evidence_version === 1 ? old.last_success_at : null) || null) :
+        target.last_success_at || old.last_success_at || null,
       last_primary_success_at:
         target.last_primary_success_at ||
         old.last_primary_success_at ||
@@ -576,7 +581,11 @@ function mergeStatus(previous, incoming) {
       incoming.last_primary_success_at ||
       previous?.last_primary_success_at ||
       null,
-    last_monitoring_success_at:
+    legacy_last_monitoring_success_at: previous?.legacy_last_monitoring_success_at ||
+      (previous?.collection_evidence_version !== 1 ? previous?.last_monitoring_success_at : null) || null,
+    last_monitoring_success_at: incoming.collection_evidence_version === 1 ?
+      (incoming.last_monitoring_success_at ||
+       (previous?.collection_evidence_version === 1 ? previous?.last_monitoring_success_at : null) || null) :
       incoming.last_monitoring_success_at ||
       previous?.last_monitoring_success_at ||
       incoming.last_primary_success_at ||

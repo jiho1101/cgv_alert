@@ -28,7 +28,7 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
-          SMOKE: ${{ github.event_name == 'push' || inputs.discord_smoke }}
+          SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.discord_smoke }}
         run: |
           if [ "$SMOKE" = "true" ]; then
             python recovery_validation.py --discord-smoke

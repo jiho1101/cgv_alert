@@ -494,6 +494,7 @@ jobs:
           PY
 
       - name: Save monitoring state and target cleanup
+        if: always()
         run: |
           if git diff --quiet -- state.json config.json; then
             echo "No monitoring state or target changes"

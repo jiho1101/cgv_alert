@@ -457,6 +457,8 @@ def build_runtime_snapshot(
                 and parts[1] in priority_dates
                 and result.get("ok")
                 and result.get("source_mode") == "public_primary"
+                and not result.get("empty_unconfirmed")
+                and int(result.get("row_count") or 0) > 0
             ):
                 priority_primary_success = True
                 break
