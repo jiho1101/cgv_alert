@@ -56,6 +56,24 @@ class CollectionOutcomeTests(unittest.TestCase):
         self.assertFalse(known_supplier_outage(status))
         self.assertEqual(ci_exit_code(status), 1)
 
+    def test_known_outage_priority_plus_thirteen_guarded_dates(self):
+        results = {
+            "0128|20991218": {"ok": False, "error": (
+                "주 공급자 실패: 제3자 API HTTP 502 공급자 오류; "
+                "독립 공급자: SnapshotError: manifest stale (20487s)"
+            )}
+        }
+        for day in range(19, 32):
+            results[f"0128|209912{day:02d}"] = {"ok": False, "error": (
+                "주 API 보호 중 2026-10-14T13:31:03+09:00; "
+                "독립 조회 미확정: SnapshotError: manifest stale (20487s)"
+            )}
+        status = self.snapshot(results)
+        self.assertEqual(status["collection"]["failed"], 14)
+        self.assertTrue(known_supplier_outage(status))
+        self.assertEqual(workflow_exit_code(status), 1)
+        self.assertEqual(ci_exit_code(status), 0)
+
     def test_parser_exception_with_stale_backup_is_not_muted(self):
         status = self.snapshot({
             "0128|20991218": {"ok": False, "error": (
