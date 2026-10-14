@@ -2,7 +2,7 @@
 from datetime import datetime
 import unittest
 from zoneinfo import ZoneInfo
-from collection_outcome import page_outcome, summarize, workflow_exit_code
+from collection_outcome import page_outcome, summarize, workflow_exit_code, known_supplier_outage, ci_exit_code
 import checker
 
 
@@ -34,6 +34,35 @@ class CollectionOutcomeTests(unittest.TestCase):
         result = summarize([{"ok": False}, {"ok": True, "source_mode": "public_primary", "row_count": 2}])
         self.assertEqual(result["outcome"], "partial")
         self.assertEqual(workflow_exit_code({"collection": result}), 1)
+
+    def test_known_upstream_failure_silences_actions_email_but_keeps_error_state(self):
+        status = self.snapshot({
+            "0128|20991218": {"ok": False, "error": (
+                "주 공급자 실패: 제3자 API HTTP 502 공급자 오류; "
+                "독립 공급자: SnapshotError: manifest stale (19912s)"
+            )}
+        })
+        self.assertEqual(status["health_summary"], "error")
+        self.assertEqual(status["collection"]["outcome"], "failed")
+        self.assertEqual(workflow_exit_code(status), 1)
+        self.assertTrue(known_supplier_outage(status))
+        self.assertEqual(ci_exit_code(status), 0)
+        self.assertIsNone(status["last_monitoring_success_at"])
+
+    def test_unrecognized_checker_failure_remains_action_failure(self):
+        status = self.snapshot({
+            "0128|20991218": {"ok": False, "error": "RuntimeError: broken parser"}
+        })
+        self.assertFalse(known_supplier_outage(status))
+        self.assertEqual(ci_exit_code(status), 1)
+
+    def test_missing_evidence_remains_action_failure(self):
+        self.assertFalse(known_supplier_outage({
+            "collection": {"outcome": "failed", "failed": 1},
+        }))
+        self.assertEqual(ci_exit_code({
+            "collection": {"outcome": "failed", "failed": 1},
+        }), 1)
 
     def test_not_due_does_not_manufacture_a_failure_or_success(self):
         status = self.snapshot({})
