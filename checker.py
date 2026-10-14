@@ -2049,6 +2049,15 @@ def resolve_public_movie_code(
     return movie_code, True, False
 
 
+def _future_start(play_ymd, hhmm):
+    try:
+        day = datetime.strptime(str(play_ymd), "%Y%m%d").replace(tzinfo=KST)
+        start = day + timedelta(hours=int(hhmm[:2]), minutes=int(hhmm[2:]))
+        return start > datetime.now(KST)
+    except (TypeError, ValueError):
+        return False
+
+
 def _public_sale_open_evidence(row, target):
     """require_sale_open 대상의 확정 예매 가능 근거를 확인한다.
 
@@ -2096,7 +2105,7 @@ def extract_public_sessions(
         theater_code = str(row.get("theater_code") or "")
         if row_date != str(play_ymd):
             continue
-        if theater_code and theater_code != str(target["theater_code"]):
+        if theater_code != str(target["theater_code"]):
             continue
 
         movie_name = str(row.get("movie_name") or "").strip()
@@ -2125,6 +2134,9 @@ def extract_public_sessions(
         hour = _safe_int(start_raw[:2], -1)
         minute = _safe_int(start_raw[2:], -1)
         if hour < 0 or hour > 29 or minute < 0 or minute > 59:
+            continue
+
+        if target.get("require_sale_open") and not _future_start(play_ymd, start_raw):
             continue
 
         remaining = _safe_int(row.get("remaining_seats"), 0)
@@ -2237,6 +2249,9 @@ def extract_sessions(api_rows: list, target, play_ymd: str):
         hour = _safe_int(start_raw[:2], -1)
         minute = _safe_int(start_raw[2:], -1)
         if hour < 0 or hour > 29 or minute < 0 or minute > 59:
+            continue
+
+        if target.get("require_sale_open") and not _future_start(play_ymd, start_raw):
             continue
 
         display = f"{hour:02d}:{minute:02d}"
