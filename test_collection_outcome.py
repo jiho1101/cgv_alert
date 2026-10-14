@@ -1,6 +1,5 @@
 """Regression checks for the actual production failures observed on Oct 14."""
 from datetime import datetime
-import copy
 import unittest
 from zoneinfo import ZoneInfo
 from collection_outcome import page_outcome, summarize, workflow_exit_code
@@ -29,6 +28,7 @@ class CollectionOutcomeTests(unittest.TestCase):
         for field in ["last_monitoring_success_at", "last_primary_success_at", "last_cgv_success_at"]:
             self.assertIsNone(status[field])
         self.assertIsNotNone(status["last_response_success_at"])
+        self.assertIsNone(status["targets"][0]["priority_session_snapshot_at"])
 
     def test_one_failed_date_cannot_be_hidden_by_another_success(self):
         result = summarize([{"ok": False}, {"ok": True, "source_mode": "public_primary", "row_count": 2}])
