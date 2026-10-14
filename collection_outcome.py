@@ -130,7 +130,11 @@ def known_supplier_outage(snapshot):
         )
         guard_down = (
             reason.startswith("주 API 보호 중 ")
-            and "독립 조회 미확정: SnapshotError: manifest stale" in reason
+            and "독립 조회 미확정: " in reason
+            and any(mark in reason for mark in (
+                "SnapshotError: manifest stale",
+                "해당 날짜 독립 데이터 미게시 (예매 여부 미확정)",
+            ))
         )
         if not (primary_down or guard_down):
             return False
@@ -138,10 +142,47 @@ def known_supplier_outage(snapshot):
 
 
 def ci_exit_code(snapshot):
-    """GitHub email policy differs from truthful collection accounting."""
-    if workflow_exit_code(snapshot) == 0:
-        return 0
-    return 0 if known_supplier_outage(snapshot) else 1
+    """Validate telemetry, not the health of a third-party CGV data source.
+
+    GitHub should email for a broken program/evidence pipeline, not for each
+    provider outage or unpublished future date. The real collection verdict
+    stays failed in runtime_status.json, artifacts and Cloudflare.
+    """
+    if snapshot.get("collection_evidence_version") != 1:
+        return 1
+    collection = snapshot.get("collection")
+    pages = snapshot.get("collection_pages")
+    if not isinstance(collection, dict) or not isinstance(pages, list):
+        return 1
+    if any(not isinstance(p, dict) or p.get("outcome") not in
+           {"failed", "collected", "unconfirmed"} for p in pages):
+        return 1
+    for outcome in ("failed", "collected", "unconfirmed"):
+        if collection.get(outcome) != sum(p["outcome"] == outcome for p in pages):
+            return 1
+    if collection.get("checked_pages") != len(pages):
+        return 1
+    expected = (
+        "not_due" if not pages else
+        "failed" if collection["failed"] == len(pages) else
+        "partial" if collection["failed"] else
+        "unconfirmed" if collection["unconfirmed"] else "collected"
+    )
+    if collection.get("outcome") != expected:
+        return 1
+    # Uncaught execution errors already fail the checker.py Actions step.
+    # A recognized internal parser/programming exception recorded as a page
+    # failure also remains a CI failure; new supplier errors alone do not.
+    for p in pages:
+        if p["outcome"] == "failed":
+            reason = str(p.get("error") or "")
+            if any(exc in reason for exc in (
+                "ValueError: broken parser", "RuntimeError: broken parser",
+                "TypeError:", "KeyError:", "AttributeError:", "NameError:",
+                "AssertionError:", "SyntaxError:", "ImportError:",
+            )):
+                return 1
+    return 0
 
 
 if __name__ == "__main__":
@@ -152,11 +193,12 @@ if __name__ == "__main__":
     if snapshot.get("collection_evidence_version") != 1:
         raise SystemExit("COLLECTION_OUTCOME FAIL: evidence missing")
     print("COLLECTION_OUTCOME", json.dumps(snapshot["collection"], ensure_ascii=False))
-    if "--mute-known-upstream" in sys.argv and known_supplier_outage(snapshot):
+    if "--mute-known-upstream" in sys.argv and workflow_exit_code(snapshot):
+        kind = "KNOWN_EXTERNAL_OUTAGE" if known_supplier_outage(snapshot) else "SOURCE_COLLECTION_FAILURE"
         message = (
-            "KNOWN_EXTERNAL_OUTAGE: source remains DOWN; all failed pages and "
-            "their real errors are retained in runtime_status.json and Cloudflare. "
-            "Expected upstream outage does not generate repeated Actions failure email."
+            f"{kind}: genuine CGV collection failures remain recorded in "
+            "runtime_status.json and Cloudflare; upstream availability "
+            "does not trigger repeat GitHub Actions failure emails."
         )
         print(f"::warning::{message}")
         print(message)
