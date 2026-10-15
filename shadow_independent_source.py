@@ -82,6 +82,6 @@ if not sample["secondary"]["ok"]:
             or "production session extractor rejected" in reason):
         # A documented, ongoing source outage is still collected as evidence,
         # but should not cause an email every scheduled shadow execution.
-        print(f"::warning::CGV independent source remains stale: {reason}")
+        print(f"::warning::CGV independent source not qualified: {reason}")
         raise SystemExit(0)
     raise SystemExit("independent source shadow failed")
