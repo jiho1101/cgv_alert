@@ -8,6 +8,8 @@ on:
     branches: [main]
     paths:
       - "shadow_independent_source.py"
+      - "shadow_fallback_validation.py"
+      - "test_shadow_fallback_validation.py"
       - ".github/workflows/cgv-independent-shadow.yml"
 
 permissions:
@@ -23,7 +25,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install read-only dependencies
-        run: pip install requests
+        run: pip install -r requirements.txt
+      - name: Test read-only parser audit
+        run: python -m unittest -v test_shadow_fallback_validation.py
       - name: Independent seat-source shadow
         run: python shadow_independent_source.py
       - name: Preserve independent source evidence
