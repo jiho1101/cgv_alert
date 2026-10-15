@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo
 import json
 import requests
 from moviebara_fallback import read_cinema_snapshot
+from checker import extract_public_sessions
+from shadow_fallback_validation import audit_rows
 from shadow_public_monitor import canonical, extract_rows, identity_key, inspect_rows
 
 now = datetime.now(ZoneInfo("Asia/Seoul"))
@@ -20,6 +22,7 @@ try:
     current = [r for r in rows if r["play_date"] == date]
     future = [r for r in rows if r["play_date"] == "20261218"]
     inspect = inspect_rows(rows)
+    parser_audit = audit_rows(rows, now, extract_public_sessions)
     sample["secondary"] = {
         "ok": True,
         "rows_all_dates": len(rows),
@@ -29,7 +32,11 @@ try:
         "bookable_rows": sum(0 < r["remaining_seats"] <= r["total_seats"] for r in rows),
         "snapshot_age_seconds": feed["snapshot_age_seconds"],
         "source_age_seconds": feed["source_age_seconds"],
+        "parser_audit": parser_audit,
     }
+    if parser_audit["status"] == "rejected":
+        sample["secondary"]["ok"] = False
+        sample["secondary"]["error"] = "production session extractor rejected independent feed rows"
     secondary_keys = {identity_key(x) for x in current}
 except Exception as exc:
     sample["secondary"]["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
@@ -71,7 +78,8 @@ Path("independent_shadow_sample.json").write_text(
 print("INDEPENDENT_SHADOW_SAMPLE", json.dumps(sample, ensure_ascii=False))
 if not sample["secondary"]["ok"]:
     reason = str(sample["secondary"].get("error") or "")
-    if "manifest stale" in reason or "source stale" in reason:
+    if ("manifest stale" in reason or "source stale" in reason
+            or "production session extractor rejected" in reason):
         # A documented, ongoing source outage is still collected as evidence,
         # but should not cause an email every scheduled shadow execution.
         print(f"::warning::CGV independent source remains stale: {reason}")
