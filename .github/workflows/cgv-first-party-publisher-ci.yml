@@ -1,0 +1,31 @@
+name: CGV first-party publisher prototype tests
+
+on:
+  push:
+    branches:
+      - feat/cgv-first-party-publisher
+    paths:
+      - cgv_first_party_publisher.py
+      - test_cgv_first_party_publisher.py
+      - verified_feed.py
+      - .github/workflows/cgv-first-party-publisher-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install only test dependencies
+        run: pip install requests==2.32.5
+      - name: Verify syntax
+        run: python -m py_compile cgv_first_party_publisher.py test_cgv_first_party_publisher.py
+      - name: Validate with actual production feed contract (no network/Discord)
+        run: python -m unittest -v test_cgv_first_party_publisher.py
