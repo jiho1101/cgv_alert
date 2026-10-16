@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 from verified_feed import FeedError, enabled as verified_feed_enabled, read_verified_feed
+from cgv_payload_contract import parse_cgv_schedule_payload
 from collection_outcome import annotate as annotate_collection
 from moviebara_fallback import SnapshotError, read_cinema_snapshot
 from selenium import webdriver
@@ -843,16 +844,7 @@ class CgvBrowser:
         return True
 
     def _parse_schedule_payload(self, body: str):
-        try:
-            payload = json.loads(str(body or ""))
-        except json.JSONDecodeError:
-            return None
-        if not isinstance(payload, dict):
-            return None
-        if payload.get("statusCode") not in (None, 0, "0"):
-            return None
-        rows = payload.get("data")
-        return rows if isinstance(rows, list) else None
+        return parse_cgv_schedule_payload(body)
 
     def _consume_performance_schedule(
         self,
