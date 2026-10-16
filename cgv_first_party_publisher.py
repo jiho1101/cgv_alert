@@ -127,6 +127,24 @@ def default_dates(now, priority_date="20261218"):
         dates.append(priority_date)
     return dates
 
+ 
+def collect_official_rows(browser, site_no, theater_name, date):
+    """Only inspect what the normal booking page itself has requested."""
+    # siteNm is the name without the CGV brand prefix; this matches
+    # checker.page_site_name() for the same cinema.
+    page_name = str(theater_name).removeprefix("CGV ").strip()
+    if not page_name:
+        raise CollectorError("official cinema display name missing")
+    browser.current_site = None
+    browser._bootstrap(site_no, page_name, date)
+    result = browser._consume_browser_schedule(site_no, date, wait_seconds=8)
+    if not result or not result.get("ok"):
+        raise CollectorError("official page schedule missing/restricted; stop")
+    rows = result.get("rows")
+    if not isinstance(rows, list):
+        raise CollectorError("official page schedule shape invalid")
+    return rows
+
 
 def main():
     parser = argparse.ArgumentParser(description="Read-only first-party browser feed prototype")
@@ -148,12 +166,7 @@ def main():
     from checker import CgvBrowser
     browser = CgvBrowser(timeout=12)
     def collect(site_no, site_name, date):
-        browser.current_site = None
-        browser._bootstrap(site_no, site_name, date)
-        result = browser._consume_browser_schedule(site_no, date, wait_seconds=8)
-        if not result or not result.get("ok"):
-            raise CollectorError("official page schedule missing/restricted; stop")
-        return result.get("rows")
+        return collect_official_rows(browser, site_no, site_name, date)
 
     try:
         packet = build_packet(collect, "0128", "CGV 울산삼산", dates, source, permission)

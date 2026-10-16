@@ -1,0 +1,33 @@
+name: CGV first-party compatibility checks
+
+on:
+  push:
+    branches:
+      - fix/first-party-feed-compat-20261016
+    paths:
+      - checker.py
+      - cgv_first_party_publisher.py
+      - cgv_payload_contract.py
+      - test_cgv_first_party_publisher.py
+      - test_cgv_payload_contract.py
+      - .github/workflows/cgv-first-party-compat-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime imports only
+        run: pip install requests==2.32.5 selenium==4.35.0
+      - name: Compile collector, parser and checker
+        run: python -m py_compile cgv_payload_contract.py cgv_first_party_publisher.py checker.py
+      - name: Run all independent collector compatibility tests (offline)
+        run: python -m unittest -v test_cgv_first_party_publisher.py test_cgv_payload_contract.py
