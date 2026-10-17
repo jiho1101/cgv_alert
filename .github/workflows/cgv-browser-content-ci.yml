@@ -2,7 +2,7 @@ name: Cloudflare Browser Run content contract
 
 on:
   push:
-    branches: [fix/cloudflare-browser-envelope-20261017]
+    branches: [main, fix/cloudflare-browser-envelope-20261017]
     paths:
       - cloudflare/worker.js
       - cloudflare/worker-browser-content.test.mjs
