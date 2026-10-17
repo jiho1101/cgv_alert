@@ -629,6 +629,29 @@ function renderedHtmlToText(html) {
     .trim();
 }
 
+// Browser Run's /content Quick Action returns {success, result: html}.
+// Parsing the whole JSON body as if it were HTML destroys the JSON escaping
+// and can misidentify a mere loaded shell page as real timetable evidence.
+export function extractBrowserRunTimetableText(payload, expectedSiteName) {
+  if (!payload || payload.success !== true || typeof payload.result !== "string") {
+    throw new Error("Browser Run content response is not successful HTML");
+  }
+  const text = renderedHtmlToText(payload.result);
+  const lower = text.toLowerCase();
+  if (["just a moment", "verify you are human", "access denied", "captcha"].some(x => lower.includes(x))) {
+    throw new Error("Browser Run page displayed an access challenge");
+  }
+  if (!text.includes(expectedSiteName)) {
+    throw new Error("Browser Run page does not identify the requested cinema");
+  }
+  // A navigable cinema shell is not a valid source of real-time sessions.
+  if (!/(?:^|[^0-9])(?:[01]?[0-9]|2[0-3]):[0-5][0-9](?:[^0-9]|$)/.test(text) ||
+      !/(?:잔여|좌석|[0-9]\\s*석)/.test(text)) {
+    throw new Error("Browser Run page has no observable screening times and seats");
+  }
+  return text;
+}
+
 async function browserBudgetState(env) {
   const day = new Date().toISOString().slice(0, 10);
   const key = `browser_budget:${day}`;
@@ -719,7 +742,8 @@ async function handleBrowserCheck(request, env) {
   const browserMs = Number(
     rendered?.headers?.get?.("X-Browser-Ms-Used") || 0,
   );
-  const html = await rendered.text();
+  // Consume and account for the Quick Action even when its page is empty.
+  const rawBody = await rendered.text();
   if (browserMs > 0 && Number.isFinite(browserMs)) {
     await putState(env, budget.key, {
       used_ms: budget.usedMs + browserMs,
@@ -728,7 +752,25 @@ async function handleBrowserCheck(request, env) {
     });
   }
 
-  const text = renderedHtmlToText(html);
+  if (!rendered.ok) {
+    return jsonResponse({
+      ok: false,
+      error: `Browser Run content endpoint HTTP ${rendered.status}`,
+    }, 502);
+  }
+
+  let text;
+  try {
+    // Content is a JSON envelope, NOT the rendered HTML body itself.
+    text = extractBrowserRunTimetableText(JSON.parse(rawBody), siteName);
+  } catch (error) {
+    return jsonResponse({
+      ok: false,
+      source: "cloudflare_browser_run",
+      error: `Unqualified browser content: ${String(error.message || error).slice(0, 200)}`,
+      browser_ms: Number.isFinite(browserMs) ? browserMs : 0,
+    }, 422);
+  }
   return jsonResponse({
     ok: true,
     source: "cloudflare_browser_run",
