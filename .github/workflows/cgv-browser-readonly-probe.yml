@@ -65,6 +65,14 @@ jobs:
               raise SystemExit(0)
 
           text = str(result.get("text") or "")
+          # Detect whether the Worker returned Cloudflare's JSON envelope
+          # instead of its rendered HTML, without logging page content.
+          try:
+              inner = json.loads(text)
+          except (ValueError, TypeError):
+              inner = None
+          nested_keys = sorted(inner.keys()) if isinstance(inner, dict) else []
+          nested_html = inner.get("result") if isinstance(inner, dict) else None
           challenge = any(marker in text.lower() for marker in (
               "just a moment", "verify you are human",
               "access denied", "captcha", "보안 확인",
@@ -82,6 +90,11 @@ jobs:
               "time_hhmm_matches": len(re.findall(r"(?<!\\d)(?:[01]?\\d|2[0-3]):[0-5]\\d(?!\\d)", text)),
               "seat_word_matches": sum(text.count(s) for s in ("잔여석", "잔여좌석", "남은 좌석", "좌석")),
               "challenge_visible": challenge,
+              "starts_with_json_object": text.lstrip().startswith("{"),
+              "nested_json_keys": nested_keys,
+              "nested_html_length": len(nested_html) if isinstance(nested_html, str) else 0,
+              "leading_text_category": ("json" if text.lstrip().startswith("{") else
+                                        "html" if text.lstrip().startswith("<") else "plain"),
               "error_class": ("browser_binding_missing" if code == 503 else
                               "budget_limit" if code == 429 else
                               "authentication" if code == 401 else
