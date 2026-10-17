@@ -1,0 +1,97 @@
+name: CGV Cloudflare browser read-only probe
+
+on:
+  push:
+    branches:
+      - probe/cloudflare-browser-20261017
+    paths:
+      - .github/workflows/cgv-browser-readonly-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check browser access without monitoring, notifications, or production writes
+        env:
+          STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.request
+
+          token = os.environ.get("STATUS_API_TOKEN", "")
+          if not token:
+              print("BROWSER_PROBE: BLOCKED token_unconfigured")
+              raise SystemExit(0)
+
+          base = "https://cgv-alert-trigger.choi1101jh.workers.dev"
+          data = json.dumps({
+              "site_no": "0128", "site_name": "울산삼산",
+              "play_ymd": "20261018",
+          }).encode()
+          req = urllib.request.Request(
+              base + "/api/browser-check",
+              data=data, method="POST",
+              headers={
+                  "Authorization": "Bearer " + token,
+                  "Content-Type": "application/json",
+                  "User-Agent": "cgv-alert-readonly-browser-diagnostic",
+              },
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=65) as response:
+                  code, raw = response.status, response.read(180000)
+          except urllib.error.HTTPError as error:
+              code, raw = error.code, error.read(4000)
+          except (urllib.error.URLError, TimeoutError, OSError) as error:
+              print("BROWSER_PROBE: TRANSPORT_FAILURE", type(error).__name__)
+              raise SystemExit(0)
+
+          try:
+              result = json.loads(raw.decode("utf-8"))
+          except (ValueError, UnicodeDecodeError):
+              print("BROWSER_PROBE: INVALID_JSON http_status=", code)
+              raise SystemExit(0)
+          if not isinstance(result, dict):
+              print("BROWSER_PROBE: INVALID_SHAPE http_status=", code)
+              raise SystemExit(0)
+
+          text = str(result.get("text") or "")
+          challenge = any(marker in text.lower() for marker in (
+              "just a moment", "verify you are human",
+              "access denied", "captcha", "보안 확인",
+          ))
+          out = {
+              "http_status": code,
+              "ok": bool(result.get("ok")),
+              "source": result.get("source"),
+              "browser_ms": result.get("browser_ms"),
+              "text_length": len(text),
+              "has_theater_label": "울산삼산" in text,
+              "has_date_reference": any(
+                  marker in text for marker in ("20261018", "2026.10.18", "10.18", "10월 18")
+              ),
+              "time_hhmm_matches": len(re.findall(r"(?<!\\d)(?:[01]?\\d|2[0-3]):[0-5]\\d(?!\\d)", text)),
+              "seat_word_matches": sum(text.count(s) for s in ("잔여석", "잔여좌석", "남은 좌석", "좌석")),
+              "challenge_visible": challenge,
+              "error_class": ("browser_binding_missing" if code == 503 else
+                              "budget_limit" if code == 429 else
+                              "authentication" if code == 401 else
+                              "browser_failure" if code >= 500 else
+                              "none"),
+          }
+          # Do not print the raw page, bearer token, or full provider error.
+          print("BROWSER_PROBE:", json.dumps(out, ensure_ascii=False))
+          if code == 200 and result.get("ok") and text and not challenge:
+              print("VERDICT: browser rendered a page; screening data still UNVERIFIED")
+          else:
+              print("VERDICT: browser route is not yet a qualified timetable source")
+          PY
