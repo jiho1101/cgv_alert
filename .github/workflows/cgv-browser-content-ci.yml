@@ -1,0 +1,25 @@
+name: Cloudflare Browser Run content contract
+
+on:
+  push:
+    branches: [fix/cloudflare-browser-envelope-20261017]
+    paths:
+      - cloudflare/worker.js
+      - cloudflare/worker-browser-content.test.mjs
+      - .github/workflows/cgv-browser-content-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax and browser content contract
+        run: |
+          node --check cloudflare/worker.js
+          node cloudflare/worker-browser-content.test.mjs
+          node cloudflare/worker-takeover.test.mjs
