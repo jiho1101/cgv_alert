@@ -1879,7 +1879,23 @@ export default {
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(
       (async () => {
-        await recordCron(env);
+        // Dispatch is the critical path. Never wait for D1, Discord setup,
+        // or slow external timetable fallbacks before requesting the run.
+        const dispatchedAt = new Date().toISOString();
+        let dispatchError = null;
+        try {
+          await triggerGitHub(env);
+        } catch (error) {
+          dispatchError = error;
+          console.error("CGV Alert workflow dispatch failed", error);
+        }
+
+        // Keep status/diagnostics best-effort; none may block dispatch.
+        try {
+          await recordCron(env);
+        } catch (error) {
+          console.error("CGV Cron status write failed", error);
+        }
 
         try {
           await ensureCommandsRegistered(env);
@@ -1887,52 +1903,33 @@ export default {
           console.error("Discord command setup failed", error);
         }
 
+        // Inspect the *previous* probe before overwriting it with this tick.
         let previousGapReason = null;
         try {
           previousGapReason = await previousDispatchGapReason(env);
+        } catch (error) {
+          console.error("Previous dispatch gap probe failed", error);
+        }
+        try {
+          await saveDispatchProbe(env, dispatchedAt, !dispatchError, dispatchError);
+        } catch (error) {
+          console.error("Dispatch probe save failed", error);
+        }
+
+        // Backup is deliberately after dispatch: a 502/timeout across many
+        // dates must never postpone or suppress the next GitHub Action run.
+        try {
           const emergency = await maybeRunEmergencyFallback(
             env,
-            null,
-            previousGapReason,
+            dispatchError,
+            dispatchError ? "current_dispatch_failed" : previousGapReason,
           );
           console.log(
-            "CGV emergency pre-dispatch check",
+            "CGV emergency post-dispatch check",
             JSON.stringify(emergency),
           );
         } catch (error) {
-          console.error("CGV emergency pre-dispatch check failed", error);
-        }
-
-        const dispatchedAt = new Date().toISOString();
-        try {
-          await triggerGitHub(env);
-          await saveDispatchProbe(env, dispatchedAt, true);
-        } catch (error) {
-          console.error("CGV Alert workflow dispatch failed", error);
-          try {
-            await saveDispatchProbe(
-              env,
-              dispatchedAt,
-              false,
-              error,
-            );
-          } catch (probeError) {
-            console.error("GitHub dispatch probe save failed", probeError);
-          }
-
-          try {
-            const emergency = await maybeRunEmergencyFallback(
-              env,
-              error,
-              "current_dispatch_failed",
-            );
-            console.log(
-              "CGV emergency dispatch-failure check",
-              JSON.stringify(emergency),
-            );
-          } catch (fallbackError) {
-            console.error("CGV emergency fallback failed", fallbackError);
-          }
+          console.error("CGV emergency fallback failed", error);
         }
       })(),
     );
@@ -1965,6 +1962,7 @@ export default {
       return jsonResponse({
         ok: true,
         version: COMMAND_VERSION,
+        cron_dispatch_first: true,
         browser_binding: Boolean(env.BROWSER),
         browser_budget: {
           used_ms: browserBudget.usedMs,
@@ -2107,6 +2105,7 @@ export default {
         ok: true,
         service: "cgv-alert-trigger",
         version: COMMAND_VERSION,
+        cron_dispatch_first: true,
         browser_binding: Boolean(env.BROWSER),
         browser_budget: {
           used_ms: browserBudget.usedMs,
