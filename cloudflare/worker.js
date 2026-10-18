@@ -1962,6 +1962,7 @@ export default {
       return jsonResponse({
         ok: true,
         version: COMMAND_VERSION,
+        cron_dispatch_first: true,
         browser_binding: Boolean(env.BROWSER),
         browser_budget: {
           used_ms: browserBudget.usedMs,
@@ -2104,6 +2105,7 @@ export default {
         ok: true,
         service: "cgv-alert-trigger",
         version: COMMAND_VERSION,
+        cron_dispatch_first: true,
         browser_binding: Boolean(env.BROWSER),
         browser_budget: {
           used_ms: browserBudget.usedMs,
