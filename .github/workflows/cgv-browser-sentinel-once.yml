@@ -1,0 +1,89 @@
+name: CGV Cloudflare Browser one-shot sentinel
+# One deliberately bounded read-only observation. Never sends Discord or
+# changes Production configs; do not confuse job success with feed success.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cgv-browser-sentinel-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  one-shot-sentinel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Observe ONE next-day booking page through existing Worker
+        env:
+          STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import datetime
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.request
+          from zoneinfo import ZoneInfo
+
+          token = os.environ.get("STATUS_API_TOKEN", "").strip()
+          if not token:
+              print("SOURCE_PROBE: token_missing; no request attempted")
+              raise SystemExit(0)
+          local_day = datetime.datetime.now(ZoneInfo("Asia/Seoul")).date()
+          tomorrow = (local_day + datetime.timedelta(days=1)).strftime("%Y%m%d")
+          payload = json.dumps({
+              "site_no": "0128", "site_name": "울산삼산",
+              "play_ymd": tomorrow,
+          }).encode("utf-8")
+          req = urllib.request.Request(
+              "https://cgv-alert-trigger.choi1101jh.workers.dev/api/browser-check",
+              data=payload,
+              method="POST",
+              headers={
+                  "Authorization": "Bearer " + token,
+                  "Content-Type": "application/json",
+              },
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=40) as response:
+                  status = response.status
+                  raw = response.read(250000)
+          except urllib.error.HTTPError as exc:
+              status = exc.code
+              raw = exc.read(250000)
+          except (urllib.error.URLError, TimeoutError, OSError) as exc:
+              print(json.dumps({
+                  "probe": "unqualified", "date": tomorrow,
+                  "error_type": type(exc).__name__,
+              }, ensure_ascii=False))
+              raise SystemExit(0)
+
+          try:
+              result = json.loads(raw)
+          except (ValueError, UnicodeDecodeError):
+              result = {}
+          text = str(result.get("text") or "")
+          has_cinema = "울산삼산" in text
+          times = re.findall(r"(?<!\\d)(?:[01]?\\d|2[0-3]):[0-5]\\d(?!\\d)", text)
+          # Display counts only. No full body, tokens, or invented bookings.
+          state = "browser_content_candidate" if (
+              status == 200 and result.get("ok") is True
+              and has_cinema and len(times) > 0
+              and bool(re.search(r"잔여|좌석|\\d\\s*석", text))
+          ) else "unqualified"
+          report = {
+              "probe": state,
+              "date": tomorrow,
+              "http_status": status,
+              "source": result.get("source"),
+              "time_tokens": len(times),
+              "has_cinema": has_cinema,
+              "browser_ms": result.get("browser_ms"),
+              "reason": str(result.get("error") or "")[:180],
+              "note": "Never infer actual bookability from a browser text match",
+          }
+          print("SOURCE_PROBE " + json.dumps(report, ensure_ascii=False))
+          PY
