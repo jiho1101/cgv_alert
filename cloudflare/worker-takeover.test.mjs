@@ -108,3 +108,50 @@ assert.throws(() => independentSnapshotRows(
   SNAPSHOT, "0128", "20261218", NOW
 ), /manifest stale/);
 console.log("WORKER_INDEPENDENT_FALLBACK_TEST PASS: identity, seats, duplicate, URL, staleness");
+
+/* Regression: a stalled D1 write or failed third-party feed must not hold up
+   the 5-minute GitHub dispatch. No real network, state, or Discord calls. */
+import worker from "./worker.js";
+{
+  const savedFetch = globalThis.fetch;
+  const savedConsoleError = console.error;
+  const calls = [];
+  let releaseDb;
+  const dbGate = new Promise((resolve) => { releaseDb = resolve; });
+  let completion;
+  const blockedDb = {
+    prepare() {
+      calls.push("db");
+      return {
+        run: async () => { await dbGate; },
+        bind() { return this; },
+        first: async () => { await dbGate; return null; },
+      };
+    },
+  };
+  try {
+    globalThis.fetch = async (url, init) => {
+      calls.push("fetch");
+      assert.match(String(url), /\/actions\/workflows\/cgv-alert\.yml\/dispatches$/);
+      assert.equal(init?.method, "POST");
+      return { status: 204 };
+    };
+    console.error = () => {};
+    await worker.scheduled({}, {
+      GITHUB_TOKEN: "test-token", DB: blockedDb,
+    }, {
+      waitUntil(promise) { completion = promise; },
+    });
+    assert.equal(calls[0], "fetch",
+      "GitHub dispatch must happen before blocking D1/Discord/emergency operations");
+    assert.equal(calls.filter((event) => event === "fetch").length, 1,
+      "Each cron tick must dispatch exactly once");
+  } finally {
+    releaseDb();
+    globalThis.fetch = savedFetch;
+    console.error = savedConsoleError;
+  }
+  assert.ok(completion, "Cron must register its async work");
+  await completion;
+}
+console.log("CRON_DISPATCH_FIRST_TEST PASS: GitHub dispatched before blocked D1");
