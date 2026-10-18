@@ -1,0 +1,69 @@
+name: CGV public timetable route one-shot
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cgv-official-route-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  one-public-query:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: One read-only standard HTTP request (no retry, no bypass)
+        run: |
+          node --input-type=module <<'JS'
+          const date = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+          }).format(new Date(Date.now() + 24 * 60 * 60 * 1000)).replaceAll("-", "");
+          const url = new URL("https://api.cgv.co.kr/cnm/atkt/searchMovScnInfo");
+          url.searchParams.set("coCd", "A420");
+          url.searchParams.set("siteNo", "0128");
+          url.searchParams.set("scnYmd", date);
+          url.searchParams.set("rtctlScopCd", "08");
+          let response;
+          try {
+            response = await fetch(url, {
+              headers: { Accept: "application/json" },
+              signal: AbortSignal.timeout(15000),
+            });
+          } catch (error) {
+            console.log("CGV_PUBLIC_ROUTE", JSON.stringify({
+              qualified: false, date, transport_error: error.name,
+              retry: false, purpose: "single benign public timetable inquiry",
+            }));
+            process.exit(0);
+          }
+          const status = response.status;
+          if (status !== 200) {
+            console.log("CGV_PUBLIC_ROUTE", JSON.stringify({
+              qualified: false, date, http_status: status,
+              retry: false, source: "first_party_read_only",
+            }));
+            process.exit(0);
+          }
+          let packet = null;
+          try { packet = await response.json(); } catch {}
+          const data = packet?.data;
+          const list = Array.isArray(data) ? data :
+            (data && typeof data === "object"
+              ? Object.values(data).find(v => Array.isArray(v) &&
+                v.some(x => x && typeof x === "object" && x.movNo && x.scnsrtTm))
+              : null);
+          const rows = (Array.isArray(list) ? list : []).filter(x =>
+            x && typeof x === "object" && x.movNo && x.scnsrtTm
+            && String(x.siteNo || "0128") === "0128"
+            && String(x.scnYmd || date) === date
+            && Number(x.stcnt) > 0
+            && Number(x.frSeatCnt) >= 0
+            && Number(x.frSeatCnt) <= Number(x.stcnt));
+          console.log("CGV_PUBLIC_ROUTE", JSON.stringify({
+            qualified: packet?.statusCode === 0 && rows.length > 0,
+            date, http_status: status, statusCode: packet?.statusCode,
+            valid_rows: rows.length,
+            note: "candidate only; no Production promotion or booking alert",
+          }));
+          JS
