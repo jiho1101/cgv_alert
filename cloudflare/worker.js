@@ -1973,6 +1973,15 @@ export default {
           ),
         },
         monitoring_stats_24h: monitoringStats,
+        // Actual D1 configuration, not the synthetic data in Node regression tests.
+        // Expose only counts/timestamps to authorized diagnostics.
+        emergency_config: {
+          status_present: Boolean(statusRow?.value),
+          status_updated_at: statusRow?.updated_at || null,
+          target_count: Array.isArray(statusRow?.value?.targets)
+            ? statusRow.value.targets.length : 0,
+          eligible_priority_count: emergencyTargets(statusRow?.value).length,
+        },
         source_takeover: {
           enabled: true,
           independent_backup: true,
