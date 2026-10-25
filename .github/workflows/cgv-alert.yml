@@ -236,10 +236,22 @@ jobs:
                   budget = payload.get("browser_budget") or {}
                   used_ms = int(budget.get("used_ms") or 0)
                   safe_limit_ms = int(budget.get("safe_limit_ms") or 0)
+                  live_config = payload.get("emergency_config") or {}
+                  live_status_present = live_config.get("status_present") is True
+                  live_targets = int(live_config.get("target_count") or 0)
+                  live_priority = int(live_config.get("eligible_priority_count") or 0)
+                  print(
+                      "Cloudflare emergency CONFIG LIVE · "
+                      f"status_present={live_status_present} · "
+                      f"targets={live_targets} · "
+                      f"priority_targets={live_priority} · "
+                      f"status_updated_at={live_config.get('status_updated_at')}"
+                  )
                   last_status = (
                       f"version={version}, browser_binding={browser_binding}, "
                       f"source_takeover={source_takeover}, "
                       f"independent_backup={independent_backup}, "
+                      f"live_config={live_status_present}/{live_targets}/{live_priority}, "
                       f"browser_used_ms={used_ms}, safe_limit_ms={safe_limit_ms}"
                   )
                   print(
@@ -272,9 +284,12 @@ jobs:
                       and browser_binding
                       and source_takeover
                       and independent_backup
+                      and live_status_present
+                      and live_targets >= 2
+                      and live_priority >= 2
                   ):
                       print(
-                          "Cloudflare Worker v23 + independent backup + Browser binding 확인 완료"
+                          "Cloudflare Worker v23 + 2 live emergency targets confirmed (data freshness still unverified)"
                       )
                       raise SystemExit(0)
               except requests.RequestException as exc:
