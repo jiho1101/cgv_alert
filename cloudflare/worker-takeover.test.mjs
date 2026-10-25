@@ -115,6 +115,7 @@ import worker from "./worker.js";
 {
   const savedFetch = globalThis.fetch;
   const savedConsoleError = console.error;
+  const savedConsoleLog = console.log;
   const calls = [];
   let releaseDb;
   const dbGate = new Promise((resolve) => { releaseDb = resolve; });
@@ -136,7 +137,11 @@ import worker from "./worker.js";
       assert.equal(init?.method, "POST");
       return { status: 204 };
     };
+    // This uses an intentionally empty fake DB, so the resulting
+    // "emergency config unavailable" belongs ONLY to this test.
+    // Never emit it as if it were an actual Cloudflare production log.
     console.error = () => {};
+    console.log = () => {};
     await worker.scheduled({}, {
       GITHUB_TOKEN: "test-token", DB: blockedDb,
     }, {
@@ -146,12 +151,14 @@ import worker from "./worker.js";
       "GitHub dispatch must happen before blocking D1/Discord/emergency operations");
     assert.equal(calls.filter((event) => event === "fetch").length, 1,
       "Each cron tick must dispatch exactly once");
+    assert.ok(completion, "Cron must register its async work");
+    releaseDb();
+    await completion;
   } finally {
     releaseDb();
     globalThis.fetch = savedFetch;
     console.error = savedConsoleError;
+    console.log = savedConsoleLog;
   }
-  assert.ok(completion, "Cron must register its async work");
-  await completion;
 }
-console.log("CRON_DISPATCH_FIRST_TEST PASS: GitHub dispatched before blocked D1");
+console.log("CRON_DISPATCH_FIRST_TEST PASS: mock DB only; no live Worker config evidence");
