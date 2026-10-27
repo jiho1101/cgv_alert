@@ -88,5 +88,17 @@
     "production_extractor_accepted": true,
     "notification_sent": false,
     "seen_modified": false
+  },
+  "final_worker_runtime": {
+    "observed_at": "2026-10-27T22:43:21.376Z",
+    "workflow_run_id": 40596936068,
+    "artifact_id": 12776786696,
+    "version": "24",
+    "status_present": true,
+    "target_count": 2,
+    "eligible_priority_count": 2,
+    "latest_production_run_at": "2026-10-28T07:40:36.974138+09:00",
+    "priority_collection_failed": true,
+    "emergency_source_status": 502
   }
 }
