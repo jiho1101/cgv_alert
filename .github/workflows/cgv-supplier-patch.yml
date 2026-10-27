@@ -1,0 +1,45 @@
+name: CGV supplier patch validation
+
+on:
+  push:
+    branches: [repair/supplier-query-20261028]
+  pull_request:
+    paths:
+      - docs/patches/cgv-theater-only.patch
+      - .github/workflows/cgv-supplier-patch.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: hmmhmmhm/daiso-mcp
+          ref: 513142141f17df0feb887070c957c0f3e7f6a4f0
+          path: supplier
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Apply draft to pinned public source
+        working-directory: supplier
+        run: |
+          git apply --check ../docs/patches/cgv-theater-only.patch
+          git apply ../docs/patches/cgv-theater-only.patch
+      - name: Install locked dependencies without install scripts
+        working-directory: supplier
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Observe resources with supplier guard
+        working-directory: supplier
+        run: npm run ops:resources
+      - name: Check supplier types
+        working-directory: supplier
+        run: npm run typecheck
+      - name: Run guarded CGV and public-tool regressions without live requests
+        working-directory: supplier
+        run: npm test -- tests/services/cgv tests/api/cgv-handlers.test.ts tests/api/cgv-theater-only.test.ts tests/app/compact-contract.test.ts tests/core/compact

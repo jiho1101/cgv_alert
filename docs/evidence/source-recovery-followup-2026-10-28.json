@@ -1,0 +1,57 @@
+{
+  "checked_window_kst": "2026-10-28 07:15–07:31",
+  "production_run_id": 40595317437,
+  "runtime_artifact_id": 12774719628,
+  "production_watch_collection": "failed",
+  "new_permitted_source_qualified": false,
+  "source_cases": [
+    {
+      "date": "20261028",
+      "movie_code": "30001440",
+      "http_status": 200,
+      "rows": 9
+    },
+    {
+      "date": "20261218",
+      "movie_code": "30001440",
+      "http_status": 502,
+      "error": "CGV_RELAY_FAILED"
+    },
+    {
+      "date": "20261101",
+      "http_status": 200,
+      "rows": 2
+    },
+    {
+      "date": "20261102",
+      "http_status": 502,
+      "error": "CGV_RELAY_FAILED"
+    },
+    {
+      "date": "20261108",
+      "http_status": 502,
+      "error": "CGV_RELAY_FAILED"
+    }
+  ],
+  "independent_cache_revalidation": {
+    "cf_cache_status": "REVALIDATED",
+    "generated_at": "2026-10-27T21:49:35.735483Z",
+    "source_updated_at": "2026-10-27T21:40:58.994744Z",
+    "fixed_update_interval_proven": false
+  },
+  "official_browser_observation": {
+    "automated_publisher_permission_proven": false,
+    "identity_spoofing_used": false,
+    "normal_theater_selection_succeeded": true,
+    "nearby_date_seats_displayed": true,
+    "november_8_display": "현재 상영 중인 스케줄이 없습니다",
+    "raw_http_response_observed": false
+  },
+  "supplier_health_artifact": 12774906876,
+  "supplier_cgv_health_checks": [
+    "cgv.theaters"
+  ],
+  "source_patch": "docs/patches/cgv-theater-only.patch",
+  "supplier_patch_deployed": false,
+  "supplier_issue_sent": false
+}
