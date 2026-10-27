@@ -81,7 +81,7 @@ index b832638..d7382e2 100644
        const filteredByMovie = timetableBySite.filter((item) => item.movieCode === params.movieCode);
 diff --git a/tests/api/cgv-theater-only.test.ts b/tests/api/cgv-theater-only.test.ts
 new file mode 100644
-index 0000000..f00f99a
+index 0000000..ddd4237
 --- /dev/null
 +++ b/tests/api/cgv-theater-only.test.ts
 @@ -0,0 +1,47 @@
@@ -98,9 +98,9 @@ index 0000000..f00f99a
 +}));
 +const fetchTimetable = vi.mocked(fetchCgvTimetable);
 +function context(query: Record<string, string>) {
-+  return { req: { query: (key: string) => query[key], raw: new Request('https://test/') },
++  const c = { req: { query: (key: string) => query[key], raw: new Request('https://test/') },
 +    json: vi.fn((payload: unknown, status = 200) => ({ payload, status })) }
-+    as unknown as Parameters<typeof handleCgvGetTimetable>[0];
++  return c as unknown as Parameters<typeof handleCgvGetTimetable>[0];
 +}
 +beforeEach(() => fetchTimetable.mockReset());
 +it('명시한 극장별 원본의 빈 응답은 미확정 관측으로 반환한다', async () => {
