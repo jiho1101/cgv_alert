@@ -11,23 +11,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install requests==2.32.5
       - name: Read real deployed Worker and D1 configuration
         env:
           STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
         run: |
           python - <<'PY'
-          import json, os, urllib.request
+          import json, os, requests
           from pathlib import Path
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
           if not token:
               raise SystemExit("STATUS_API_TOKEN unavailable; no runtime claim")
-          request = urllib.request.Request(
+          response = requests.post(
               "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check",
-              data=b"{}", method="POST",
-              headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+              json={}, headers={"Authorization": "Bearer " + token}, timeout=20,
           )
-          with urllib.request.urlopen(request, timeout=20) as response:
-              data = json.load(response)
+          response.raise_for_status()
+          data = response.json()
           result = {key: data.get(key) for key in [
               "version", "now", "browser_binding", "cron_dispatch_first",
               "emergency_config", "source_takeover", "emergency_fallback",
