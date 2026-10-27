@@ -13,3 +13,5 @@ venv/
 .DS_Store
 
 runtime_status.json
+
+independent_shadow_sample.json

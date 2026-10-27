@@ -162,3 +162,21 @@ import worker from "./worker.js";
   }
 }
 console.log("CRON_DISPATCH_FIRST_TEST PASS: mock DB only; no live Worker config evidence");
+
+import { emergencySessions } from "./worker.js";
+const identityTarget = {
+  id: "identity-check", theater_code: "0128", play_date: "20991028",
+  aliases: ["실제영화"], require_sale_open: true, min_remaining_seats: 1,
+};
+const identityRow = {
+  movie_code: "30001440", movie_name: "실제 영화", theater_code: "0128",
+  play_date: "20991028", start_time: "10:00", schedule_id: "2099102801281",
+  total_seats: 441, remaining_seats: 440,
+};
+assert.equal(emergencySessions([identityRow], identityTarget).length, 1);
+for (const schedule_id of ["", "1", "209910280128", "2099102901281", "2099102899991"]) {
+  assert.equal(emergencySessions([{ ...identityRow, schedule_id }], identityTarget).length, 0);
+}
+assert.deepEqual(emergencySessions([{ ...identityRow, remaining_seats: 1 }], identityTarget),
+  emergencySessions([identityRow], identityTarget));
+console.log("EMERGENCY_COMPOSITE_ID_TEST PASS: missing sequence, wrong date/site, seat-only stability");

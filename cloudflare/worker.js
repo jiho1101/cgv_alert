@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "23";
+const COMMAND_VERSION = "24";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
@@ -1083,7 +1083,7 @@ async function emergencyFetchPage(theaterCode, playDate) {
   };
 }
 
-function emergencySessions(rows, target) {
+export function emergencySessions(rows, target) {
   if ((target.screen_keywords || []).length) return [];
   const aliases = new Set(target.aliases || []);
   const pinned = String(target.pinned_movie_code || "");
@@ -1096,6 +1096,10 @@ function emergencySessions(rows, target) {
     ) continue;
     const movieName = emergencyNormalize(row.movie_name);
     if (pinned ? row.movie_code !== pinned : !aliases.has(movieName)) continue;
+    const scheduleId = String(row.schedule_id || "");
+    const prefix = row.play_date + row.theater_code;
+    if (!scheduleId || (/^\d+$/.test(scheduleId) &&
+        (!scheduleId.startsWith(prefix) || !/^\d+$/.test(scheduleId.slice(prefix.length))))) continue;
     const start = emergencyStart(row.start_time);
     if (!start) continue;
     const total = emergencyInt(row.total_seats, -1);
