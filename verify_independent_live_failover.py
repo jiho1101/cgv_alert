@@ -40,6 +40,29 @@ target = {
         "priority_interval_minutes": 5, "full_interval_minutes": 30,
     },
 }
+# Apply rejection checks to an ACTUAL published row, not a fictional session.
+from collection_outcome import page_outcome
+valid = checker.extract_public_sessions([first], target, play_date, pinned_movie_code=movie_code)
+if len(valid) != 1:
+    raise AssertionError("live row was rejected by production extractor")
+for field, value in [
+    ("movie_code", "WRONG"), ("theater_code", "9999"),
+    ("play_date", "20991218"), ("schedule_id", ""),
+    ("schedule_id", play_date + "0128"),
+    ("total_seats", 0), ("remaining_seats", first["total_seats"] + 1),
+]:
+    if checker.extract_public_sessions([dict(first, **{field: value})], target,
+                                      play_date, pinned_movie_code=movie_code):
+        raise AssertionError(f"invalid live-row variant accepted: {field}")
+with patch.object(checker, "_production_public_request",
+                  return_value=(200, .1, {"data": {"timetable": []}}, None, None)):
+    empty = checker._fetch_public_page({}, "0128", "20991218", now)
+    if not empty["empty_unconfirmed"] or page_outcome({
+        "ok": empty["accepted"], "row_count": 0, "source_mode": "public_primary",
+        "empty_unconfirmed": empty["empty_unconfirmed"],
+    }) == "collected":
+        raise AssertionError("empty future response promoted to collection success")
+
 failed_primary = {
     "accepted": False, "status": 502, "state": "invalid_structure",
     "error": "simulated upstream HTTP 502", "state_changed": False,
@@ -69,7 +92,21 @@ with tempfile.TemporaryDirectory() as tempdir:
         patch.object(checker, "send_discord_embeds", return_value=True) as sends,
         patch.object(checker, "send_health_message", return_value=True),
         patch.object(checker, "CgvBrowser", side_effect=AssertionError("fallback should not launch browser")),
+        patch.object(checker, "record_shadow", return_value=False),
     ):
+        sends.side_effect = RuntimeError("simulated Discord transport failure")
+        try:
+            checker.run_checker()
+        except RuntimeError as exc:
+            if "simulated Discord" not in str(exc):
+                raise
+        else:
+            raise AssertionError("expected transport failure")
+        after_failed_send = json.loads(state_path.read_text(encoding="utf-8"))
+        if (after_failed_send.get("seen") or {}).get(target_id):
+            raise AssertionError("seen saved before successful Discord delivery")
+        sends.side_effect = None
+        sends.reset_mock()
         checker.run_checker()
         after_first = json.loads(state_path.read_text(encoding="utf-8"))
         runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
@@ -99,4 +136,6 @@ print("INDEPENDENT_LIVE_502_FAILOVER_PASS",json.dumps({
     "snapshot_age_seconds":snapshot["snapshot_age_seconds"],
     "source_age_seconds":snapshot["source_age_seconds"],
     "production_discord_called":False, "production_state_modified":False,
+    "live_identity_rejection_checks":7, "empty_future_unconfirmed":True,
+    "failed_discord_did_not_save_seen":True,
 },ensure_ascii=False))

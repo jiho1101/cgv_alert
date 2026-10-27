@@ -1,0 +1,24 @@
+{
+  "production_commit": "e66738077f820e28db8705ac2ab06e7596ed6dfc",
+  "production_run_id": 40591964910,
+  "runtime_artifact_id": 12774481601,
+  "worker_runtime_version": "24",
+  "worker_d1_targets": 2,
+  "worker_d1_priority_targets": 2,
+  "discord_labelled_e2e": "passed",
+  "watched_date_collection": "failed",
+  "live_temporary_state_validation": {
+    "date": "20261028",
+    "movie_code": "30001440",
+    "live_bookable_shows": 9,
+    "new_seen_keys": 9,
+    "mock_discord_calls": 1,
+    "snapshot_age_seconds": 1146,
+    "source_age_seconds": 1662,
+    "production_discord_called": false,
+    "production_state_modified": false,
+    "live_identity_rejection_checks": 7,
+    "empty_future_unconfirmed": true,
+    "failed_discord_did_not_save_seen": true
+  }
+}

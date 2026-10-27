@@ -11,6 +11,8 @@ This does not establish that December booking is closed, or that the entire rela
 
 Source review: src/services/cgv/client.ts first queries fetchTimetableBySite. When it returns an empty list with no movieCode supplied, the client calls fetchMoviesByTheaterCode and then per-movie timetable routes. docs/cgv-relay-recovery.md describes the Oct 20 booking route change for theater timetables, while movie-list and movie-specific paths remain separate.
 
+Additional observation at 07:07 KST: /api/cgv/movies returned HTTP 200 for both 20261028 and 20261218 (the same 12 listed movies). This rules out a blanket movie-list endpoint outage; it does not prove the theater timetable succeeded or the listed movies have sessions on the requested date. The relay itself maps non-200 upstream responses and invalid response envelopes to 502, so diagnostics.upstreamStatus=502 is not proof that CGV itself returned HTTP 502.
+
 Please identify which operation fails for the future dates (theater timetable vs movie-list fallback vs movie timetable) and whether the live relay includes the Oct 20 source update. If the theater-level query validly returns an empty list, preserve that observation separately from a failing optional legacy fallback. A valid empty future response should remain explicitly unconfirmed, not proof of no booking. Do not convert unknown upstream errors to a success response.
 
 A minimal reproduction requires only these public REST queries; no customer secrets, login cookies, proxy changes, or request-limit resets are needed. The failing internal operation has not been observed, so the fallback cause is a hypothesis requiring relay logs.
