@@ -1,8 +1,7 @@
 name: CGV Independent Source Shadow
 
 on:
-  schedule:
-    - cron: "17,47 * * * *"
+  # Periodic auditing now uses the reliable Production five-minute clock.
   workflow_dispatch:
   push:
     branches: [main]

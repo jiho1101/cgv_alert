@@ -17,6 +17,8 @@ on:
       - "verified_feed.py"
       - "test_verified_feed.py"
       - "checker.py"
+      - "production_shadow.py"
+      - "test_production_shadow.py"
       - "cgv_payload_contract.py"
       - "cgv_first_party_publisher.py"
       - "test_cgv_payload_contract.py"
@@ -68,7 +70,7 @@ jobs:
         run: python -m py_compile checker.py shadow_public_monitor.py moviebara_fallback.py cgv_payload_contract.py cgv_first_party_publisher.py test_cgv_payload_contract.py test_cgv_first_party_publisher.py test_moviebara_fallback.py test_independent_failover.py
 
       - name: Test independent timetable fallback
-        run: python -m unittest -v test_moviebara_fallback.py test_independent_failover.py test_collection_outcome.py test_verified_feed.py test_cgv_first_party_publisher.py test_cgv_payload_contract.py
+        run: python -m unittest -v test_moviebara_fallback.py test_independent_failover.py test_collection_outcome.py test_verified_feed.py test_cgv_first_party_publisher.py test_cgv_payload_contract.py test_production_shadow.py
 
       - name: Check Cloudflare Worker syntax
         run: |
@@ -126,6 +128,12 @@ jobs:
           CGV_VERIFIED_FEED_SOURCE_ID: ${{ vars.CGV_VERIFIED_FEED_SOURCE_ID }}
           CGV_VERIFIED_FEED_PERMISSION: ${{ vars.CGV_VERIFIED_FEED_PERMISSION }}
           FORCE_ALL_CGV_DATES: ${{ github.event_name == 'workflow_dispatch' && inputs.source == 'discord_manual' && '1' || '0' }}
+
+      - name: Clearly labelled Discord delivery test (explicit recovery commit only)
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[discord-test]')
+        run: python checker.py --discord-e2e-test
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: Self-test public structured shadow logic
         if: github.event_name == 'push'
@@ -189,7 +197,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cgv-runtime-${{ github.run_id }}
-          path: runtime_status.json
+          path: |
+            runtime_status.json
+            independent_shadow_sample.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -207,7 +217,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "23"
+          expected_version = "24"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:

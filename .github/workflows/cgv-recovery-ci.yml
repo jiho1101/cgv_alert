@@ -1,0 +1,31 @@
+name: CGV recovery regression
+
+on:
+  push:
+    branches: [fix/production-shadow-20261028]
+  pull_request:
+    paths:
+      - checker.py
+      - production_shadow.py
+      - test_production_shadow.py
+      - cloudflare/worker.js
+      - cloudflare/worker-takeover.test.mjs
+      - .github/workflows/cgv-alert.yml
+      - .github/workflows/cgv-recovery-ci.yml
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m unittest -q test_production_shadow test_independent_failover test_collection_outcome test_moviebara_fallback test_shadow_fallback_validation test_verified_feed test_cgv_payload_contract test_cgv_first_party_publisher
+      - run: node cloudflare/worker-takeover.test.mjs

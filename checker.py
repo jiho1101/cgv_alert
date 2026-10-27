@@ -18,6 +18,7 @@ from verified_feed import FeedError, enabled as verified_feed_enabled, read_veri
 from cgv_payload_contract import parse_cgv_schedule_payload
 from collection_outcome import annotate as annotate_collection
 from moviebara_fallback import SnapshotError, read_cinema_snapshot
+from production_shadow import record_shadow
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
@@ -1824,7 +1825,11 @@ def _public_failure_reason(result):
         detail = f" · Retry-After={retry_after}" if retry_after else ""
         return f"제3자 API HTTP 429 호출 제한{detail}"
     if isinstance(status, int) and 500 <= status <= 599:
-        return f"제3자 API HTTP {status} 공급자 오류"
+        diagnostics = result.get("supplier_diagnostics") or {}
+        detail = ""
+        if diagnostics:
+            detail = f" [{diagnostics.get('code', 'UNKNOWN')}, upstream={diagnostics.get('upstream_status', 'unknown')}]"
+        return f"제3자 API HTTP {status} 공급자 오류{detail}"
     if status != 200:
         return f"제3자 API HTTP {status} 응답 실패"
     if error:
@@ -1871,6 +1876,16 @@ def _fetch_public_page(state, site_no: str, play_ymd: str, now: datetime):
         "retry_after": retry_after,
         "guard_state_changed": False,
     }
+    # Preserve only bounded, public diagnostic identifiers. Do not log raw
+    # provider bodies, request headers, tokens, or arbitrary error text.
+    diagnostic = payload.get("diagnostics") if isinstance(payload, dict) else None
+    if isinstance(diagnostic, dict):
+        code = str(diagnostic.get("code") or "")
+        upstream = diagnostic.get("upstreamStatus")
+        if re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", code):
+            result["supplier_diagnostics"] = {"code": code}
+            if isinstance(upstream, int) and not isinstance(upstream, bool) and 100 <= upstream <= 599:
+                result["supplier_diagnostics"]["upstream_status"] = upstream
 
     if not structural:
         result["guard_state_changed"] = _public_guard_failure(
@@ -2124,6 +2139,8 @@ def extract_public_sessions(
         if (
             not movie_code
             or not schedule_id
+            or (schedule_id.isdigit() and not re.fullmatch(
+                re.escape(row_date + theater_code) + r"[0-9]+", schedule_id))
             or not start_raw.isdigit()
             or len(start_raw) not in (3, 4)
         ):
@@ -4777,6 +4794,25 @@ def run_checker(force_all: bool = False):
                 browser.close()
         finally:
             independent_executor.shutdown(wait=True)
+            # Run after detection/delivery. Reuse the one snapshot per theater;
+            # only a missing near-term page adds one request per 30-minute slot.
+            try:
+                for site, future in independent_futures.items():
+                    if site not in independent_cache:
+                        try:
+                            independent_cache[site] = future.result()
+                        except (SnapshotError, requests.RequestException) as exc:
+                            independent_cache[site] = {"error": str(exc)[:200]}
+                if record_shadow(
+                    state, now, independent_cache, public_cache,
+                    extract_public_sessions, _production_public_request,
+                    RUNTIME_STATUS_PATH.with_name("independent_shadow_sample.json"),
+                ):
+                    save_state(state)
+            except Exception as exc:
+                # Diagnostics must never interrupt the next core scan or mask
+                # the original detection exception.
+                print(f"::warning::Production shadow audit failed: {type(exc).__name__}")
 
 
 def main():
