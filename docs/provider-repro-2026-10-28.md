@@ -30,3 +30,5 @@ Independent source observation: data.moviebara.com published 198 rows for 0128 c
 - 우리 Production 40595317437의 07:30 Shadow는 가까운 날짜의 주 공급자 50회차, 독립 공급자 공통 49회차, 파서 146건 통과를 기록했지만 12/18 수집은 계속 실패였습니다. 보조 원본은 약 49분 전 데이터였습니다.
 
 극장별 원본 작업만 선택해 후속 폴백 실패와 분리하는 최소 패치를 docs/patches/cgv-theater-only.patch에 준비했습니다. 기본 동작을 유지하는 선택 기능이며 운영 502의 원인이나 복구 성공을 확정하는 패치가 아닙니다. 공급자에 전송하거나 공급자 서버에 배포하지 않았습니다.
+
+공급자용 패치 전체 검증: https://github.com/jiho1101/cgv_alert/actions/runs/40596095913 에서 타입 검사, 4,171건 회귀와 커버리지 4항목 모두 100%가 통과했습니다. 테스트는 모의 원본 응답을 사용했으며 실제 공급자 운영 수정이나 미래 날짜 수집 성공의 증거가 아닙니다. 검토할 패치: docs/patches/cgv-theater-only.patch.

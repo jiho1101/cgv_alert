@@ -53,5 +53,18 @@
   ],
   "source_patch": "docs/patches/cgv-theater-only.patch",
   "supplier_patch_deployed": false,
-  "supplier_issue_sent": false
+  "supplier_issue_sent": false,
+  "supplier_patch_validation": {
+    "ci_run_id": 40596095913,
+    "ci_job_id": 122512260903,
+    "tested_patch_commit": "f31302f1bafb88a51396b91f5585c3f17916e917",
+    "passed_tests": 4171,
+    "skipped_tests": 1,
+    "passed_test_files": 339,
+    "statements_pct": 100,
+    "branches_pct": 100,
+    "functions_pct": 100,
+    "lines_pct": 100,
+    "live_supplier_future_query_verified": false
+  }
 }
