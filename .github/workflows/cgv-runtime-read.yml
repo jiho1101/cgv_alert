@@ -1,0 +1,49 @@
+name: CGV runtime read-only verification
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/cgv-runtime-read.yml]
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Read real deployed Worker and D1 configuration
+        env:
+          STATUS_API_TOKEN: ${{ secrets.STATUS_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          from pathlib import Path
+          token = os.environ.get("STATUS_API_TOKEN", "").strip()
+          if not token:
+              raise SystemExit("STATUS_API_TOKEN unavailable; no runtime claim")
+          request = urllib.request.Request(
+              "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check",
+              data=b"{}", method="POST",
+              headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              data = json.load(response)
+          result = {key: data.get(key) for key in [
+              "version", "now", "browser_binding", "cron_dispatch_first",
+              "emergency_config", "source_takeover", "emergency_fallback",
+          ]}
+          Path("worker_runtime_latest.json").write_text(
+              json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          config = result.get("emergency_config") or {}
+          print("REAL_WORKER_RUNTIME", json.dumps(result, ensure_ascii=False))
+          assert data.get("ok") is True and str(data.get("version")) == "24"
+          assert config.get("status_present") is True
+          assert config.get("target_count") == 2 and config.get("eligible_priority_count") == 2
+          print("WORKER_CONFIG_VERIFIED: actual collection health is separate")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cgv-worker-runtime
+          path: worker_runtime_latest.json
+          retention-days: 7
