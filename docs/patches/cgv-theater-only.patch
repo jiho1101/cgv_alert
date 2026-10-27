@@ -81,10 +81,10 @@ index b832638..d7382e2 100644
        const filteredByMovie = timetableBySite.filter((item) => item.movieCode === params.movieCode);
 diff --git a/tests/api/cgv-theater-only.test.ts b/tests/api/cgv-theater-only.test.ts
 new file mode 100644
-index 0000000..ddd4237
+index 0000000..46ffd6b
 --- /dev/null
 +++ b/tests/api/cgv-theater-only.test.ts
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,58 @@
 +import { beforeEach, expect, it, vi } from 'vitest';
 +import { handleCgvGetTimetable } from '../../src/api/cgvHandlers.js';
 +import { fetchCgvTimetable } from '../../src/services/cgv/client.js';
@@ -99,7 +99,7 @@ index 0000000..ddd4237
 +const fetchTimetable = vi.mocked(fetchCgvTimetable);
 +function context(query: Record<string, string>) {
 +  const c = { req: { query: (key: string) => query[key], raw: new Request('https://test/') },
-+    json: vi.fn((payload: unknown, status = 200) => ({ payload, status })) }
++    json: vi.fn((payload: unknown, status = 200) => ({ payload, status })) };
 +  return c as unknown as Parameters<typeof handleCgvGetTimetable>[0];
 +}
 +beforeEach(() => fetchTimetable.mockReset());
@@ -111,6 +111,17 @@ index 0000000..ddd4237
 +  expect(c.json).toHaveBeenCalledWith(expect.objectContaining({ success: true,
 +    data: expect.objectContaining({ queryMode: 'theater-only',
 +      observation: 'empty_unconfirmed', timetable: [] }) }));
++});
++it('게시된 원본은 빈 응답과 구분한다', async () => {
++  fetchTimetable.mockResolvedValueOnce([{
++    scheduleId: '2026121801281', theaterCode: '0128', theaterName: '울산삼산',
++    movieCode: '30009999', movieName: '검증 영화', playDate: '20261218',
++    startTime: '10:00', endTime: '12:00', totalSeats: 441, remainingSeats: 440,
++  }]);
++  const c = context({ theaterCode: '0128', playDate: '20261218', queryMode: 'theater-only' });
++  await handleCgvGetTimetable(c);
++  expect(c.json).toHaveBeenCalledWith(expect.objectContaining({ success: true,
++    data: expect.objectContaining({ observation: 'published_rows', timetable: expect.any(Array) }) }));
 +});
 +it('원본 502는 빈 응답 성공으로 바꾸지 않는다', async () => {
 +  fetchTimetable.mockRejectedValueOnce(new ServiceError('CGV_RELAY_FAILED', 'relay failed', 502, true));
@@ -134,10 +145,10 @@ index 0000000..ddd4237
 +});
 diff --git a/tests/services/cgv/theater-only.test.ts b/tests/services/cgv/theater-only.test.ts
 new file mode 100644
-index 0000000..886acf2
+index 0000000..caf05a1
 --- /dev/null
 +++ b/tests/services/cgv/theater-only.test.ts
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,55 @@
 +import { beforeEach, describe, expect, it, vi } from 'vitest';
 +import { fetchCgvTimetable } from '../../../src/services/cgv/client.js';
 +import { requestCgv } from '../../../src/services/cgv/transport.js';
@@ -181,6 +192,11 @@ index 0000000..886acf2
 +  it('영화 필터가 없으면 전체 극장 원본을 반환한다', async () => {
 +    request.mockResolvedValueOnce({ statusCode: 0, data: [row] });
 +    expect(await fetchCgvTimetable(params)).toHaveLength(1);
++  });
++  it('일치하는 영화 필터는 원본 회차를 유지한다', async () => {
++    request.mockResolvedValueOnce({ statusCode: 0, data: [row] });
++    expect(await fetchCgvTimetable({ ...params, movieCode: '30009999' })).toHaveLength(1);
++    expect(request).toHaveBeenCalledTimes(1);
 +  });
 +  it('영화 필터 불일치가 개별 영화 폴백을 호출하지 않는다', async () => {
 +    request.mockResolvedValueOnce({ statusCode: 0, data: [row] });

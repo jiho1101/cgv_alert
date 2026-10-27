@@ -40,6 +40,6 @@ jobs:
       - name: Check supplier types
         working-directory: supplier
         run: npm run typecheck
-      - name: Run guarded CGV and public-tool regressions without live requests
+      - name: Run full guarded supplier coverage without live requests
         working-directory: supplier
-        run: npm test -- tests/services/cgv tests/api/cgv-handlers.test.ts tests/api/cgv-theater-only.test.ts tests/app/compact-contract.test.ts tests/core/compact
+        run: npm run test:coverage
