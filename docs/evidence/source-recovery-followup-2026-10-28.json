@@ -66,5 +66,27 @@
     "functions_pct": 100,
     "lines_pct": 100,
     "live_supplier_future_query_verified": false
+  },
+  "final_live_nearby_sample": {
+    "observed_at": "2026-10-28T07:40:57.420889+09:00",
+    "source_url": "https://mcp.aka.page/api/cgv/timetable?playDate=20261028&theaterCode=0128&movieCode=30001440&limit=200",
+    "http_status": 200,
+    "rows": 9,
+    "sample": {
+      "movie_code": "30001440",
+      "movie_name": "수능, 출제의 비밀",
+      "theater_code": "0128",
+      "theater_name": "CGV 울산삼산",
+      "play_date": "20261028",
+      "start_time": "10:00",
+      "end_time": "11:49",
+      "schedule_id": "2026102801281",
+      "screen": "",
+      "total_seats": 441,
+      "remaining_seats": 436
+    },
+    "production_extractor_accepted": true,
+    "notification_sent": false,
+    "seen_modified": false
   }
 }
