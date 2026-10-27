@@ -1,0 +1,206 @@
+diff --git a/src/api/cgvHandlers.ts b/src/api/cgvHandlers.ts
+index 11c2170..7827521 100644
+--- a/src/api/cgvHandlers.ts
++++ b/src/api/cgvHandlers.ts
+@@ -187,6 +187,12 @@ export async function handleCgvGetTimetable(c: ApiContext) {
+   const playDate = c.req.query('playDate') || toYyyymmdd();
+   let theaterCode = c.req.query('theaterCode') || undefined;
+   const movieCode = c.req.query('movieCode') || undefined;
++  const queryMode = c.req.query('queryMode') || 'default';
++  if (!['default', 'theater-only'].includes(queryMode) ||
++      (queryMode === 'theater-only' && !theaterCode)) {
++    return errorResponse(c, 'INVALID_INPUT',
++      'queryMode는 default 또는 theater-only이며 theater-only에는 theaterCode가 필요합니다.', 400);
++  }
+   const keyword = c.req.query('keyword') || undefined;
+   const latitude = parseOptionalNumber(c.req.query('lat'));
+   const longitude = parseOptionalNumber(c.req.query('lng'));
+@@ -228,6 +234,7 @@ export async function handleCgvGetTimetable(c: ApiContext) {
+           playDate,
+           theaterCode,
+           movieCode,
++          theaterOnly: queryMode === 'theater-only',
+           timeout: timeoutMs,
+           zyteApiKey: c.env?.ZYTE_API_KEY,
+           ...cgvTransportFromBindings(c.env),
+@@ -251,6 +258,10 @@ export async function handleCgvGetTimetable(c: ApiContext) {
+         resolvedTheater,
+         filterRelaxed,
+         timetable: filtered,
++        ...(queryMode === 'theater-only' ? {
++          queryMode,
++          observation: filtered.length ? 'published_rows' : 'empty_unconfirmed',
++        } : {}),
+       },
+       { total: filtered.length, pageSize: limit },
+     );
+diff --git a/src/pages/openapiSpecPathsCgv.ts b/src/pages/openapiSpecPathsCgv.ts
+index a3ba327..04a551f 100644
+--- a/src/pages/openapiSpecPathsCgv.ts
++++ b/src/pages/openapiSpecPathsCgv.ts
+@@ -140,6 +140,13 @@ export const OPENAPI_PATHS_CGV = {
+       summary: 'CGV 시간표 조회',
+       description: '날짜/극장/영화 조건으로 CGV 상영 시간표를 조회합니다. theaterCode가 없으면 keyword 또는 좌표 기준으로 최근접 극장을 선택할 수 있습니다.',
+       parameters: [
++        {
++          name: 'queryMode',
++          in: 'query',
++          required: false,
++          description: 'theater-only는 명시한 극장별 원본만 조회합니다. 빈 미래 응답은 미확정입니다.',
++          schema: { type: 'string', enum: ['default', 'theater-only'], default: 'default' },
++        },
+         {
+           name: 'playDate',
+           in: 'query',
+diff --git a/src/services/cgv/client.ts b/src/services/cgv/client.ts
+index b832638..d7382e2 100644
+--- a/src/services/cgv/client.ts
++++ b/src/services/cgv/client.ts
+@@ -22,6 +22,7 @@ interface CommonFetchParams extends CgvTransportOptions {
+   regionCode?: string;
+   timeout?: number;
+   zyteApiKey?: string;
++  theaterOnly?: boolean;
+ }
+ 
+ const DEFAULT_THEATER_CODE = '0056';
+@@ -201,6 +202,14 @@ export async function fetchCgvTimetable(params: CommonFetchParams): Promise<CgvT
+   const theaterCode = await resolveTheaterCode(playDate, params.theaterCode, params);
+   const timetableBySite = await fetchTimetableBySite(playDate, theaterCode, params);
+ 
++  // 극장별 원본의 성공 응답만 관측합니다. 빈 미래 날짜는 미확정이며,
++  // 다른 조회 작업의 실패로 원본 관측 결과를 덮어쓰지 않습니다.
++  if (params.theaterOnly) {
++    return params.movieCode
++      ? timetableBySite.filter((item) => item.movieCode === params.movieCode)
++      : timetableBySite;
++  }
++
+   if (timetableBySite.length > 0) {
+     if (params.movieCode) {
+       const filteredByMovie = timetableBySite.filter((item) => item.movieCode === params.movieCode);
+diff --git a/tests/api/cgv-theater-only.test.ts b/tests/api/cgv-theater-only.test.ts
+new file mode 100644
+index 0000000..46ffd6b
+--- /dev/null
++++ b/tests/api/cgv-theater-only.test.ts
+@@ -0,0 +1,58 @@
++import { beforeEach, expect, it, vi } from 'vitest';
++import { handleCgvGetTimetable } from '../../src/api/cgvHandlers.js';
++import { fetchCgvTimetable } from '../../src/services/cgv/client.js';
++import { ServiceError } from '../../src/core/errors.js';
++
++vi.mock('../../src/services/cgv/client.js', () => ({
++  fetchCgvTimetable: vi.fn(), toYyyymmdd: () => '20261028',
++}));
++vi.mock('../../src/api/operationalFreshness.js', () => ({
++  isFreshOperationalRequest: async () => false,
++}));
++const fetchTimetable = vi.mocked(fetchCgvTimetable);
++function context(query: Record<string, string>) {
++  const c = { req: { query: (key: string) => query[key], raw: new Request('https://test/') },
++    json: vi.fn((payload: unknown, status = 200) => ({ payload, status })) };
++  return c as unknown as Parameters<typeof handleCgvGetTimetable>[0];
++}
++beforeEach(() => fetchTimetable.mockReset());
++it('명시한 극장별 원본의 빈 응답은 미확정 관측으로 반환한다', async () => {
++  fetchTimetable.mockResolvedValueOnce([]);
++  const c = context({ theaterCode: '0128', playDate: '20261218', queryMode: 'theater-only' });
++  await handleCgvGetTimetable(c);
++  expect(fetchTimetable).toHaveBeenCalledWith(expect.objectContaining({ theaterOnly: true }));
++  expect(c.json).toHaveBeenCalledWith(expect.objectContaining({ success: true,
++    data: expect.objectContaining({ queryMode: 'theater-only',
++      observation: 'empty_unconfirmed', timetable: [] }) }));
++});
++it('게시된 원본은 빈 응답과 구분한다', async () => {
++  fetchTimetable.mockResolvedValueOnce([{
++    scheduleId: '2026121801281', theaterCode: '0128', theaterName: '울산삼산',
++    movieCode: '30009999', movieName: '검증 영화', playDate: '20261218',
++    startTime: '10:00', endTime: '12:00', totalSeats: 441, remainingSeats: 440,
++  }]);
++  const c = context({ theaterCode: '0128', playDate: '20261218', queryMode: 'theater-only' });
++  await handleCgvGetTimetable(c);
++  expect(c.json).toHaveBeenCalledWith(expect.objectContaining({ success: true,
++    data: expect.objectContaining({ observation: 'published_rows', timetable: expect.any(Array) }) }));
++});
++it('원본 502는 빈 응답 성공으로 바꾸지 않는다', async () => {
++  fetchTimetable.mockRejectedValueOnce(new ServiceError('CGV_RELAY_FAILED', 'relay failed', 502, true));
++  const c = context({ theaterCode: '0128', queryMode: 'theater-only' });
++  await handleCgvGetTimetable(c);
++  expect(c.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }), 502);
++});
++it.each([{ queryMode: 'unknown' }, { queryMode: 'theater-only' }])(
++  '잘못되거나 극장이 없는 원본 관측 요청을 원본 호출 전에 거부한다', async (query) => {
++    const c = context(query);
++    await handleCgvGetTimetable(c);
++    expect(c.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }), 400);
++    expect(fetchTimetable).not.toHaveBeenCalled();
++  });
++it('기본 요청에 원본 관측 모드 응답을 추가하지 않는다', async () => {
++  fetchTimetable.mockResolvedValueOnce([]);
++  const c = context({ theaterCode: '0128' });
++  await handleCgvGetTimetable(c);
++  expect(c.json).toHaveBeenCalledWith(expect.objectContaining({
++    data: expect.not.objectContaining({ queryMode: 'theater-only' }) }));
++});
+diff --git a/tests/services/cgv/theater-only.test.ts b/tests/services/cgv/theater-only.test.ts
+new file mode 100644
+index 0000000..caf05a1
+--- /dev/null
++++ b/tests/services/cgv/theater-only.test.ts
+@@ -0,0 +1,55 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++import { fetchCgvTimetable } from '../../../src/services/cgv/client.js';
++import { requestCgv } from '../../../src/services/cgv/transport.js';
++
++vi.mock('../../../src/services/cgv/transport.js', () => ({ requestCgv: vi.fn() }));
++const request = vi.mocked(requestCgv);
++const params = { theaterCode: '0128', playDate: '20261218', theaterOnly: true };
++const row = {
++  siteNo: '0128', siteNm: '울산삼산', scnYmd: '20261218', scnSseq: '1',
++  movNo: '30009999', movNm: '검증 영화', scnsrtTm: '1000', scnendTm: '1200',
++  stcnt: 441, frSeatCnt: 440,
++};
++
++beforeEach(() => request.mockReset());
++describe('극장별 원본 관측 모드', () => {
++  it('유효한 빈 응답 뒤 영화 목록 폴백을 호출하지 않는다', async () => {
++    request.mockResolvedValueOnce({ statusCode: 0, data: [] });
++    await expect(fetchCgvTimetable(params)).resolves.toEqual([]);
++    expect(request).toHaveBeenCalledTimes(1);
++  });
++  it('원본 오류를 빈 응답으로 바꾸지 않는다', async () => {
++    request.mockRejectedValueOnce(new Error('CGV_RELAY_FAILED'));
++    await expect(fetchCgvTimetable(params)).rejects.toThrow('CGV_RELAY_FAILED');
++    expect(request).toHaveBeenCalledTimes(1);
++  });
++  it('기본 모드의 기존 폴백과 오류 동작을 유지한다', async () => {
++    request.mockResolvedValueOnce({ statusCode: 0, data: [] });
++    request.mockRejectedValueOnce(new Error('legacy fallback failed'));
++    await expect(fetchCgvTimetable({ ...params, theaterOnly: false }))
++      .rejects.toThrow('legacy fallback failed');
++    expect(request).toHaveBeenCalledTimes(2);
++  });
++  it('게시된 실제 필드의 정규화와 회차 식별자를 유지한다', async () => {
++    request.mockResolvedValueOnce({ statusCode: 0, data: [row] });
++    const rows = await fetchCgvTimetable(params);
++    expect(rows[0]).toMatchObject({ scheduleId: '2026121801281', movieCode: '30009999',
++      theaterCode: '0128', playDate: '20261218', startTime: '10:00',
++      totalSeats: 441, remainingSeats: 440 });
++    expect(request).toHaveBeenCalledTimes(1);
++  });
++  it('영화 필터가 없으면 전체 극장 원본을 반환한다', async () => {
++    request.mockResolvedValueOnce({ statusCode: 0, data: [row] });
++    expect(await fetchCgvTimetable(params)).toHaveLength(1);
++  });
++  it('일치하는 영화 필터는 원본 회차를 유지한다', async () => {
++    request.mockResolvedValueOnce({ statusCode: 0, data: [row] });
++    expect(await fetchCgvTimetable({ ...params, movieCode: '30009999' })).toHaveLength(1);
++    expect(request).toHaveBeenCalledTimes(1);
++  });
++  it('영화 필터 불일치가 개별 영화 폴백을 호출하지 않는다', async () => {
++    request.mockResolvedValueOnce({ statusCode: 0, data: [row] });
++    expect(await fetchCgvTimetable({ ...params, movieCode: 'OTHER' })).toEqual([]);
++    expect(request).toHaveBeenCalledTimes(1);
++  });
++});
