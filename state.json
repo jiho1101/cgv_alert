@@ -177,14 +177,14 @@
     }
   },
   "production_shadow": {
-    "at": "2026-10-31T23:30:32.384962+09:00",
-    "slot": 996365
+    "at": "2026-11-01T00:00:34.071209+09:00",
+    "slot": 996366
   },
   "public_api_guard": {
     "backoff_reason": "adaptive",
-    "backoff_until": "2026-11-01T00:55:38.725768+09:00",
+    "backoff_until": "2026-11-01T01:00:34.071209+09:00",
     "failure_count": 8,
-    "last_failure_at": "2026-10-31T23:55:38.725768+09:00",
+    "last_failure_at": "2026-11-01T00:00:34.071209+09:00",
     "last_status": 502,
     "last_success_at": "2026-10-13T13:10:37.536966+09:00",
     "retry_after_raw": "",
