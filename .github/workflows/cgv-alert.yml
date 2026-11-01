@@ -19,6 +19,8 @@ on:
       - "checker.py"
       - "production_shadow.py"
       - "test_production_shadow.py"
+      - "source_transition_canary.py"
+      - "test_source_transition_canary.py"
       - "cgv_payload_contract.py"
       - "cgv_first_party_publisher.py"
       - "test_cgv_payload_contract.py"
@@ -67,10 +69,10 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Check Python syntax
-        run: python -m py_compile checker.py shadow_public_monitor.py moviebara_fallback.py cgv_payload_contract.py cgv_first_party_publisher.py test_cgv_payload_contract.py test_cgv_first_party_publisher.py test_moviebara_fallback.py test_independent_failover.py
+        run: python -m py_compile checker.py shadow_public_monitor.py moviebara_fallback.py cgv_payload_contract.py cgv_first_party_publisher.py test_cgv_payload_contract.py test_cgv_first_party_publisher.py test_moviebara_fallback.py test_independent_failover.py source_transition_canary.py test_source_transition_canary.py
 
       - name: Test independent timetable fallback
-        run: python -m unittest -v test_moviebara_fallback.py test_independent_failover.py test_collection_outcome.py test_verified_feed.py test_cgv_first_party_publisher.py test_cgv_payload_contract.py test_production_shadow.py
+        run: python -m unittest -v test_moviebara_fallback.py test_independent_failover.py test_collection_outcome.py test_verified_feed.py test_cgv_first_party_publisher.py test_cgv_payload_contract.py test_production_shadow.py test_source_transition_canary.py
 
       - name: Check Cloudflare Worker syntax
         run: |
@@ -128,6 +130,13 @@ jobs:
           CGV_VERIFIED_FEED_SOURCE_ID: ${{ vars.CGV_VERIFIED_FEED_SOURCE_ID }}
           CGV_VERIFIED_FEED_PERMISSION: ${{ vars.CGV_VERIFIED_FEED_PERMISSION }}
           FORCE_ALL_CGV_DATES: ${{ github.event_name == 'workflow_dispatch' && inputs.source == 'discord_manual' && '1' || '0' }}
+
+      # One theater/day relay observation per 10 minutes. This canary records
+      # real future 502 -> valid session transitions in the existing state,
+      # without changing production watch dates, seen keys or sending alerts.
+      - name: Track real near-future relay publication transition (read-only)
+        if: github.event_name == 'workflow_dispatch'
+        run: python source_transition_canary.py
 
       - name: Clearly labelled Discord delivery test (explicit recovery commit only)
         if: github.event_name == 'push' && contains(github.event.head_commit.message, '[discord-test]')
