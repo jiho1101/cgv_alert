@@ -1,0 +1,26 @@
+name: CGV Cron slot idempotency regression
+
+on:
+  push:
+    branches:
+      - main
+      - fix/cron-atomic-slot-dedupe-20261101
+    paths:
+      - cloudflare/worker.js
+      - cloudflare/worker-takeover.test.mjs
+      - .github/workflows/cgv-cron-idempotency-ci.yml
+
+permissions:
+  contents: read
+
+jobs:
+  cron-idempotency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Worker syntax and bounded atomic slot claim regression
+        run: |
+          node --check cloudflare/worker.js
+          node --check cloudflare/worker-takeover.test.mjs
+          node cloudflare/worker-takeover.test.mjs
