@@ -72,3 +72,72 @@ jobs:
               and row.get("valid_structure") and row.get("bookable_rows",0) > 0
           ]))
           PY
+
+      - name: Verify production parser accepts real opened sessions and deduplicates seat changes
+        run: |
+          python - <<'PY'
+          import json
+          import copy
+          import requests
+          from checker import extract_public_sessions
+          from shadow_public_monitor import canonical, extract_rows
+
+          day = "20261102"
+          response = requests.get(
+              "https://mcp.aka.page/api/cgv/timetable",
+              params={"playDate": day, "theaterCode": "0128", "limit": 200},
+              timeout=12,
+          )
+          try:
+              data = response.json()
+          except ValueError:
+              data = None
+          raw, shape = extract_rows(data)
+          rows = [r for r in (canonical(x) for x in raw) if r]
+          eligible = []
+          for r in rows:
+              try:
+                  seats = int(r.get("remaining_seats"))
+                  total = int(r.get("total_seats"))
+                  if (r.get("movie_name") and r.get("movie_code")
+                      and seats > 0 and total >= seats):
+                      eligible.append(r)
+              except (TypeError, ValueError):
+                  pass
+          if response.status_code != 200 or not shape or not eligible:
+              print("LIVE_PRODUCTION_PARSER UNAVAILABLE: no actual published sessions in this observation")
+              raise SystemExit(1)
+          sample = eligible[0]
+          target = {
+              "theater_code": "0128",
+              "id": "isolated-read-only-demo",
+              "movie_aliases": [sample["movie_name"]],
+              "require_sale_open": True,
+              "min_remaining_seats": 1,
+          }
+          sessions = extract_public_sessions(rows, target, day)
+          keys = {r["_key"] for r in sessions}
+          modified = copy.deepcopy(rows)
+          for r in modified:
+              if r.get("remaining_seats") is not None:
+                  try:
+                      r["remaining_seats"] = max(1, int(r["remaining_seats"]) - 1)
+                  except (TypeError, ValueError):
+                      pass
+          after_seat_change = extract_public_sessions(modified, target, day)
+          modified_keys = {r["_key"] for r in after_seat_change}
+          print("LIVE_PRODUCTION_PARSER " + json.dumps({
+              "http_status": response.status_code,
+              "real_row_count": len(rows),
+              "sample_movie_name": sample["movie_name"],
+              "accepted_for_matching_movie": len(sessions),
+              "stable_keys": len(keys),
+              "seat_only_keys_unchanged": bool(keys and keys == modified_keys),
+              "discord_sent": False,
+              "state_modified": False,
+          }, ensure_ascii=False))
+          assert len(sessions) > 0
+          assert len(keys) == len(sessions)
+          assert keys == modified_keys
+          print("LIVE_PRODUCTION_PARSER PASS")
+          PY
