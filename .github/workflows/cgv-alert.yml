@@ -243,6 +243,14 @@ jobs:
                   independent_backup = bool(
                       (payload.get("source_takeover") or {}).get("independent_backup")
                   )
+                  cron_dedupe = payload.get("cron_slot_dedupe") or {}
+                  cron_dedupe_enabled = cron_dedupe.get("enabled") is True
+                  print(
+                      "Cloudflare Cron slot LIVE · "
+                      f"dedupe_enabled={cron_dedupe_enabled} · "
+                      f"last_claimed_slot={cron_dedupe.get('last_claimed_slot')} · "
+                      f"last_claimed_at={cron_dedupe.get('last_claimed_at')}"
+                  )
                   budget = payload.get("browser_budget") or {}
                   used_ms = int(budget.get("used_ms") or 0)
                   safe_limit_ms = int(budget.get("safe_limit_ms") or 0)
@@ -294,6 +302,7 @@ jobs:
                       and browser_binding
                       and source_takeover
                       and independent_backup
+                      and cron_dedupe_enabled
                       and live_status_present
                       and live_targets >= 2
                       and live_priority >= 2
