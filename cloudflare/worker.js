@@ -2028,12 +2028,13 @@ export default {
       if (!authorizedStatusUpdate(request, env)) {
         return new Response("Unauthorized", { status: 401 });
       }
-      const [browserBudget, monitoringStats, emergencyRow, statusRow] =
+      const [browserBudget, monitoringStats, emergencyRow, statusRow, cronClaimRow] =
         await Promise.all([
           browserBudgetState(env),
           getMonitoringStats(env),
           getState(env, EMERGENCY_STATE_KEY),
           getState(env, "status"),
+          getState(env, CRON_SLOT_CLAIM_KEY),
         ]);
       return jsonResponse({
         ok: true,
@@ -2042,6 +2043,9 @@ export default {
         cron_slot_dedupe: {
           enabled: true,
           max_claim_wait_ms: CRON_SLOT_CLAIM_MAX_WAIT_MS,
+          last_claimed_slot: Number.isSafeInteger(Number(cronClaimRow?.value))
+            ? Number(cronClaimRow.value) : null,
+          last_claimed_at: cronClaimRow?.updated_at || null,
         },
         browser_binding: Boolean(env.BROWSER),
         browser_budget: {
