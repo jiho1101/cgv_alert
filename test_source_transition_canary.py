@@ -93,6 +93,19 @@ class TransitionCanaryTests(unittest.TestCase):
         )
         self.assertNotIn(STATE_KEY, state)
 
+    def test_canary_429_sets_own_backoff_without_raising_global_guard(self):
+        state = {}
+        first = run_canary(state, START, lambda *_: (429, .1, {}, None))
+        self.assertEqual(first["http_status"], 429)
+        self.assertEqual(
+            run_canary(
+                state, START + timedelta(minutes=15),
+                lambda *_: self.fail("canary must not retry HTTP 429"),
+            ),
+            {"skipped": "canary_429_backoff"},
+        )
+        self.assertNotIn("public_api_guard", state)
+
     def test_date_rolls_only_when_near(self):
         state = {STATE_KEY: {"date": DAY}}
         self.assertEqual(choose_canary_date(state, START), DAY)
