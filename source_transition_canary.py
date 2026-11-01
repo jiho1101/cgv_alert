@@ -89,6 +89,9 @@ def run_canary(state, now, request=request_timetable, site="0128"):
     if _guard_active(state, now):
         return {"skipped": "supplier_429_backoff"}
     previous = state.get(STATE_KEY) or {}
+    canary_backoff = _parse_dt(previous.get("backoff_until"))
+    if canary_backoff and canary_backoff > now:
+        return {"skipped": "canary_429_backoff"}
     last = _parse_dt(previous.get("last_request_at"))
     if last and (now - last).total_seconds() < PROBE_INTERVAL_SECONDS:
         return {"skipped": "not_due"}
@@ -118,6 +121,11 @@ def run_canary(state, now, request=request_timetable, site="0128"):
     probe["history"] = (probe.get("history") or [])[-(MAX_HISTORY-1):] + [sample]
     probe["last_status"] = status
     probe["last_valid_rows"] = row_count if valid else 0
+    if status == 429:
+        # The current relay helper does not expose Retry-After. Suppress the
+        # diagnostic for at least an hour; primary collector owns its own
+        # stricter supplier-wide 429 budget and remains unchanged.
+        probe["backoff_until"] = (now + timedelta(hours=1)).isoformat()
     if not valid:
         probe["last_unqualified_at"] = now.isoformat()
     elif not probe.get("qualified_at"):
