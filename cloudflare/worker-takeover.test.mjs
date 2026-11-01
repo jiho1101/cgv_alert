@@ -213,7 +213,7 @@ console.log("EMERGENCY_COMPOSITE_ID_TEST PASS: missing sequence, wrong date/site
                 }
                 return { meta: { changes: 0 } };
               }
-              if (/WHERE CAST\\(app_state.value AS INTEGER\\)/i.test(sql)) {
+              if (sql.includes("WHERE CAST(app_state.value AS INTEGER)")) {
                 const old = stored.get(key);
                 if (!old || Number(old.value) < Number(value)) {
                   stored.set(key, { value, updated_at: at });
@@ -249,7 +249,7 @@ console.log("EMERGENCY_COMPOSITE_ID_TEST PASS: missing sequence, wrong date/site
     const base = Math.floor(originalNow() / 300000) * 300000 + 10000;
     Date.now = () => base;
     globalThis.fetch = async (url) => {
-      assert.match(String(url), /\\/actions\\/workflows\\/cgv-alert\\.yml\\/dispatches$/);
+      assert.ok(String(url).endsWith("/actions/workflows/cgv-alert.yml/dispatches"));
       networkCalls++;
       return { status: 204 };
     };
