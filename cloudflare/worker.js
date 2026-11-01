@@ -8,6 +8,11 @@ const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
 const GITHUB_DISPATCH_PROBE_KEY = "github_dispatch_probe_v1";
 const DISPATCH_ACK_GRACE_MS = 4 * 60 * 1000;
+// Multiple Cron invocations were observed in the same 5-minute window.
+// D1 is a shared, atomic slot gate, NOT a reason to delay the critical dispatch.
+const CRON_SLOT_MS = 5 * 60 * 1000;
+const CRON_SLOT_CLAIM_KEY = "github_cron_slot_claim_v1";
+const CRON_SLOT_CLAIM_MAX_WAIT_MS = 500;
 
 const DISCORD_COMMANDS = [
   {
@@ -193,6 +198,59 @@ async function putState(env, key, value) {
   )
     .bind(key, JSON.stringify(value), now)
     .run();
+}
+
+// A single D1 UPSERT with a WHERE condition is atomic across Worker isolates.
+// A read-then-write cooldown would let both simultaneous Cron requests through.
+// Use a single persistent row rather than accumulating one key each 5 minutes.
+export function cronSlotNumber(atMs) {
+  return Math.floor(Number(atMs) / CRON_SLOT_MS);
+}
+
+async function claimCronSlot(env, slot) {
+  if (!env.DB) return null;
+  await ensureDb(env);
+  const outcome = await env.DB.prepare(
+    `INSERT INTO app_state (key, value, updated_at)
+     VALUES (?1, ?2, ?3)
+     ON CONFLICT(key) DO UPDATE SET
+       value = excluded.value, updated_at = excluded.updated_at
+     WHERE CAST(app_state.value AS INTEGER) < CAST(excluded.value AS INTEGER)`,
+  ).bind(CRON_SLOT_CLAIM_KEY, String(slot), new Date().toISOString()).run();
+  const changes = Number(outcome?.meta?.changes);
+  if (!Number.isFinite(changes)) {
+    throw new Error("D1 slot claim returned no affected-row count");
+  }
+  return changes > 0;
+}
+
+async function boundedCronSlotClaim(env, slot) {
+  // Fail open if D1 is broken. Otherwise a D1 outage would cause a real
+  // >5min dispatch gap, worse than the occasional duplicate Workflows.
+  if (!env.DB) return null;
+  let timeoutId;
+  try {
+    return await Promise.race([
+      claimCronSlot(env, slot).catch((error) => {
+        console.error("CGV Cron slot claim unavailable", error);
+        return null;
+      }),
+      new Promise((resolve) => {
+        timeoutId = setTimeout(() => resolve(null), CRON_SLOT_CLAIM_MAX_WAIT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function releaseFailedCronSlot(env, slot) {
+  if (!env.DB) return;
+  // Only release our own slot. Never delete a newer tick's reservation.
+  await ensureDb(env);
+  await env.DB.prepare(
+    "DELETE FROM app_state WHERE key = ?1 AND value = ?2",
+  ).bind(CRON_SLOT_CLAIM_KEY, String(slot)).run();
 }
 
 async function recordCron(env) {
@@ -1883,15 +1941,29 @@ export default {
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(
       (async () => {
-        // Dispatch is the critical path. Never wait for D1, Discord setup,
-        // or slow external timetable fallbacks before requesting the run.
+        // Duplicate Worker Cron events can arrive in the same 5-minute slot
+        // (observed in Production). Claim atomically across isolates first,
+        // but never wait >500ms for D1 before dispatching.
         const dispatchedAt = new Date().toISOString();
+        const slot = cronSlotNumber(Date.now());
+        const claimed = await boundedCronSlotClaim(env, slot);
+        if (claimed === false) {
+          console.log("CGV Cron duplicate slot suppressed", slot);
+          return;
+        }
         let dispatchError = null;
         try {
           await triggerGitHub(env);
         } catch (error) {
           dispatchError = error;
           console.error("CGV Alert workflow dispatch failed", error);
+          if (claimed === true) {
+            try {
+              await releaseFailedCronSlot(env, slot);
+            } catch (releaseError) {
+              console.error("CGV Cron failed-slot release failed", releaseError);
+            }
+          }
         }
 
         // Keep status/diagnostics best-effort; none may block dispatch.
@@ -1967,6 +2039,10 @@ export default {
         ok: true,
         version: COMMAND_VERSION,
         cron_dispatch_first: true,
+        cron_slot_dedupe: {
+          enabled: true,
+          max_claim_wait_ms: CRON_SLOT_CLAIM_MAX_WAIT_MS,
+        },
         browser_binding: Boolean(env.BROWSER),
         browser_budget: {
           used_ms: browserBudget.usedMs,
@@ -2119,6 +2195,10 @@ export default {
         service: "cgv-alert-trigger",
         version: COMMAND_VERSION,
         cron_dispatch_first: true,
+        cron_slot_dedupe: {
+          enabled: true,
+          max_claim_wait_ms: CRON_SLOT_CLAIM_MAX_WAIT_MS,
+        },
         browser_binding: Boolean(env.BROWSER),
         browser_budget: {
           used_ms: browserBudget.usedMs,
