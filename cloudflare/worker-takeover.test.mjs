@@ -147,8 +147,13 @@ import worker from "./worker.js";
     }, {
       waitUntil(promise) { completion = promise; },
     });
-    assert.equal(calls[0], "fetch",
-      "GitHub dispatch must happen before blocking D1/Discord/emergency operations");
+    // The atomic D1 gate is allowed only a bounded 500ms wait.
+    const deadline = Date.now() + 2000;
+    while (!calls.includes("fetch") && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(calls.filter((event) => event === "fetch").length, 1,
+      "A stalled D1 claim must fail open within 2 seconds and dispatch");
     assert.equal(calls.filter((event) => event === "fetch").length, 1,
       "Each cron tick must dispatch exactly once");
     assert.ok(completion, "Cron must register its async work");
@@ -161,7 +166,7 @@ import worker from "./worker.js";
     console.log = savedConsoleLog;
   }
 }
-console.log("CRON_DISPATCH_FIRST_TEST PASS: mock DB only; no live Worker config evidence");
+console.log("CRON_DISPATCH_FIRST_TEST PASS: bounded D1 claim cannot prevent GitHub dispatch");
 
 import { emergencySessions } from "./worker.js";
 const identityTarget = {
@@ -180,3 +185,94 @@ for (const schedule_id of ["", "1", "209910280128", "2099102901281", "2099102899
 assert.deepEqual(emergencySessions([{ ...identityRow, remaining_seats: 1 }], identityTarget),
   emergencySessions([identityRow], identityTarget));
 console.log("EMERGENCY_COMPOSITE_ID_TEST PASS: missing sequence, wrong date/site, seat-only stability");
+
+
+/* Production regression: two Cron arrivals in the same 5-minute window must
+   reserve exactly one dispatch across Worker isolates. One reused D1 key must
+   permit a new dispatch in the next window without leaking DB records. */
+{
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  const originalError = console.error;
+  const originalLog = console.log;
+  const stored = new Map();
+  let networkCalls = 0;
+  const sqlDb = {
+    prepare(sql) {
+      return {
+        bind(...parameters) {
+          return {
+            async run() {
+              if (/CREATE TABLE/i.test(sql)) return { meta: { changes: 0 } };
+              const [key, value, at] = parameters;
+              if (/DELETE FROM app_state/i.test(sql)) {
+                const row = stored.get(key);
+                if (row?.value === value) {
+                  stored.delete(key);
+                  return { meta: { changes: 1 } };
+                }
+                return { meta: { changes: 0 } };
+              }
+              if (/WHERE CAST\\(app_state.value AS INTEGER\\)/i.test(sql)) {
+                const old = stored.get(key);
+                if (!old || Number(old.value) < Number(value)) {
+                  stored.set(key, { value, updated_at: at });
+                  return { meta: { changes: 1 } };
+                }
+                return { meta: { changes: 0 } };
+              }
+              if (/INSERT INTO app_state/i.test(sql)) {
+                stored.set(key, { value, updated_at: at });
+                return { meta: { changes: 1 } };
+              }
+              throw new Error("unexpected SQL: " + sql.slice(0, 80));
+            },
+            async first() {
+              const row = stored.get(parameters[0]);
+              return row ? { ...row } : null;
+            },
+          };
+        },
+        async run() {
+          if (/CREATE TABLE/i.test(sql)) return { meta: { changes: 0 } };
+          throw new Error("unexpected direct run");
+        },
+      };
+    },
+  };
+  const env = { GITHUB_TOKEN: "test", DB: sqlDb };
+  const promises = [];
+  const ctx = {
+    waitUntil(promise) { promises.push(promise); },
+  };
+  try {
+    const base = Math.floor(originalNow() / 300000) * 300000 + 10000;
+    Date.now = () => base;
+    globalThis.fetch = async (url) => {
+      assert.match(String(url), /\\/actions\\/workflows\\/cgv-alert\\.yml\\/dispatches$/);
+      networkCalls++;
+      return { status: 204 };
+    };
+    console.error = () => {};
+    console.log = () => {};
+    await Promise.all([
+      worker.scheduled({}, env, ctx),
+      worker.scheduled({}, env, ctx),
+    ]);
+    await Promise.all(promises.splice(0));
+    assert.equal(networkCalls, 1, "same 5-minute slot must dispatch once");
+    assert.equal(stored.get("github_cron_slot_claim_v1")?.value,
+      String(Math.floor(base / 300000)));
+    Date.now = () => base + 300000;
+    await worker.scheduled({}, env, ctx);
+    await Promise.all(promises.splice(0));
+    assert.equal(networkCalls, 2, "next 5-minute slot must dispatch again");
+    assert.equal(stored.size < 10, true, "single slot key must not grow forever");
+  } finally {
+    globalThis.fetch = originalFetch;
+    Date.now = originalNow;
+    console.error = originalError;
+    console.log = originalLog;
+  }
+}
+console.log("CRON_ATOMIC_SLOT_TEST PASS: same-slot duplicate suppressed, next slot allowed");
