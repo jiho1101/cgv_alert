@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install requests for read-only third-party timetable check
-        run: python -m pip install requests==2.32.5
+        run: python -m pip install -r requirements.txt
       - name: Check if previous 502 dates now return actual rows (no CGV direct calls)
         run: |
           python - <<'PY'
