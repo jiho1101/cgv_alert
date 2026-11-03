@@ -182,9 +182,9 @@
   },
   "public_api_guard": {
     "backoff_reason": "adaptive",
-    "backoff_until": "2026-11-03T12:40:32.733785+09:00",
+    "backoff_until": "2026-11-03T12:45:33.728714+09:00",
     "failure_count": 8,
-    "last_failure_at": "2026-11-03T11:40:32.733785+09:00",
+    "last_failure_at": "2026-11-03T11:45:33.728714+09:00",
     "last_status": 502,
     "last_success_at": "2026-10-13T13:10:37.536966+09:00",
     "retry_after_raw": "",
@@ -1954,17 +1954,9 @@
     ]
   },
   "source_transition_canary": {
-    "attempts": 172,
+    "attempts": 173,
     "date": "20261109",
     "history": [
-      {
-        "at": "2026-11-03T07:40:36.844604+09:00",
-        "elapsed_seconds": 1.585,
-        "http_status": 503,
-        "qualified": false,
-        "reason": "unqualified",
-        "rows": 0
-      },
       {
         "at": "2026-11-03T07:55:36.994623+09:00",
         "elapsed_seconds": 0.094,
@@ -2116,11 +2108,19 @@
         "qualified": false,
         "reason": "unqualified",
         "rows": 0
+      },
+      {
+        "at": "2026-11-03T11:45:36.708660+09:00",
+        "elapsed_seconds": 1.746,
+        "http_status": 502,
+        "qualified": false,
+        "reason": "unqualified",
+        "rows": 0
       }
     ],
-    "last_request_at": "2026-11-03T11:30:43.158516+09:00",
+    "last_request_at": "2026-11-03T11:45:36.708660+09:00",
     "last_status": 502,
-    "last_unqualified_at": "2026-11-03T11:30:43.158516+09:00",
+    "last_unqualified_at": "2026-11-03T11:45:36.708660+09:00",
     "last_valid_rows": 0,
     "started_at": "2026-11-01T22:30:40.842110+09:00"
   },
