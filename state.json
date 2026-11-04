@@ -1954,17 +1954,9 @@
     ]
   },
   "source_transition_canary": {
-    "attempts": 280,
+    "attempts": 281,
     "date": "20261109",
     "history": [
-      {
-        "at": "2026-11-04T06:40:49.694730+09:00",
-        "elapsed_seconds": 1.739,
-        "http_status": 502,
-        "qualified": false,
-        "reason": "unqualified",
-        "rows": 0
-      },
       {
         "at": "2026-11-04T06:55:38.361729+09:00",
         "elapsed_seconds": 1.823,
@@ -2116,11 +2108,19 @@
         "qualified": false,
         "reason": "unqualified",
         "rows": 0
+      },
+      {
+        "at": "2026-11-04T10:50:54.054745+09:00",
+        "elapsed_seconds": 11.059,
+        "http_status": 502,
+        "qualified": false,
+        "reason": "unqualified",
+        "rows": 0
       }
     ],
-    "last_request_at": "2026-11-04T10:35:40.475493+09:00",
+    "last_request_at": "2026-11-04T10:50:54.054745+09:00",
     "last_status": 502,
-    "last_unqualified_at": "2026-11-04T10:35:40.475493+09:00",
+    "last_unqualified_at": "2026-11-04T10:50:54.054745+09:00",
     "last_valid_rows": 0,
     "started_at": "2026-11-01T22:30:40.842110+09:00"
   },
