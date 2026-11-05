@@ -15,3 +15,6 @@ venv/
 runtime_status.json
 
 independent_shadow_sample.json
+
+live_primary_validation.json
+source_transition_observation.json

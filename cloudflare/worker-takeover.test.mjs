@@ -184,6 +184,10 @@ for (const schedule_id of ["", "1", "209910280128", "2099102901281", "2099102899
 }
 assert.deepEqual(emergencySessions([{ ...identityRow, remaining_seats: 1 }], identityTarget),
   emergencySessions([identityRow], identityTarget));
+assert.equal(emergencySessions([{ ...identityRow, movie_name: "다른 영화" }],
+  { ...identityTarget, pinned_movie_code: "30001440" }).length, 0);
+assert.equal(emergencySessions([{ ...identityRow, movie_code: "WRONG" }],
+  { ...identityTarget, pinned_movie_code: "30001440" }).length, 0);
 console.log("EMERGENCY_COMPOSITE_ID_TEST PASS: missing sequence, wrong date/site, seat-only stability");
 
 

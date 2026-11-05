@@ -1,0 +1,76 @@
+{
+  "as_of": "2026-11-05",
+  "classification": "partial_recovery",
+  "live_primary_validation": {
+    "observed_at": "2026-11-05T17:38:10.524668+09:00",
+    "source": "https://mcp.aka.page/api/cgv/timetable",
+    "theater": "0128",
+    "date": "20261109",
+    "http_status": 200,
+    "live_rows": 37,
+    "parsed_movie_sessions": 4,
+    "sample": {
+      "movie_code": "30000103",
+      "movie_name": "극장판 체인소 맨-레제편",
+      "theater_code": "0128",
+      "theater_name": "CGV 울산삼산",
+      "play_date": "20261109",
+      "start_time": "10:00",
+      "end_time": "11:50",
+      "schedule_id": "2026110901281",
+      "screen": "",
+      "total_seats": 111,
+      "remaining_seats": 111
+    },
+    "new_duplicate_seat_change_rejections_failed_delivery_state_preservation": "passed",
+    "production_seen_changed": false,
+    "real_discord_called": false,
+    "natural_publication_latency_measured": false,
+    "engine_validation": "isolated replay of actual captured timetable"
+  },
+  "observations": [
+    {
+      "at": "2026-11-05T17:33:13.324730+09:00",
+      "date": "20261105",
+      "status": 200,
+      "seconds": 7.082,
+      "headers": {
+        "date": "Thu, 05 Nov 2026 08:33:13 GMT",
+        "cache-control": "public, max-age=180, s-maxage=180, stale-while-revalidate=30"
+      },
+      "rows": 19
+    },
+    {
+      "at": "2026-11-05T17:33:20.431093+09:00",
+      "date": "20261109",
+      "status": 200,
+      "seconds": 7.106,
+      "headers": {
+        "date": "Thu, 05 Nov 2026 08:33:20 GMT",
+        "cache-control": "public, max-age=180, s-maxage=180, stale-while-revalidate=30"
+      },
+      "rows": 37
+    },
+    {
+      "at": "2026-11-05T17:33:27.218252+09:00",
+      "date": "20261110",
+      "status": 200,
+      "seconds": 6.787,
+      "headers": {
+        "date": "Thu, 05 Nov 2026 08:33:27 GMT",
+        "cache-control": "public, max-age=180, s-maxage=180, stale-while-revalidate=30"
+      },
+      "rows": 35
+    }
+  ],
+  "historical_transition": {
+    "date": "20261109",
+    "last_502_at": "2026-11-05T16:25:39.303863+09:00",
+    "first_qualified_at": "2026-11-05T16:35:45.455532+09:00",
+    "first_qualified_rows": 34,
+    "official_publication_at": null
+  },
+  "deployed_version_pending": "25",
+  "production_seen_before": 44,
+  "discord_test_messages_sent": 0
+}

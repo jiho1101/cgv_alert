@@ -1489,7 +1489,8 @@ def _public_guard_priority_probe_allowed(state, now: datetime) -> bool:
     except (TypeError, ValueError):
         return False
 
-    return 500 <= status <= 599
+    return (500 <= status <= 599
+            and not str(guard.get("retry_after_raw") or "").strip())
 
 
 def _public_guard_failure(
@@ -1523,8 +1524,8 @@ def _public_guard_failure(
 
     retry_seconds = _parse_retry_after_seconds(retry_after, now)
     if retry_seconds is not None:
-        # 서버가 직접 요청한 대기 시간은 존중하되 하루 전체 중단은 피한다.
-        delay_seconds = min(max(retry_seconds, 300), 21600)
+        # 서버가 직접 요청한 대기 시간을 임의로 단축하지 않는다.
+        delay_seconds = max(retry_seconds, 300)
         reason = "retry_after"
     else:
         base = 600 if status_int == 429 else 300
@@ -2127,10 +2128,9 @@ def extract_public_sessions(
         movie_code = str(row.get("movie_code") or "").strip()
 
         pinned = str(pinned_movie_code or "").strip()
-        if pinned:
-            if movie_code != pinned:
-                continue
-        elif not movie_norm or movie_norm not in aliases:
+        if not movie_norm or movie_norm not in aliases:
+            continue
+        if pinned and movie_code != pinned:
             continue
 
         schedule_id = str(row.get("schedule_id") or "").strip()
@@ -3542,11 +3542,10 @@ def run_self_test(timeout: int):
         pinned_code != "M-REAL"
         or learned_again
         or ambiguous_again
-        or len(pinned_sessions) != 1
-        or "M-REAL" not in pinned_sessions[0]["_key"]
+        or pinned_sessions
     ):
         raise RuntimeError(
-            "movieCode 자동 고정 자체점검 실패: 코드 우선 매칭 오류"
+            "movieCode 자동 고정 자체점검 실패: 영화명/코드 교차 검증 오류"
         )
 
     ambiguous_state = {}
@@ -3573,7 +3572,7 @@ def run_self_test(timeout: int):
 
     print(
         "movieCode 자동 고정 자체점검 완료 · 첫 감지 즉시 학습 · "
-        "이후 코드 우선 · 다중 후보 추측 금지"
+        "이후 영화명/코드 교차 검증 · 다중 후보 추측 금지"
     )
 
     sale_target = {
@@ -3732,6 +3731,7 @@ def run_checker(force_all: bool = False):
     independent_cache = {}
     public_sentinel_cache = {}
     verified_feed_cache = {}
+    primary_run_deadline = time.monotonic() + 150
 
     # Parallelize supplier reads, never notification decisions.
     # The verified publication is fetched once per theater per run.
@@ -3922,10 +3922,6 @@ def run_checker(force_all: bool = False):
             )
             return result
 
-        # Only one diagnostic non-priority primary probe per theater and run
-        # during 5xx backoff; 429 must never be probed.
-        nonpriority_primary_probe_sites = set()
-
         def get_source(target, play_ymd, target_ids=None):
             nonlocal public_state_changed
             key = (str(target["theater_code"]), play_ymd)
@@ -3976,23 +3972,31 @@ def run_checker(force_all: bool = False):
                 for target_id in (target_ids or {str(target["id"])})
             )
 
+            # Bound sequential non-priority reads so a provider timeout
+            # cannot consume the next five-minute core slot. Priority runs
+            # first; all remaining pages still use the prefetched snapshot.
+            primary_budget_exhausted = (
+                not priority_for_any and time.monotonic() >= primary_run_deadline
+            )
             guard_active = _public_guard_active(state, now)
-            if guard_active:
+            if guard_active or primary_budget_exhausted:
                 guard = _public_api_guard(state)
-                until = str(guard.get("backoff_until") or "-")
+                until = ("per-run primary time budget exhausted"
+                         if primary_budget_exhausted
+                         else str(guard.get("backoff_until") or "-"))
                 if not priority_for_any:
-                    # A 502 on Dec 18 does not prove Dec 19-31 also failed.
-                    # Probe at most one non-priority day per theater per
-                    # scheduled scan. An accepted 200 restores normal polling.
-                    # Never probe under HTTP 429 / Retry-After protection.
+                    # A future-date 502 is date-specific evidence, not proof
+                    # that later dates are unavailable. Check EACH due date
+                    # once, sharing page_cache across movies. Never add an
+                    # immediate retry or bypass 429 / explicit Retry-After.
                     probe_result = None
                     status_code = int(guard.get("last_status") or 0)
                     site_no = str(target["theater_code"])
                     if (
-                        500 <= status_code <= 599
-                        and site_no not in nonpriority_primary_probe_sites
+                        not primary_budget_exhausted
+                        and 500 <= status_code <= 599
+                        and not str(guard.get("retry_after_raw") or "").strip()
                     ):
-                        nonpriority_primary_probe_sites.add(site_no)
                         probe_result = _fetch_public_page(
                             state, site_no, play_ymd, now
                         )
@@ -4073,7 +4077,7 @@ def run_checker(force_all: bool = False):
 
                     print(
                         f"[{target['theater_name']}] {play_ymd} "
-                        "핵심 날짜지만 429 호출 제한 보호 대기 중 · "
+                        "핵심 날짜지만 공급자 호출 제한/대기 지시 보호 중 · "
                         "제3자 호출은 쉬고 기존 CGV 보조 경로로 확인"
                     )
                     public_result = {
