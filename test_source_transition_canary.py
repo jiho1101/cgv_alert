@@ -48,7 +48,9 @@ class TransitionCanaryTests(unittest.TestCase):
     def test_legacy_keys_and_history_are_preserved(self):
         legacy={'date':'20261109','qualified_at':START.isoformat(),
                 'last_request_at':(START-timedelta(minutes=5)).isoformat(),
-                'observed_keys':['legacy-key'],'history':[{'rows':37}]}
+                'observed_keys':['legacy-key'],'history':[{'rows':37}],
+                'last_unqualified_at':(START-timedelta(hours=1)).isoformat(),
+                'transition_from_unqualified':True,'successful_observations':19}
         state={STATE_KEY:copy.deepcopy(legacy)}
         run_canary(state,START,lambda site,day:(200,.1,payload(day),None))
         old=pages(state)['0128|20261109']
@@ -57,6 +59,9 @@ class TransitionCanaryTests(unittest.TestCase):
         self.assertEqual(old['legacy_probe']['history'],legacy['history'])
         self.assertEqual(state[STATE_KEY]['date'],DAY)
         self.assertEqual(state[STATE_KEY]['version'],2)
+        self.assertIsNone(state[STATE_KEY]['last_unqualified_at'])
+        self.assertFalse(state[STATE_KEY]['transition_from_unqualified'])
+        self.assertEqual(state[STATE_KEY]['successful_observations'],1)
 
     def test_jitter_same_slot_and_next_slot(self):
         state={};calls=[]
