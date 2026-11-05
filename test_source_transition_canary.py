@@ -19,6 +19,12 @@ def payload(day, remaining=99, extra=False):
 
 
 class TransitionCanaryTests(unittest.TestCase):
+    def setUp(self):
+        # Time-accelerated tests simulate separate workflow executions.
+        env = patch.dict('os.environ', {'GITHUB_RUN_ID': '', 'GITHUB_RUN_ATTEMPT': '1'})
+        env.start()
+        self.addCleanup(env.stop)
+
     def test_all_dates_rotate_and_recover_then_observe_additions(self):
         state={'seen':{'watch':['preserved']}}
         calls=[]
