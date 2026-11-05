@@ -116,6 +116,12 @@ class TransitionCanaryTests(unittest.TestCase):
                                      'last_run_id':'123:2'}
             self.assertEqual(choose_canary_date(state,START),'20261107')
 
+    def test_watched_dates_use_their_existing_schedule_without_extra_requests(self):
+        state={}
+        self.assertEqual(run_canary(state,START,lambda *_:self.fail(),
+                                    watched_dates=candidate_dates(START)),
+                         {'skipped':'covered_by_watched_schedule'})
+
     def test_reads_already_collected_in_this_slot_are_not_repeated(self):
         state={}
         for day in candidate_dates(START):

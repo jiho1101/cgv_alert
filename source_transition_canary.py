@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from shadow_public_monitor import canonical, extract_rows, inspect_rows, structural_valid
 from checker import (_production_public_request as request_timetable,
                      _parse_retry_after_seconds, _public_guard_failure,
-                     extract_public_sessions)
+                     extract_public_sessions, resolve_target_range)
 from collection_observer import pages, seed_legacy_probe, observe
 
 KST = ZoneInfo('Asia/Seoul')
@@ -35,7 +35,7 @@ def candidate_dates(now):
             for n in range(1, HORIZON_DAYS + 1)]
 
 
-def choose_canary_date(state, now, site='0128'):
+def choose_canary_date(state, now, site='0128', watched_dates=()):
     """Oldest observed near-future date first; one query/slot, eight dates/cycle.
 
     Published dates stay in the rotation to detect additions. Primary watch
@@ -48,6 +48,8 @@ def choose_canary_date(state, now, site='0128'):
               if os.environ.get('GITHUB_RUN_ID') else None)
     eligible = []
     for date in candidate_dates(now):
+        if date in watched_dates:
+            continue
         page = ledger.get(f'{site}|{date}') or {}
         last = _parse_dt(page.get('last_attempt_at'))
         if run_id and page.get('last_run_id') == run_id:
@@ -69,7 +71,7 @@ def qualify_canary_response(status, payload, error, site, play_date):
     return result['observation_state'] == 'published', len(rows), result['reason'] or 'qualified'
 
 
-def run_canary(state, now, request=request_timetable, site='0128'):
+def run_canary(state, now, request=request_timetable, site='0128', watched_dates=()):
     if _guard_active(state, now):
         return {'skipped': 'supplier_backoff'}
     seed_legacy_probe(state, site)
@@ -81,9 +83,11 @@ def run_canary(state, now, request=request_timetable, site='0128'):
     slot = int(now.timestamp()) // PROBE_INTERVAL_SECONDS
     if last and int(last.timestamp()) // PROBE_INTERVAL_SECONDS >= slot:
         return {'skipped': 'not_due'}
-    date = choose_canary_date(state, now, site)
+    date = choose_canary_date(state, now, site, watched_dates)
     if date is None:
-        return {'skipped': 'already_collected_this_slot'}
+        return {'skipped': ('covered_by_watched_schedule'
+                            if set(candidate_dates(now)).issubset(set(watched_dates))
+                            else 'already_collected_this_slot')}
     previous['last_request_at'] = now.isoformat()
     previous['scheduler_version'] = 2
     previous['last_probe_date'] = date
@@ -112,7 +116,12 @@ def main():
         print('SOURCE_TRANSITION_CANARY skipped: state missing')
         return
     state = json.loads(path.read_text(encoding='utf-8'))
-    result = run_canary(state, now)
+    config_path = Path('config.json')
+    config = json.loads(config_path.read_text(encoding='utf-8')) if config_path.exists() else {}
+    watched = {date for target in config.get('targets', [])
+               if target.get('enabled') and str(target.get('theater_code')) == '0128'
+               for date in resolve_target_range(target)}
+    result = run_canary(state, now, watched_dates=watched)
     # Persist migration and quota protection too; never modify seen/config.
     path.write_text(json.dumps(state, ensure_ascii=False, sort_keys=True, indent=2)+'\n', encoding='utf-8')
     output = {'result': result, 'pages': pages(state),
