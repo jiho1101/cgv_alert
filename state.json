@@ -526,7 +526,7 @@
       },
       "0128|20261218": {
         "date": "20261218",
-        "failed_or_unconfirmed_observations": 3,
+        "failed_or_unconfirmed_observations": 4,
         "history": [
           {
             "added_keys": [],
@@ -575,17 +575,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261218",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261218",
           "event": "unconfirmed",
@@ -598,11 +614,12 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:24:27.615321+09:00",
         "theater_code": "0128"
       },
       "0128|20261219": {
         "date": "20261219",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -619,17 +636,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261219",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261219",
           "event": "unconfirmed",
@@ -642,11 +675,12 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       },
       "0128|20261220": {
         "date": "20261220",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -663,17 +697,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261220",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261220",
           "event": "unconfirmed",
@@ -686,11 +736,12 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       },
       "0128|20261221": {
         "date": "20261221",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -707,17 +758,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261221",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261221",
           "event": "unconfirmed",
@@ -730,11 +797,12 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       },
       "0128|20261222": {
         "date": "20261222",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -751,17 +819,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261222",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261222",
           "event": "unconfirmed",
@@ -774,11 +858,12 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       },
       "0128|20261223": {
         "date": "20261223",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -795,17 +880,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261223",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261223",
           "event": "unconfirmed",
@@ -818,11 +919,12 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       },
       "0128|20261224": {
         "date": "20261224",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -839,17 +941,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261224",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261224",
           "event": "unconfirmed",
@@ -862,11 +980,12 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       },
       "0128|20261225": {
         "date": "20261225",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -883,17 +1002,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261225",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261225",
           "event": "unconfirmed",
@@ -906,11 +1041,12 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       },
       "0128|20261226": {
         "date": "20261226",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -927,17 +1063,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261226",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261226",
           "event": "unconfirmed",
@@ -950,11 +1102,12 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       },
       "0128|20261227": {
         "date": "20261227",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -971,17 +1124,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261227",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261227",
           "event": "unconfirmed",
@@ -994,11 +1163,12 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       },
       "0128|20261228": {
         "date": "20261228",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -1015,17 +1185,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261228",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261228",
           "event": "unconfirmed",
@@ -1038,6 +1224,7 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       },
       "0128|20261229": {
@@ -1058,23 +1245,39 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 1
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 1,
+            "date": "20261229",
+            "event": "unchanged",
+            "first_publication_rows": 0,
+            "http_status": 200,
+            "observation_state": "published",
+            "official_publication_time_known": false,
+            "reason": null,
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 1
           }
         ],
         "identity_baseline_established": true,
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "published",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 200,
-        "last_success_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_success_at": "2026-11-05T19:33:07.826328+09:00",
         "last_valid_rows": 1,
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 1,
           "date": "20261229",
-          "event": "first_observed_publication",
-          "first_publication_rows": 1,
+          "event": "unchanged",
+          "first_publication_rows": 0,
           "http_status": 200,
           "observation_state": "published",
           "official_publication_time_known": false,
@@ -1087,12 +1290,13 @@
           "30001755|0128|20261229|2026122901286|20:45"
         ],
         "published_at": "2026-11-05T19:30:44.792463+09:00",
-        "successful_observations": 1,
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
+        "successful_observations": 2,
         "theater_code": "0128"
       },
       "0128|20261230": {
         "date": "20261230",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -1109,17 +1313,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261230",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261230",
           "event": "unconfirmed",
@@ -1132,11 +1352,12 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       },
       "0128|20261231": {
         "date": "20261231",
-        "failed_or_unconfirmed_observations": 1,
+        "failed_or_unconfirmed_observations": 2,
         "history": [
           {
             "added_keys": [],
@@ -1153,17 +1374,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:33:07.826328+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261231",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_attempt_at": "2026-11-05T19:33:07.826328+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "42011277206:1",
+        "last_run_id": "42011613312:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-05T19:30:44.792463+09:00",
+        "last_unconfirmed_at": "2026-11-05T19:33:07.826328+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-05T19:30:44.792463+09:00",
+          "at": "2026-11-05T19:33:07.826328+09:00",
           "bookable_seat_rows": 0,
           "date": "20261231",
           "event": "unconfirmed",
@@ -1176,6 +1413,7 @@
           "rejected_rows": 0,
           "validated_rows": 0
         },
+        "started_at": "2026-11-05T19:30:44.792463+09:00",
         "theater_code": "0128"
       }
     },
@@ -1364,11 +1602,11 @@
   },
   "public_api_guard": {
     "backoff_reason": "adaptive",
-    "backoff_until": "2026-11-05T19:35:44.792463+09:00",
+    "backoff_until": "2026-11-05T19:38:07.826328+09:00",
     "failure_count": 1,
-    "last_failure_at": "2026-11-05T19:30:44.792463+09:00",
+    "last_failure_at": "2026-11-05T19:33:07.826328+09:00",
     "last_status": 502,
-    "last_success_at": "2026-11-05T19:30:44.792463+09:00",
+    "last_success_at": "2026-11-05T19:33:07.826328+09:00",
     "retry_after_raw": "",
     "version": 1
   },
