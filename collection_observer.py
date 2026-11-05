@@ -22,6 +22,9 @@ def seed_legacy_probe(state, site):
         return
     ledger[key] = {
         'date': date, 'theater_code': site,
+        'started_at': legacy.get('started_at') or legacy.get('last_request_at'),
+        'last_unconfirmed_at': legacy.get('last_unqualified_at'),
+        'last_observation_state': 'published' if legacy.get('qualified_at') else 'unknown',
         'last_attempt_at': legacy.get('last_request_at'),
         'published_at': legacy.get('qualified_at'),
         'observed_keys': list(legacy.get('observed_keys') or []),
@@ -39,6 +42,9 @@ def observe(state, site, date, now, status, rows, accepted, parse, reason=None):
     """
     key = f'{site}|{date}'
     page = pages(state).setdefault(key, {'date': date, 'theater_code': site})
+    if not page.get('started_at'):
+        page['started_at'] = (page.get('published_at') or
+                              (page.get('history') or [{}])[0].get('at') or now.isoformat())
     identities, bookable, rejected = set(), 0, 0
     valid = bool(accepted and status == 200 and rows)
     if valid:

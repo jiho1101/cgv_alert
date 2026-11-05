@@ -106,7 +106,14 @@ def run_canary(state, now, request=request_timetable, site='0128', watched_dates
                     last_valid_rows=result['validated_rows'],
                     qualified_at=observed_page.get('published_at'),
                     observed_keys=list(observed_page.get('observed_keys') or []),
-                    history=list(observed_page.get('history') or []))
+                    history=list(observed_page.get('history') or []),
+                    started_at=observed_page.get('started_at'),
+                    last_unqualified_at=observed_page.get('last_unconfirmed_at'),
+                    transition_from_unqualified=result['recovered_after_unconfirmed'],
+                    successful_observations=observed_page.get('successful_observations', 0),
+                    failed_observations=observed_page.get('failed_or_unconfirmed_observations', 0),
+                    attempts=(observed_page.get('successful_observations', 0) +
+                              observed_page.get('failed_or_unconfirmed_observations', 0)))
     seconds = _parse_retry_after_seconds(retry_after, now)
     if status == 429 or (seconds is not None and status != 200):
         delay = max(seconds or 0, 3600 if status == 429 else 0)

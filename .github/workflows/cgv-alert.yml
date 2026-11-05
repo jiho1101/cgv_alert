@@ -146,7 +146,27 @@ jobs:
         if: github.event_name == 'push'
         continue-on-error: true
         run: |
-          task_date=$(python -c 'import json; from datetime import datetime,timedelta; from zoneinfo import ZoneInfo; s=json.load(open("state.json")); now=datetime.now(ZoneInfo("Asia/Seoul")); d=(s.get("source_transition_canary") or {}).get("date", ""); print(d if d >= now.strftime("%Y%m%d") else (now+timedelta(days=1)).strftime("%Y%m%d"))')
+          task_date=$(python - <<'PYDATE'
+          import json
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          state = json.load(open('state.json'))
+          today = datetime.now(ZoneInfo('Asia/Seoul')).strftime('%Y%m%d')
+          published = sorted(p['date'] for p in
+              (state.get('collection_observations') or {}).get('pages', {}).values()
+              if str(p.get('date') or '') >= today
+              and p.get('last_observation_state') == 'published'
+              and (p.get('latest') or {}).get('bookable_seat_rows', 0) > 0)
+          legacy = state.get('source_transition_canary') or {}
+          fallback = str(legacy.get('date') or '')
+          print(published[0] if published else
+                fallback if fallback >= today and legacy.get('qualified_at') else '')
+          PYDATE
+          )
+          if [ -z "$task_date" ]; then
+            echo "NO_PUBLISHED_VALIDATION_DATE: skipped; collection success not established"
+            exit 0
+          fi
           python verify_live_primary.py --date "$task_date"
 
       - name: Self-test public structured shadow logic
