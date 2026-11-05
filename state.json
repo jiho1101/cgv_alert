@@ -1,4 +1,53 @@
 {
+  "collection_observations": {
+    "pages": {
+      "0128|20261218": {
+        "date": "20261218",
+        "failed_or_unconfirmed_observations": 1,
+        "history": [
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-05T19:24:27.615321+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261218",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
+          }
+        ],
+        "last_attempt_at": "2026-11-05T19:24:27.615321+09:00",
+        "last_observation_state": "unknown",
+        "last_run_id": "42010414096:1",
+        "last_status": 502,
+        "last_unconfirmed_at": "2026-11-05T19:24:27.615321+09:00",
+        "latest": {
+          "added_keys": [],
+          "added_session_count": 0,
+          "at": "2026-11-05T19:24:27.615321+09:00",
+          "bookable_seat_rows": 0,
+          "date": "20261218",
+          "event": "unconfirmed",
+          "first_publication_rows": 0,
+          "http_status": 502,
+          "observation_state": "unknown",
+          "official_publication_time_known": false,
+          "reason": "invalid_structure",
+          "recovered_after_unconfirmed": false,
+          "rejected_rows": 0,
+          "validated_rows": 0
+        },
+        "theater_code": "0128"
+      }
+    },
+    "version": 1
+  },
   "fallback_seen": {
     "avengers-endgame-encore-20260925-ulsan-samsan": [
       "0128|20260925|avengers-endgame-encore-20260925-ulsan-samsan|2관 (Laser)|08:20",
@@ -182,9 +231,9 @@
   },
   "public_api_guard": {
     "backoff_reason": "adaptive",
-    "backoff_until": "2026-11-05T20:20:45.576454+09:00",
-    "failure_count": 5,
-    "last_failure_at": "2026-11-05T19:20:45.576454+09:00",
+    "backoff_until": "2026-11-05T20:24:27.615321+09:00",
+    "failure_count": 6,
+    "last_failure_at": "2026-11-05T19:24:27.615321+09:00",
     "last_status": 502,
     "last_success_at": "2026-11-05T19:00:47.366636+09:00",
     "retry_after_raw": "",
