@@ -27,7 +27,7 @@ def _parse_dt(value):
 def _guard_active(state, now):
     guard = state.get('public_api_guard') or {}
     until = _parse_dt(guard.get('backoff_until'))
-    return (guard.get('last_status') == 429 or bool(guard.get('retry_after_raw'))) and until is not None and until > now
+    return (str(guard.get('last_status')) == '429' or bool(guard.get('retry_after_raw'))) and until is not None and until > now
 
 
 def candidate_dates(now):
@@ -42,8 +42,21 @@ def choose_canary_date(state, now, site='0128'):
     dates already collected in this slot are reused, never queried again.
     """
     ledger = pages(state)
-    return min(candidate_dates(now), key=lambda d:
-               (ledger.get(f'{site}|{d}', {}).get('last_attempt_at') or '', d))
+    slot = int(now.timestamp()) // PROBE_INTERVAL_SECONDS
+    run_id = (os.environ['GITHUB_RUN_ID'] + ':' +
+              os.environ.get('GITHUB_RUN_ATTEMPT', '1')
+              if os.environ.get('GITHUB_RUN_ID') else None)
+    eligible = []
+    for date in candidate_dates(now):
+        page = ledger.get(f'{site}|{date}') or {}
+        last = _parse_dt(page.get('last_attempt_at'))
+        if run_id and page.get('last_run_id') == run_id:
+            continue
+        if last and int(last.timestamp()) // PROBE_INTERVAL_SECONDS >= slot:
+            continue
+        eligible.append(date)
+    return min(eligible, key=lambda d:
+               (ledger.get(f'{site}|{d}', {}).get('last_attempt_at') or '', d)) if eligible else None
 
 
 def qualify_canary_response(status, payload, error, site, play_date):
@@ -69,12 +82,7 @@ def run_canary(state, now, request=request_timetable, site='0128'):
     if last and int(last.timestamp()) // PROBE_INTERVAL_SECONDS >= slot:
         return {'skipped': 'not_due'}
     date = choose_canary_date(state, now, site)
-    # A normal monitored-page read may already have covered all candidates.
-    page = pages(state).get(f'{site}|{date}') or {}
-    at = _parse_dt(page.get('last_attempt_at'))
-    same_run = bool(os.environ.get('GITHUB_RUN_ID') and
-                    page.get('last_run_id') == os.environ['GITHUB_RUN_ID'])
-    if same_run or (at and int(at.timestamp()) // PROBE_INTERVAL_SECONDS >= slot):
+    if date is None:
         return {'skipped': 'already_collected_this_slot'}
     previous['last_request_at'] = now.isoformat()
     previous['scheduler_version'] = 2

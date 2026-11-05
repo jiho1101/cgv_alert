@@ -109,6 +109,13 @@ class TransitionCanaryTests(unittest.TestCase):
         r=run_canary(state,START,lambda *_:(200,.1,malformed,None))
         self.assertEqual(r['observation_state'],'unknown')
 
+    def test_current_run_page_does_not_starve_another_date(self):
+        state={}
+        with patch.dict('os.environ',{'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'2'}):
+            pages(state)['0128|'+DAY]={'last_attempt_at':(START-timedelta(minutes=10)).isoformat(),
+                                     'last_run_id':'123:2'}
+            self.assertEqual(choose_canary_date(state,START),'20261107')
+
     def test_reads_already_collected_in_this_slot_are_not_repeated(self):
         state={}
         for day in candidate_dates(START):

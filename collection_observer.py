@@ -90,7 +90,9 @@ def observe(state, site, date, now, status, rows, accepted, parse, reason=None):
               'recovered_after_unconfirmed': recovered,
               'reason': reason if not valid else None,
               'official_publication_time_known': False}
-    page['last_run_id'] = os.environ.get('GITHUB_RUN_ID')
+    page['last_run_id'] = (os.environ['GITHUB_RUN_ID'] + ':' +
+                           os.environ.get('GITHUB_RUN_ATTEMPT', '1')
+                           if os.environ.get('GITHUB_RUN_ID') else None)
     page.update(last_attempt_at=now.isoformat(), last_status=status,
                 last_observation_state=sample['observation_state'], latest=sample)
     page['history'] = (page.get('history') or [])[-19:] + [sample]
