@@ -73,19 +73,19 @@
   "production_seen_before": 44,
   "discord_test_messages_sent": 0,
   "deployed_worker": {
-    "version": "25",
-    "now": "2026-11-05T08:48:20.481Z",
+    "version": "26",
+    "now": "2026-11-05T09:16:36.431Z",
     "browser_binding": true,
     "cron_dispatch_first": true,
     "cron_slot_dedupe": {
       "enabled": true,
       "max_claim_wait_ms": 500,
-      "last_claimed_slot": 5979561,
-      "last_claimed_at": "2026-11-05T08:45:19.912Z"
+      "last_claimed_slot": 5979567,
+      "last_claimed_at": "2026-11-05T09:15:33.016Z"
     },
     "emergency_config": {
       "status_present": true,
-      "status_updated_at": "2026-11-05T08:46:52.047Z",
+      "status_updated_at": "2026-11-05T09:15:50.484Z",
       "target_count": 2,
       "eligible_priority_count": 2
     },
@@ -93,7 +93,7 @@
       "enabled": true,
       "independent_backup": true,
       "priority_failed_in_latest_run": true,
-      "latest_github_run_at": "2026-11-05T17:46:46.712119+09:00"
+      "latest_github_run_at": "2026-11-05T18:15:45.380147+09:00"
     },
     "emergency_fallback": {
       "stale_after_seconds": 480,
@@ -101,8 +101,8 @@
         "version": 1,
         "active": true,
         "activated_at": "2026-10-13T05:05:18.774Z",
-        "last_checked_at": "2026-11-05T08:45:27.557Z",
-        "last_github_run_at": "2026-11-05T17:40:33.243890+09:00",
+        "last_checked_at": "2026-11-05T09:15:43.739Z",
+        "last_github_run_at": "2026-11-05T18:10:43.944771+09:00",
         "baseline": {
           "avengers-doomsday-ulsan-samsan": [],
           "dune-part-three-ulsan-samsan": []
@@ -126,14 +126,6 @@
       }
     }
   },
-  "deployment": {
-    "pr": 22,
-    "merge_commit": "0cd1891259e74a694593c3db31d50e0d2ed730b0",
-    "build": "3313afdd-e45e-48e2-9652-fbf0ac915df9",
-    "live_validation_run": 41997072129,
-    "runtime_read_run": 41997072190,
-    "runtime_read_attempt": 2
-  },
   "official_ui_comparison": {
     "date": "20261109",
     "movie_code": "30000103",
@@ -155,5 +147,201 @@
     "production_parser_rows": 37,
     "real_discord_messages_sent": 0,
     "seen_after": 44
-  }
+  },
+  "future_watch_range_live_validation": {
+    "observed_at": "2026-11-05T18:07:08.675161+09:00",
+    "source": "https://mcp.aka.page/api/cgv/timetable",
+    "theater": "0128",
+    "date": "20261229",
+    "http_status": 200,
+    "live_rows": 1,
+    "parsed_movie_sessions": 1,
+    "sample": {
+      "movie_code": "30001755",
+      "movie_name": "BTS WORLD TOUR ‘ARIRANG’ IN JAKARTA- LIVE VIEWING",
+      "theater_code": "0128",
+      "theater_name": "CGV 울산삼산",
+      "play_date": "20261229",
+      "start_time": "20:45",
+      "end_time": "24:00",
+      "schedule_id": "2026122901286",
+      "screen": "",
+      "total_seats": 193,
+      "remaining_seats": 152
+    },
+    "new_duplicate_seat_change_rejections_failed_delivery_state_preservation": "passed",
+    "production_seen_changed": false,
+    "real_discord_called": false,
+    "natural_publication_latency_measured": false,
+    "engine_validation": "isolated replay of actual captured timetable"
+  },
+  "actual_seat_change": {
+    "first": {
+      "observed_at": "2026-11-05T18:02:39.377168+09:00",
+      "http_status": 200,
+      "date": "20261229",
+      "rows": [
+        {
+          "movie_code": "30001755",
+          "movie_name": "BTS WORLD TOUR ‘ARIRANG’ IN JAKARTA- LIVE VIEWING",
+          "theater_code": "0128",
+          "theater_name": "CGV 울산삼산",
+          "play_date": "20261229",
+          "start_time": "20:45",
+          "end_time": "24:00",
+          "schedule_id": "2026122901286",
+          "screen": "",
+          "total_seats": 193,
+          "remaining_seats": 153
+        }
+      ]
+    },
+    "later": {
+      "movie_code": "30001755",
+      "movie_name": "BTS WORLD TOUR ‘ARIRANG’ IN JAKARTA- LIVE VIEWING",
+      "theater_code": "0128",
+      "theater_name": "CGV 울산삼산",
+      "play_date": "20261229",
+      "start_time": "20:45",
+      "end_time": "24:00",
+      "schedule_id": "2026122901286",
+      "screen": "",
+      "total_seats": 193,
+      "remaining_seats": 152
+    },
+    "same_production_key": true,
+    "real_discord_called": false,
+    "before_remaining": 153,
+    "after_remaining": 152
+  },
+  "full_scan_1800": {
+    "run_id": 41998854708,
+    "checked_pages": 14,
+    "collected": 1,
+    "failed_requests": 13,
+    "collected_date": "20261229",
+    "matching_watched_movies": 0,
+    "future_502_interpretation": "retrieval failed; publication state unknown"
+  },
+  "delivery_regression": {
+    "tests": 81,
+    "first_message_http": 204,
+    "second_message_http": 500,
+    "first_seen_persisted": true,
+    "next_run_only_unsent_message": true,
+    "real_discord_called": false
+  },
+  "prior_24h_dispatch_cadence": {
+    "count": 282,
+    "gaps": [
+      {
+        "from": "2026-11-05T04:15:22Z",
+        "to": "2026-11-05T04:25:22Z",
+        "seconds": 600
+      },
+      {
+        "from": "2026-11-04T10:35:29Z",
+        "to": "2026-11-04T10:45:22Z",
+        "seconds": 593
+      },
+      {
+        "from": "2026-11-04T10:15:23Z",
+        "to": "2026-11-04T10:25:26Z",
+        "seconds": 603
+      },
+      {
+        "from": "2026-11-04T10:00:24Z",
+        "to": "2026-11-04T10:10:22Z",
+        "seconds": 598
+      },
+      {
+        "from": "2026-11-04T09:45:25Z",
+        "to": "2026-11-04T10:00:24Z",
+        "seconds": 899
+      },
+      {
+        "from": "2026-11-04T09:35:21Z",
+        "to": "2026-11-04T09:45:25Z",
+        "seconds": 604
+      }
+    ],
+    "range": [
+      "2026-11-04T08:35:21Z",
+      "2026-11-05T08:35:21Z"
+    ]
+  },
+  "last_near_date_production_observation": {
+    "date": "20261109",
+    "http_status": 200,
+    "rows": 37,
+    "qualified": true,
+    "production_parser_rows": 37,
+    "new_session_count": 0,
+    "successful_observations": 6,
+    "failed_observations": 0,
+    "transition_from_unqualified": true,
+    "last_unqualified_at": "2026-11-05T16:25:39.303863+09:00",
+    "observed_at": "2026-11-05T18:15:48.687144+09:00",
+    "source": "public_third_party_relay",
+    "note": "canary only: not the December watched dates"
+  },
+  "deployments": [
+    {
+      "pr": 22,
+      "merge_commit": "0cd1891259e74a694593c3db31d50e0d2ed730b0",
+      "build": "3313afdd-e45e-48e2-9652-fbf0ac915df9",
+      "live_validation_run": 41997072129,
+      "runtime_read_run": 41997072190,
+      "runtime_read_attempt": 2
+    },
+    {
+      "pr": 23,
+      "merge_commit": "6f0c03e373f23fa14db0c5e1799f32f7d0a736a3",
+      "worker_version": "26",
+      "runtime_verification_run": 41999152831,
+      "build": "c8e8ff26-054e-4777-9da9-fc96ea8da53a"
+    }
+  ],
+  "backup_dispatch_observation": {
+    "extra_dispatch_before_positive_claim_requirement": "2026-11-05T17:57:44+09:00",
+    "d1_timeout_cause": "possible, not established by a live claim trace",
+    "v26_requires_positive_backup_claim": true
+  },
+  "real_target_open_alert_delivered": false,
+  "full_recovery_claimed": false,
+  "independent_live_validation": {
+    "date": "20261109",
+    "movie_code": "30000103",
+    "live_bookable_shows": 4,
+    "new_seen_keys": 4,
+    "mock_discord_calls": 1,
+    "snapshot_age_seconds": 388,
+    "source_age_seconds": 1356,
+    "production_discord_called": false,
+    "production_state_modified": false,
+    "live_identity_rejection_checks": 7,
+    "empty_future_unconfirmed": true,
+    "failed_discord_did_not_save_seen": true
+  },
+  "post_correction_dispatches": [
+    {
+      "id": 42000901373,
+      "created_at": "2026-11-05T09:15:34Z",
+      "conclusion": null
+    },
+    {
+      "id": 42000212757,
+      "created_at": "2026-11-05T09:10:33Z",
+      "conclusion": "success"
+    },
+    {
+      "id": 41999531595,
+      "created_at": "2026-11-05T09:05:33Z",
+      "conclusion": "success"
+    }
+  ],
+  "production_seen_exactly_preserved": true,
+  "runtime_read_job": 127155949973,
+  "source_reliability_limit": "Six consecutive published-date observations after observer extension; no claim of 24h failure-free source or measured official publication-to-alert delay."
 }
+
