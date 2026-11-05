@@ -8,6 +8,7 @@ on:
       - test_due_date_collection.py
       - test_notification_delivery.py
       - verify_live_primary.py
+      - collection_observer.py
       - checker.py
       - production_shadow.py
       - test_production_shadow.py

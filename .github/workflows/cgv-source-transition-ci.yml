@@ -3,11 +3,13 @@ on:
   push:
     branches: [main, feature/source-opening-transition-canary-20261101]
     paths:
+      - collection_observer.py
       - source_transition_canary.py
       - test_source_transition_canary.py
       - .github/workflows/cgv-source-transition-ci.yml
   pull_request:
     paths:
+      - collection_observer.py
       - source_transition_canary.py
       - test_source_transition_canary.py
       - .github/workflows/cgv-source-transition-ci.yml

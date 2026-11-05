@@ -1,0 +1,111 @@
+{
+  "scope": "stage1_collection_only",
+  "baseline_seen_count": 44,
+  "config_sha256": "a1e1137346e5695cf78d5233445a419d53edd39cd42c05dc64cb603cf63c6a98",
+  "rounds": [
+    {
+      "at": "2026-11-05T19:01:54.059001+09:00",
+      "date": "20261109",
+      "http_status": 200,
+      "accepted": true,
+      "rows": 37,
+      "sample": {
+        "movie_code": "30000103",
+        "movie_name": "극장판 체인소 맨-레제편",
+        "theater_code": "0128",
+        "theater_name": "CGV 울산삼산",
+        "play_date": "20261109",
+        "start_time": "10:00",
+        "end_time": "11:50",
+        "schedule_id": "2026110901281",
+        "screen": "",
+        "total_seats": 111,
+        "remaining_seats": 111
+      }
+    },
+    {
+      "at": "2026-11-05T19:02:02.721172+09:00",
+      "date": "20261110",
+      "http_status": 200,
+      "accepted": true,
+      "rows": 35,
+      "sample": {
+        "movie_code": "30000103",
+        "movie_name": "극장판 체인소 맨-레제편",
+        "theater_code": "0128",
+        "theater_name": "CGV 울산삼산",
+        "play_date": "20261110",
+        "start_time": "10:00",
+        "end_time": "11:50",
+        "schedule_id": "2026111001281",
+        "screen": "",
+        "total_seats": 111,
+        "remaining_seats": 111
+      }
+    },
+    {
+      "at": "2026-11-05T19:05:52.328540+09:00",
+      "date": "20261109",
+      "http_status": 200,
+      "accepted": true,
+      "rows": 37,
+      "sample": {
+        "movie_code": "30000103",
+        "movie_name": "극장판 체인소 맨-레제편",
+        "theater_code": "0128",
+        "theater_name": "CGV 울산삼산",
+        "play_date": "20261109",
+        "start_time": "10:00",
+        "end_time": "11:50",
+        "schedule_id": "2026110901281",
+        "screen": "",
+        "total_seats": 111,
+        "remaining_seats": 111
+      }
+    },
+    {
+      "at": "2026-11-05T19:05:59.525367+09:00",
+      "date": "20261110",
+      "http_status": 200,
+      "accepted": true,
+      "rows": 35,
+      "sample": {
+        "movie_code": "30000103",
+        "movie_name": "극장판 체인소 맨-레제편",
+        "theater_code": "0128",
+        "theater_name": "CGV 울산삼산",
+        "play_date": "20261110",
+        "start_time": "10:00",
+        "end_time": "11:50",
+        "schedule_id": "2026111001281",
+        "screen": "",
+        "total_seats": 111,
+        "remaining_seats": 111
+      }
+    }
+  ],
+  "independent": {
+    "observed_at": "2026-11-05T19:10:00.729806+09:00",
+    "generated_at": "2026-11-05T10:05:11.250603+00:00",
+    "source_updated_at": "2026-11-05T09:44:48.237459+00:00",
+    "snapshot_age_seconds": 289,
+    "source_age_seconds": 1512,
+    "per_date_rows": {
+      "20261109": 37,
+      "20261110": 34
+    },
+    "source_can_omit_new_rows": true
+  },
+  "observation_only_added_requests_per_5min_max": 1,
+  "probe_dates_per_cycle": 8,
+  "watched_date_intervals_changed": false,
+  "discord_test_messages_sent": 0,
+  "post_deploy_verification_pending": true,
+  "actual_captured_payload_replay": {
+    "first_publication_rows": 36,
+    "additional_rows": 1,
+    "seat_only_added": 0,
+    "retained_after_502": 37,
+    "natural_publication_observed_during_replay": false
+  }
+}

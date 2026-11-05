@@ -19,6 +19,7 @@ from cgv_payload_contract import parse_cgv_schedule_payload
 from collection_outcome import annotate as annotate_collection
 from moviebara_fallback import SnapshotError, read_cinema_snapshot
 from production_shadow import record_shadow
+from collection_observer import observe as observe_collection, recent_observations
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
@@ -592,6 +593,7 @@ def build_runtime_snapshot(
         "active_count": len(target_items),
         "targets": target_items,
     }
+    snapshot["source_collection_observations"] = recent_observations(state, now)
     return annotate_collection(snapshot, page_results, now)
 
 
@@ -1839,6 +1841,16 @@ def _public_failure_reason(result):
 
 
 def _fetch_public_page(state, site_no: str, play_ymd: str, now: datetime):
+    result = _fetch_public_page_impl(state, site_no, play_ymd, now)
+    result['collection_observation'] = observe_collection(
+        state, str(site_no), str(play_ymd), now, result.get('status'),
+        result.get('rows') or [], result.get('accepted'), extract_public_sessions,
+        reason=result.get('state'))
+    result['state_changed'] = True
+    return result
+
+
+def _fetch_public_page_impl(state, site_no: str, play_ymd: str, now: datetime):
     """현재 검증된 제3자 구조화 시간표를 production 1차 경로로 읽는다.
 
     HTTP 200 + []는 곧바로 '예매 없음'으로 확정하지 않는다.
@@ -1858,6 +1870,11 @@ def _fetch_public_page(state, site_no: str, play_ymd: str, now: datetime):
     structural = public_structural_valid(
         status, error, payload_shape_ok, inspection
     )
+
+    if any(row.get("theater_code") != str(site_no) or
+           row.get("play_date") != str(play_ymd) for row in rows):
+        structural = False
+        error = "supplier returned a different theater/date"
 
     page_key = f"{site_no}|{play_ymd}"
     pages = _public_snapshot_root(state)["pages"]
