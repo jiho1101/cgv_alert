@@ -42,7 +42,9 @@ def observe(state, site, date, now, status, rows, accepted, parse, reason=None):
     """
     key = f'{site}|{date}'
     page = pages(state).setdefault(key, {'date': date, 'theater_code': site})
-    page.setdefault('started_at', now.isoformat())
+    if not page.get('started_at'):
+        page['started_at'] = (page.get('published_at') or
+                              (page.get('history') or [{}])[0].get('at') or now.isoformat())
     identities, bookable, rejected = set(), 0, 0
     valid = bool(accepted and status == 200 and rows)
     if valid:
