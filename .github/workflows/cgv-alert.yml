@@ -18,6 +18,7 @@ on:
       - "test_verified_feed.py"
       - "checker.py"
       - "test_due_date_collection.py"
+      - "test_notification_delivery.py"
       - "verify_live_primary.py"
       - "production_shadow.py"
       - "test_production_shadow.py"
@@ -71,10 +72,10 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Check Python syntax
-        run: python -m py_compile checker.py shadow_public_monitor.py moviebara_fallback.py cgv_payload_contract.py cgv_first_party_publisher.py test_cgv_payload_contract.py test_cgv_first_party_publisher.py test_moviebara_fallback.py test_independent_failover.py source_transition_canary.py test_source_transition_canary.py test_due_date_collection.py
+        run: python -m py_compile checker.py shadow_public_monitor.py moviebara_fallback.py cgv_payload_contract.py cgv_first_party_publisher.py test_cgv_payload_contract.py test_cgv_first_party_publisher.py test_moviebara_fallback.py test_independent_failover.py source_transition_canary.py test_source_transition_canary.py test_due_date_collection.py test_notification_delivery.py
 
       - name: Test independent timetable fallback
-        run: python -m unittest -v test_moviebara_fallback.py test_independent_failover.py test_collection_outcome.py test_verified_feed.py test_cgv_first_party_publisher.py test_cgv_payload_contract.py test_production_shadow.py test_source_transition_canary.py test_due_date_collection.py
+        run: python -m unittest -v test_moviebara_fallback.py test_independent_failover.py test_collection_outcome.py test_verified_feed.py test_cgv_first_party_publisher.py test_cgv_payload_contract.py test_production_shadow.py test_source_transition_canary.py test_due_date_collection.py test_notification_delivery.py
 
       - name: Check Cloudflare Worker syntax
         run: |
@@ -231,7 +232,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "25"
+          expected_version = "26"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:
@@ -322,7 +323,7 @@ jobs:
                       and live_priority >= 2
                   ):
                       print(
-                          "Cloudflare Worker v25 + 2 live emergency targets confirmed (data freshness still unverified)"
+                          "Cloudflare Worker v26 + 2 live emergency targets confirmed (data freshness still unverified)"
                       )
                       raise SystemExit(0)
               except requests.RequestException as exc:

@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "25";
+const COMMAND_VERSION = "26";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
@@ -205,6 +205,13 @@ async function putState(env, key, value) {
 // Use a single persistent row rather than accumulating one key each 5 minutes.
 export function cronSlotNumber(atMs) {
   return Math.floor(Number(atMs) / CRON_SLOT_MS);
+}
+
+export function shouldDispatchCron(claimed, cron) {
+  // Primary keeps fail-open availability. An optional backup must acquire
+  // a positive shared claim; slow/unavailable D1 must not double requests.
+  if (cron === "2-57/5 * * * *") return claimed === true;
+  return claimed !== false;
 }
 
 async function claimCronSlot(env, slot) {
@@ -1947,8 +1954,8 @@ export default {
         const dispatchedAt = new Date().toISOString();
         const slot = cronSlotNumber(Date.now());
         const claimed = await boundedCronSlotClaim(env, slot);
-        if (claimed === false) {
-          console.log("CGV Cron duplicate slot suppressed", slot);
+        if (!shouldDispatchCron(claimed, controller?.cron)) {
+          console.log("CGV Cron duplicate/unconfirmed backup slot suppressed", slot);
           return;
         }
         let dispatchError = null;

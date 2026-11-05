@@ -18,7 +18,8 @@ from shadow_public_monitor import (
     structural_valid,
 )
 
-from checker import _production_public_request as request_timetable, _parse_retry_after_seconds
+from checker import (_production_public_request as request_timetable,
+                     _parse_retry_after_seconds, _public_guard_failure)
 
 KST = ZoneInfo("Asia/Seoul")
 HORIZON_DAYS = 8
@@ -82,7 +83,7 @@ def qualify_canary_response(status, payload, error, site, play_date):
 
 
 def run_canary(state, now, request=request_timetable, site="0128"):
-    """At most one public-relay probe per 5m; never affects primary collection.
+    """At most one public-relay probe per 5m; shares supplier rejection protection.
 
     Caller persists the returned state via its existing semantics-preserving
     GitHub Actions save step. No branch writes, push or Discord are done here.
@@ -158,6 +159,9 @@ def run_canary(state, now, request=request_timetable, site="0128"):
         # Honor explicit supplier deadlines. Missing 429 deadline gets >=1h.
         delay = max(retry_seconds or 0, 3600 if status == 429 else 0)
         probe["backoff_until"] = (now + timedelta(seconds=delay)).isoformat()
+        # The observer shares the same supplier/client quota as production.
+        # Its explicit rejection must protect the next core run as well.
+        _public_guard_failure(state, status, retry_after, now)
     if not valid:
         probe["last_unqualified_at"] = now.isoformat()
     elif not probe.get("qualified_at"):
