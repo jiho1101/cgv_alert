@@ -32,14 +32,14 @@ jobs:
           response.raise_for_status()
           data = response.json()
           result = {key: data.get(key) for key in [
-              "version", "now", "browser_binding", "cron_dispatch_first",
+              "version", "now", "browser_binding", "cron_dispatch_first", "cron_slot_dedupe",
               "emergency_config", "source_takeover", "emergency_fallback",
           ]}
           Path("worker_runtime_latest.json").write_text(
               json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
           config = result.get("emergency_config") or {}
           print("REAL_WORKER_RUNTIME", json.dumps(result, ensure_ascii=False))
-          assert data.get("ok") is True and str(data.get("version")) == "24"
+          assert data.get("ok") is True and str(data.get("version")) == "25"
           assert config.get("status_present") is True
           assert config.get("target_count") == 2 and config.get("eligible_priority_count") == 2
           print("WORKER_CONFIG_VERIFIED: actual collection health is separate")

@@ -43,7 +43,7 @@ class TransitionCanaryTests(unittest.TestCase):
         self.assertEqual(first["date"], DAY)
         self.assertFalse(first["qualified"])
         self.assertEqual(
-            run_canary(state, START + timedelta(minutes=5), request),
+            run_canary(state, START + timedelta(minutes=4), request),
             {"skipped": "not_due"},
         )
         second = run_canary(state, START + timedelta(minutes=10), request)
@@ -51,10 +51,40 @@ class TransitionCanaryTests(unittest.TestCase):
         self.assertTrue(second["transition_from_unqualified"])
         self.assertEqual(len(calls), 2)
         self.assertEqual(len(state[STATE_KEY]["history"]), 2)
-        self.assertEqual(
-            run_canary(state, START + timedelta(minutes=20), request),
-            {"skipped": "transition_already_observed"},
-        )
+        repeat = run_canary(state, START + timedelta(minutes=20), request)
+        self.assertEqual(repeat["new_session_count"], 0)
+        self.assertEqual(repeat["successful_observations"], 2)
+        self.assertEqual(len(calls), 3)
+        changed = copy.deepcopy(SUCCESS)
+        changed["data"][0]["remainingSeats"] = 1
+        seats = run_canary(state, START + timedelta(minutes=25),
+                           lambda *_: (200, .1, changed, None))
+        self.assertEqual(seats["new_session_count"], 0)
+        changed["data"].append(dict(ROW, scheduleId=DAY + "01282", startTime="13:00"))
+        added = run_canary(state, START + timedelta(minutes=30),
+                           lambda *_: (200, .1, changed, None))
+        self.assertEqual(added["new_session_count"], 1)
+        before = list(state[STATE_KEY]["observed_keys"])
+        failed = run_canary(state, START + timedelta(minutes=35),
+                            lambda *_: (502, .1, {}, None))
+        self.assertFalse(failed["qualified"])
+        self.assertEqual(before, state[STATE_KEY]["observed_keys"])
+
+    def test_next_slot_runs_despite_runner_jitter(self):
+        state = {}
+        run_canary(state, START + timedelta(seconds=49),
+                   lambda *_: (200, .1, copy.deepcopy(SUCCESS), None))
+        result = run_canary(state, START + timedelta(minutes=5, seconds=35),
+                            lambda *_: (200, .1, copy.deepcopy(SUCCESS), None))
+        self.assertTrue(result["qualified"])
+        self.assertEqual(result["new_session_count"], 0)
+
+    def test_explicit_long_retry_after_is_respected(self):
+        state = {}
+        run_canary(state, START, lambda *_: (429, .1, {}, None, "7200"))
+        result = run_canary(state, START + timedelta(minutes=90),
+                            lambda *_: self.fail("Retry-After deadline ignored"))
+        self.assertEqual(result, {"skipped": "canary_429_backoff"})
 
     def test_empty_and_wrong_theater_not_qualified(self):
         self.assertEqual(

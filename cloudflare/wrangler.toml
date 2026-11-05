@@ -15,4 +15,6 @@ database_id = "da21f615-7792-4a57-a612-890198e606f0"
 binding = "BROWSER"
 
 [triggers]
-crons = ["*/5 * * * *"]
+# A second arrival can recover a missed primary tick. Shared atomic D1 slot
+# permits only one dispatch per five-minute slot across both schedules.
+crons = ["*/5 * * * *", "2-57/5 * * * *"]

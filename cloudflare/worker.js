@@ -2,7 +2,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "24";
+const COMMAND_VERSION = "25";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
@@ -1153,7 +1153,7 @@ export function emergencySessions(rows, target) {
       row.play_date !== target.play_date
     ) continue;
     const movieName = emergencyNormalize(row.movie_name);
-    if (pinned ? row.movie_code !== pinned : !aliases.has(movieName)) continue;
+    if (!aliases.has(movieName) || (pinned && row.movie_code !== pinned)) continue;
     const scheduleId = String(row.schedule_id || "");
     const prefix = row.play_date + row.theater_code;
     if (!scheduleId || (/^\d+$/.test(scheduleId) &&
