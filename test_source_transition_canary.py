@@ -48,7 +48,9 @@ class TransitionCanaryTests(unittest.TestCase):
         old=pages(state)['0128|20261109']
         self.assertEqual(old['legacy_probe'],legacy)
         self.assertIn('legacy-key',old['observed_keys'])
-        self.assertEqual(state[STATE_KEY]['history'],legacy['history'])
+        self.assertEqual(old['legacy_probe']['history'],legacy['history'])
+        self.assertEqual(state[STATE_KEY]['date'],DAY)
+        self.assertEqual(state[STATE_KEY]['version'],2)
 
     def test_jitter_same_slot_and_next_slot(self):
         state={};calls=[]

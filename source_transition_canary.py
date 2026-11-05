@@ -99,6 +99,14 @@ def run_canary(state, now, request=request_timetable, site='0128', watched_dates
     accepted = structural_valid(status, error, shape, inspect_rows(rows))
     result = observe(state, site, date, now, status, rows, accepted,
                      extract_public_sessions, reason=error or 'invalid_or_empty_response')
+    # Keep the legacy top-level summary current while its original full
+    # observation remains preserved under the migrated date's legacy_probe.
+    observed_page = pages(state)[f'{site}|{date}']
+    previous.update(version=2, date=date, last_status=status,
+                    last_valid_rows=result['validated_rows'],
+                    qualified_at=observed_page.get('published_at'),
+                    observed_keys=list(observed_page.get('observed_keys') or []),
+                    history=list(observed_page.get('history') or []))
     seconds = _parse_retry_after_seconds(retry_after, now)
     if status == 429 or (seconds is not None and status != 200):
         delay = max(seconds or 0, 3600 if status == 429 else 0)
