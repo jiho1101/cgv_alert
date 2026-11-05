@@ -2757,27 +2757,31 @@ def build_alert_embeds(notification_items):
                 ),
             )
             new_count = sum(1 for row in ordered if row["_key"] in new_keys)
+            if not new_count:
+                continue
             fallback_used = any(row.get("_fallback") for row in ordered)
 
             by_screen = defaultdict(list)
             for row in ordered:
                 screen = row.get("ScreenNm") or "상영관 정보 확인 필요"
                 mark = "🆕 " if row["_key"] in new_keys else ""
-                by_screen[screen].append(
-                    f"{mark}`{pretty_time(row.get('PlayStartTm'))}`"
-                )
+                by_screen[screen].append((
+                    f"{mark}`{pretty_time(row.get('PlayStartTm'))}`", row
+                ))
 
             fields = []
             for screen in sorted(by_screen):
-                value = "  ".join(by_screen[screen])
-                while value:
-                    chunk = value[:1000]
-                    value = value[1000:]
-                    fields.append({
-                        "name": f"🎥 {screen}",
-                        "value": chunk,
-                        "inline": False,
-                    })
+                texts, delivery_rows = [], []
+                for text, row in by_screen[screen]:
+                    if texts and len("  ".join(texts + [text])) > 1000:
+                        fields.append({"name": f"🎥 {screen}", "value": "  ".join(texts),
+                                       "inline": False, "_rows": delivery_rows})
+                        texts, delivery_rows = [], []
+                    texts.append(text)
+                    delivery_rows.append(row)
+                if texts:
+                    fields.append({"name": f"🎥 {screen}", "value": "  ".join(texts),
+                                   "inline": False, "_rows": delivery_rows})
 
             if not fields:
                 fields = [{
@@ -2800,7 +2804,12 @@ def build_alert_embeds(notification_items):
             if current:
                 chunks.append(current)
 
+            chunks = [chunk for chunk in chunks if any(
+                row["_key"] in new_keys
+                for field in chunk for row in field.get("_rows", []))]
             for part, chunk in enumerate(chunks, start=1):
+                new_count = sum(row["_key"] in new_keys for field in chunk
+                                for row in field.get("_rows", []))
                 title_suffix = f" · {part}/{len(chunks)}" if len(chunks) > 1 else ""
                 embeds.append({
                     "_fallback": fallback_used,
@@ -2824,7 +2833,12 @@ def build_alert_embeds(notification_items):
                         + "\n아래에서 상영관별 시간을 확인하세요. "
                         "🆕 표시는 이번에 새로 감지된 회차입니다."
                     ),
-                    "fields": chunk,
+                    "_delivery": {
+                        "target_id": item["target_id"],
+                        "seen": [row["_key"] for field in chunk for row in field.get("_rows", []) if not row.get("_fallback")],
+                        "fallback_seen": [row["_key"] for field in chunk for row in field.get("_rows", []) if row.get("_fallback")],
+                    },
+                    "fields": [{k: v for k, v in field.items() if k != "_rows"} for field in chunk],
                     "footer": {
                         "text": (
                             f"CGV 보조 감지 후보 · {checked_at} · 제목을 누르면 예매 페이지로 이동"
@@ -2837,7 +2851,7 @@ def build_alert_embeds(notification_items):
     return embeds
 
 
-def send_discord_embeds(embeds, content_override=None) -> bool:
+def send_discord_embeds(embeds, content_override=None, on_delivered=None) -> bool:
     webhook = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
     if not webhook:
         print("DISCORD_WEBHOOK_URL Secret이 아직 없어 실제 알림은 보내지 않았습니다.")
@@ -2849,6 +2863,7 @@ def send_discord_embeds(embeds, content_override=None) -> bool:
     for index, embed in enumerate(embeds):
         payload_embed = dict(embed)
         payload_embed.pop("_fallback", None)
+        payload_embed.pop("_delivery", None)
         payload = {"embeds": [payload_embed]}
         if index == 0:
             if content_override:
@@ -2865,6 +2880,8 @@ def send_discord_embeds(embeds, content_override=None) -> bool:
             raise RuntimeError(f"Discord 전송 실패 ({type(exc).__name__})") from None
         if response.status_code not in {200, 204}:
             raise RuntimeError(f"Discord 전송 실패 (HTTP {response.status_code})")
+        if on_delivered is not None:
+            on_delivered(embed)
 
     print("Discord Embed 알림 전송 완료")
     return True
@@ -4765,7 +4782,23 @@ def run_checker(force_all: bool = False):
         message = build_hierarchical_message(notification_items)
         print(message)
         embeds = build_alert_embeds(notification_items)
-        if send_discord_embeds(embeds):
+        def persist_delivered_embed(embed):
+            receipt = embed.get("_delivery") or {}
+            target_id = receipt.get("target_id")
+            if not target_id:
+                return
+            for category in ("seen", "fallback_seen"):
+                keys = receipt.get(category) or []
+                if keys:
+                    known = set(state.setdefault(category, {}).get(target_id) or [])
+                    state[category][target_id] = sorted(known | set(keys))[-1000:]
+            # Save each confirmed HTTP delivery immediately. If a later
+            # message fails, the always-run workflow state save retains this.
+            save_state(state)
+            write_runtime_status(build_runtime_snapshot(
+                config, state, targets, now, page_results, found=found))
+
+        if send_discord_embeds(embeds, on_delivered=persist_delivered_embed):
             for item in notification_items:
                 target_id = item["target_id"]
                 seen = set(state["seen"].get(target_id, []))

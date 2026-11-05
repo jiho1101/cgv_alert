@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - test_due_date_collection.py
+      - test_notification_delivery.py
       - verify_live_primary.py
       - checker.py
       - production_shadow.py
@@ -29,5 +30,5 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: pip install -r requirements.txt
-      - run: python -m unittest -q test_due_date_collection test_source_transition_canary test_production_shadow test_independent_failover test_collection_outcome test_moviebara_fallback test_shadow_fallback_validation test_verified_feed test_cgv_payload_contract test_cgv_first_party_publisher
+      - run: python -m unittest -q test_notification_delivery test_due_date_collection test_source_transition_canary test_production_shadow test_independent_failover test_collection_outcome test_moviebara_fallback test_shadow_fallback_validation test_verified_feed test_cgv_payload_contract test_cgv_first_party_publisher
       - run: node cloudflare/worker-takeover.test.mjs

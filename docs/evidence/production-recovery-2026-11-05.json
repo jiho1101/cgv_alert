@@ -70,7 +70,90 @@
     "first_qualified_rows": 34,
     "official_publication_at": null
   },
-  "deployed_version_pending": "25",
   "production_seen_before": 44,
-  "discord_test_messages_sent": 0
+  "discord_test_messages_sent": 0,
+  "deployed_worker": {
+    "version": "25",
+    "now": "2026-11-05T08:48:20.481Z",
+    "browser_binding": true,
+    "cron_dispatch_first": true,
+    "cron_slot_dedupe": {
+      "enabled": true,
+      "max_claim_wait_ms": 500,
+      "last_claimed_slot": 5979561,
+      "last_claimed_at": "2026-11-05T08:45:19.912Z"
+    },
+    "emergency_config": {
+      "status_present": true,
+      "status_updated_at": "2026-11-05T08:46:52.047Z",
+      "target_count": 2,
+      "eligible_priority_count": 2
+    },
+    "source_takeover": {
+      "enabled": true,
+      "independent_backup": true,
+      "priority_failed_in_latest_run": true,
+      "latest_github_run_at": "2026-11-05T17:46:46.712119+09:00"
+    },
+    "emergency_fallback": {
+      "stale_after_seconds": 480,
+      "state": {
+        "version": 1,
+        "active": true,
+        "activated_at": "2026-10-13T05:05:18.774Z",
+        "last_checked_at": "2026-11-05T08:45:27.557Z",
+        "last_github_run_at": "2026-11-05T17:40:33.243890+09:00",
+        "baseline": {
+          "avengers-doomsday-ulsan-samsan": [],
+          "dune-part-three-ulsan-samsan": []
+        },
+        "notified": {},
+        "source_pages": [
+          {
+            "theater_code": "0128",
+            "play_date": "20261218",
+            "status": 502,
+            "source": "public_primary",
+            "structural_valid": false,
+            "rows": 0,
+            "error": "invalid response/status; independent future date not published (unconfirmed)"
+          }
+        ],
+        "target_results": [],
+        "last_error": "invalid response/status; independent future date not published (unconfirmed)",
+        "last_alert_at": null,
+        "recovered_at": "2026-10-13T04:15:16.043Z"
+      }
+    }
+  },
+  "deployment": {
+    "pr": 22,
+    "merge_commit": "0cd1891259e74a694593c3db31d50e0d2ed730b0",
+    "build": "3313afdd-e45e-48e2-9652-fbf0ac915df9",
+    "live_validation_run": 41997072129,
+    "runtime_read_run": 41997072190,
+    "runtime_read_attempt": 2
+  },
+  "official_ui_comparison": {
+    "date": "20261109",
+    "movie_code": "30000103",
+    "movie_name": "극장판 체인소 맨-레제편",
+    "times": [
+      "10:00",
+      "15:05",
+      "19:35",
+      "21:45"
+    ],
+    "total_seats": 111,
+    "remaining_seats_each": 111,
+    "matches_public_relay": true,
+    "official_first_publication_at": null
+  },
+  "post_deploy": {
+    "first_automatic_near_date_check": "2026-11-05T17:50:36.318477+09:00",
+    "rows": 37,
+    "production_parser_rows": 37,
+    "real_discord_messages_sent": 0,
+    "seen_after": 44
+  }
 }

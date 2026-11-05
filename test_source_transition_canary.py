@@ -84,7 +84,7 @@ class TransitionCanaryTests(unittest.TestCase):
         run_canary(state, START, lambda *_: (429, .1, {}, None, "7200"))
         result = run_canary(state, START + timedelta(minutes=90),
                             lambda *_: self.fail("Retry-After deadline ignored"))
-        self.assertEqual(result, {"skipped": "canary_429_backoff"})
+        self.assertEqual(result, {"skipped": "supplier_429_backoff"})
 
     def test_empty_and_wrong_theater_not_qualified(self):
         self.assertEqual(
@@ -123,7 +123,7 @@ class TransitionCanaryTests(unittest.TestCase):
         )
         self.assertNotIn(STATE_KEY, state)
 
-    def test_canary_429_sets_own_backoff_without_raising_global_guard(self):
+    def test_canary_429_protects_shared_supplier_budget(self):
         state = {}
         first = run_canary(state, START, lambda *_: (429, .1, {}, None))
         self.assertEqual(first["http_status"], 429)
@@ -134,7 +134,7 @@ class TransitionCanaryTests(unittest.TestCase):
             ),
             {"skipped": "canary_429_backoff"},
         )
-        self.assertNotIn("public_api_guard", state)
+        self.assertEqual(state["public_api_guard"]["last_status"], 429)
 
     def test_date_rolls_only_when_near(self):
         state = {STATE_KEY: {"date": DAY}}

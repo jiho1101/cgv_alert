@@ -280,3 +280,10 @@ console.log("EMERGENCY_COMPOSITE_ID_TEST PASS: missing sequence, wrong date/site
   }
 }
 console.log("CRON_ATOMIC_SLOT_TEST PASS: same-slot duplicate suppressed, next slot allowed");
+
+import { shouldDispatchCron } from "./worker.js";
+assert.equal(shouldDispatchCron(null, "*/5 * * * *"), true);
+assert.equal(shouldDispatchCron(null, "2-57/5 * * * *"), false);
+assert.equal(shouldDispatchCron(false, "2-57/5 * * * *"), false);
+assert.equal(shouldDispatchCron(true, "2-57/5 * * * *"), true);
+console.log("BACKUP_CRON_POSITIVE_CLAIM_TEST PASS");
