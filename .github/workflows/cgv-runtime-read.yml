@@ -1,16 +1,20 @@
 name: CGV runtime read-only verification
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
   push:
     branches: [main]
-    paths: [.github/workflows/cgv-runtime-read.yml]
+    paths: [.github/workflows/cgv-runtime-read.yml, operations_audit.py]
 permissions:
   contents: read
+  actions: read
 jobs:
   runtime:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -32,7 +36,7 @@ jobs:
               )
               response.raise_for_status()
               data = response.json()
-              if str(data.get("version")) == "28":
+              if str(data.get("version")) == "29":
                   break
               print("Waiting for existing automatic deployment", attempt + 1)
               time.sleep(5)
@@ -44,14 +48,20 @@ jobs:
               json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
           config = result.get("emergency_config") or {}
           print("REAL_WORKER_RUNTIME", json.dumps(result, ensure_ascii=False))
-          assert data.get("ok") is True and str(data.get("version")) == "28"
+          assert data.get("ok") is True and str(data.get("version")) == "29"
           assert config.get("status_present") is True
           assert config.get("target_count") == 2 and config.get("eligible_priority_count") == 2
           print("WORKER_CONFIG_VERIFIED: actual collection health is separate")
           PY
+      - name: Collect operating window without changing monitoring state
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python operations_audit.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: cgv-worker-runtime
-          path: worker_runtime_latest.json
-          retention-days: 7
+          path: |
+            worker_runtime_latest.json
+            operations_audit.json
+          retention-days: 14

@@ -1,0 +1,23 @@
+{
+  "period_start": "2026-11-06T02:30:32Z",
+  "period_end": "2026-11-06T08:00:33Z",
+  "actual": 67,
+  "expected": 67,
+  "max_gap_seconds": 301,
+  "duplicate_slots": 0,
+  "seven_day": {
+    "actual": 2009,
+    "outcomes": {
+      "success": 1999,
+      "cancelled": 8,
+      "failure": 2
+    },
+    "max_gap_seconds": 3900
+  },
+  "core_attempts": 67,
+  "post24h_complete": false,
+  "logs_checked": 67,
+  "trace_logs_checked": 67,
+  "known_supplier_errors_not_absence": true,
+  "real_discord_test_sent": false
+}
