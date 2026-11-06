@@ -3,7 +3,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "27";
+const COMMAND_VERSION = "28";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
@@ -93,7 +93,7 @@ async function verifyDiscordRequest(request, body, publicKeyHex) {
   }
 }
 
-async function triggerGitHub(env, source = "cron") {
+async function triggerGitHub(env, source = "cron", timing = {}) {
   if (!env.GITHUB_TOKEN) {
     throw new Error("GITHUB_TOKEN secret is missing");
   }
@@ -109,7 +109,7 @@ async function triggerGitHub(env, source = "cron") {
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "cgv-alert-cloudflare-trigger",
     },
-    body: JSON.stringify({ ref: GITHUB_REF, inputs: { source } }),
+    body: JSON.stringify({ ref: GITHUB_REF, inputs: { source, ...timing } }),
   });
 
   if (response.status !== 204) {
@@ -1981,7 +1981,10 @@ export default {
         }
         let dispatchError = null;
         try {
-          await triggerGitHub(env);
+          await triggerGitHub(env, "cron", {
+            cron_scheduled_utc: new Date(controller.scheduledTime || Date.now()).toISOString(),
+            dispatch_utc: new Date().toISOString(),
+          });
         } catch (error) {
           dispatchError = error;
           console.error("CGV Alert workflow dispatch failed", error);

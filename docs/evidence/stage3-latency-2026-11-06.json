@@ -1,0 +1,101 @@
+{
+  "official_publication_time_utc": null,
+  "actual_open_to_discord_within_5_minutes_proven": false,
+  "production_before": [
+    {
+      "run_id": 42148620573,
+      "scheduled_utc": "2026-11-06T02:10:00Z",
+      "run_created_utc": "2026-11-06T02:10:33Z",
+      "collector_start_utc": "2026-11-06T02:10:48Z",
+      "collector_end_utc": "2026-11-06T02:10:52Z"
+    },
+    {
+      "run_id": 42149161937,
+      "scheduled_utc": "2026-11-06T02:15:00Z",
+      "run_created_utc": "2026-11-06T02:15:33Z",
+      "collector_start_utc": "2026-11-06T02:15:46Z",
+      "collector_end_utc": "2026-11-06T02:15:50Z"
+    },
+    {
+      "run_id": 42149700031,
+      "scheduled_utc": "2026-11-06T02:20:00Z",
+      "run_created_utc": "2026-11-06T02:20:33Z",
+      "collector_start_utc": "2026-11-06T02:20:51Z",
+      "collector_end_utc": "2026-11-06T02:20:54Z"
+    }
+  ],
+  "scheduled_time_note": "Nominal cron boundary, not measured historical controller arrival. v28 records actual controller scheduledTime and dispatch UTC.",
+  "isolated_real_capture_local_http_measurements": [
+    {
+      "collector_to_mock_http_success_ms": 4.951,
+      "collector_total_ms": 15.449
+    },
+    {
+      "collector_to_mock_http_success_ms": 10.064,
+      "collector_total_ms": 12.793
+    },
+    {
+      "collector_to_mock_http_success_ms": 16.252,
+      "collector_total_ms": 41.922
+    },
+    {
+      "collector_to_mock_http_success_ms": 9.737,
+      "collector_total_ms": 25.882
+    },
+    {
+      "collector_to_mock_http_success_ms": 25.657,
+      "collector_total_ms": 30.984
+    },
+    {
+      "collector_to_mock_http_success_ms": 8.878,
+      "collector_total_ms": 27.981
+    },
+    {
+      "collector_to_mock_http_success_ms": 21.481,
+      "collector_total_ms": 27.173
+    },
+    {
+      "collector_to_mock_http_success_ms": 11.001,
+      "collector_total_ms": 75.327
+    },
+    {
+      "collector_to_mock_http_success_ms": 21.814,
+      "collector_total_ms": 26.735
+    },
+    {
+      "collector_to_mock_http_success_ms": 8.802,
+      "collector_total_ms": 23.404
+    },
+    {
+      "collector_to_mock_http_success_ms": 8.741,
+      "collector_total_ms": 28.948
+    },
+    {
+      "collector_to_mock_http_success_ms": 9.976,
+      "collector_total_ms": 11.769
+    },
+    {
+      "collector_to_mock_http_success_ms": 33.807,
+      "collector_total_ms": 40.145
+    },
+    {
+      "collector_to_mock_http_success_ms": 10.731,
+      "collector_total_ms": 14.922
+    },
+    {
+      "collector_to_mock_http_success_ms": 19.655,
+      "collector_total_ms": 24.837
+    },
+    {
+      "collector_to_mock_http_success_ms": 45.185,
+      "collector_total_ms": 50.373
+    },
+    {
+      "collector_to_mock_http_success_ms": 11.269,
+      "collector_total_ms": 28.065
+    }
+  ],
+  "real_discord_test_sent": false,
+  "historical_transition": "2026-11-05 16:25 KST 11/9 HTTP502 -> 16:35 KST HTTP200 34 rows, official publication unknown; 502 is not proof of absence.",
+  "regressions": 94
+}
