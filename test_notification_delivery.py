@@ -49,6 +49,10 @@ class DeliveryReceiptTests(unittest.TestCase):
                     self.assertNotIn('_delivery',embed)
                     self.assertNotIn('_fallback',embed)
                     self.assertTrue(all('_rows' not in f for f in embed['fields']))
+                pending = json.loads(state.read_text())
+                for value in pending["delivery_journal"].values():
+                    value["next_attempt"] = 0
+                state.write_text(json.dumps(pending))
                 post.reset_mock()
                 post.side_effect=None
                 post.return_value=SimpleNamespace(status_code=204)

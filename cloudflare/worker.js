@@ -1,8 +1,9 @@
+import { deliveryOperation } from "./delivery.mjs";
 const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "26";
+const COMMAND_VERSION = "27";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
@@ -1148,7 +1149,7 @@ async function emergencyFetchPage(theaterCode, playDate) {
   };
 }
 
-export function emergencySessions(rows, target) {
+export function emergencySessions(rows, target, includeClosed = false) {
   if ((target.screen_keywords || []).length) return [];
   const aliases = new Set(target.aliases || []);
   const pinned = String(target.pinned_movie_code || "");
@@ -1163,18 +1164,19 @@ export function emergencySessions(rows, target) {
     if (!aliases.has(movieName) || (pinned && row.movie_code !== pinned)) continue;
     const scheduleId = String(row.schedule_id || "");
     const prefix = row.play_date + row.theater_code;
-    if (!scheduleId || (/^\d+$/.test(scheduleId) &&
-        (!scheduleId.startsWith(prefix) || !/^\d+$/.test(scheduleId.slice(prefix.length))))) continue;
+    if (!scheduleId.startsWith(prefix) || !/^\d+$/.test(scheduleId.slice(prefix.length))) continue;
     const start = emergencyStart(row.start_time);
     if (!start) continue;
-    const total = emergencyInt(row.total_seats, -1);
-    const remaining = emergencyInt(row.remaining_seats, -1);
+    if ([row.total_seats,row.remaining_seats].some(value =>
+      value === null || value === "" || typeof value === "boolean" || !Number.isInteger(Number(value)))) continue;
+    const total = Number(row.total_seats);
+    const remaining = Number(row.remaining_seats);
     if (
-      target.require_sale_open &&
-      !(total > 0 && remaining > 0 && remaining <= total)
+      !(total > 0 && remaining >= 0 && remaining <= total) ||
+      (!includeClosed && remaining < 1)
     ) continue;
     if (
-      target.min_remaining_seats > 0 &&
+      !includeClosed && target.min_remaining_seats > 0 &&
       remaining < target.min_remaining_seats
     ) continue;
     const key = target.theater_code + "|" + target.play_date + "|" +
@@ -1182,7 +1184,12 @@ export function emergencySessions(rows, target) {
       row.schedule_id + "|" + start;
     if (seen.has(key)) continue;
     seen.add(key);
-    sessions.push({ key, start_time: start });
+    const d = target.play_date;
+    const startMs = Date.parse(`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}T00:00:00+09:00`) +
+      (Number(start.slice(0,2))*60 + Number(start.slice(3))) * 60000;
+    if (!includeClosed && startMs <= Date.now()) continue;
+    sessions.push({ key, start_time: start, remaining, total, bookable: remaining > 0 &&
+      remaining >= (target.min_remaining_seats || 1) && startMs > Date.now() });
   }
   sessions.sort((a, b) => a.start_time.localeCompare(b.start_time));
   return sessions;
@@ -1254,17 +1261,18 @@ async function emergencyOwnerDmChannel(env) {
   }
 }
 
-async function emergencySendDiscord(env, items) {
+export async function emergencySendDiscord(env, items) {
   const embeds = items.slice(0, 10).map((item) => ({
-    title: "🚨 CGV 비상 감시 · 예매 오픈 감지",
+    title: item.candidate ? "⚠️ CGV 비상 감시 · 보조 감지 후보" : "🚨 CGV 비상 감시 · 예매 오픈 감지",
+    url: "https://cgv.co.kr/cnm/movieBook/cinema?siteNo=" + item.target.theater_code + "&scnYmd=" + item.target.play_date,
     description: "**" + item.target.label + "**",
     color: 0xe67e22,
     fields: [
       { name: "극장", value: item.target.theater_name, inline: true },
       { name: "상영일", value: item.target.play_date, inline: true },
       {
-        name: "새 회차",
-        value: item.sessions.map((row) => "• " + row.start_time).join("\n"),
+        name: "새 회차 " + item.sessions.length + "개",
+        value: item.sessions.map((row) => "• " + row.start_time + " (잔여 " + row.remaining + "/" + row.total + "석)").join("\n").slice(0,1024),
         inline: false,
       },
       {
@@ -1277,50 +1285,31 @@ async function emergencySendDiscord(env, items) {
   }));
   if (!embeds.length) return false;
 
-  if (env.DISCORD_WEBHOOK_URL) {
-    const webhook = await fetch(env.DISCORD_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ embeds }),
-    });
-    if (webhook.status === 200 || webhook.status === 204) return true;
+  // One configured destination only: an unsuccessful/uncertain HTTP request must
+  // not fall through to another destination and create a duplicate notification.
+  let url = env.DISCORD_WEBHOOK_URL;
+  let headers = { "Content-Type": "application/json" };
+  if (!url && env.DISCORD_BOT_TOKEN) {
+    const channelId = await emergencyDiscordChannel(env);
+    if (channelId) {
+      url = "https://discord.com/api/v10/channels/" + channelId + "/messages";
+      headers.Authorization = "Bot " + env.DISCORD_BOT_TOKEN;
+    }
   }
-
-  if (!env.DISCORD_BOT_TOKEN) return false;
-
-  const channelId = await emergencyDiscordChannel(env);
-  if (channelId) {
-    const response = await fetch(
-      "https://discord.com/api/v10/channels/" + channelId + "/messages",
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bot " + env.DISCORD_BOT_TOKEN,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ embeds }),
-      },
-    );
-    if (response.ok) return true;
-  }
-
-  const dmChannelId = await emergencyOwnerDmChannel(env);
-  if (!dmChannelId) return false;
-  const dmResponse = await fetch(
-    "https://discord.com/api/v10/channels/" + dmChannelId + "/messages",
-    {
-      method: "POST",
-      headers: {
-        Authorization: "Bot " + env.DISCORD_BOT_TOKEN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ embeds }),
-    },
-  );
-  return dmResponse.ok;
+  if (!url) return false;
+  const response = await fetch(url, {method: "POST", headers,
+    body: JSON.stringify({embeds}), signal: AbortSignal.timeout(15000)});
+  if (response.status === 200 || response.status === 204) return true;
+  const retryHeader = response.headers.get("Retry-After");
+  let retry = Number(retryHeader) || Math.max(0,(Date.parse(retryHeader)-Date.now())/1000) || 0;
+  try { retry = Math.max(retry, Number((await response.json()).retry_after) || 0); } catch {}
+  const error = new Error("Discord HTTP " + response.status);
+  error.http_status = response.status;
+  error.retry_seconds = retry;
+  throw error;
 }
 
-async function performEmergencyCheck(env, dryRun = false) {
+export async function performEmergencyCheck(env, dryRun = false) {
   const statusRow = await getState(env, "status");
   const status = statusRow?.value;
   const targets = emergencyTargets(status);
@@ -1373,17 +1362,28 @@ async function performEmergencyCheck(env, dryRun = false) {
       if (Array.isArray(target.priority_seen_keys)) {
         for (const key of target.priority_seen_keys) base.add(key);
       }
-      const fresh = sessions.filter((session) => !base.has(session.key));
+      let fresh = sessions.filter((session) => !base.has(session.key));
+      if (!dryRun) {
+        const all = emergencySessions(page.rows, target, true);
+        const items = all.map(row => ({key:row.key, target_id:target.id,
+          bookable:row.bookable, delivered:base.has(row.key)}));
+        const blocked = new Set();
+        for(let start=0;start<items.length;start+=20){
+          const observed=await deliveryOperation(env,{op:"observe",items:items.slice(start,start+20)});
+          for(const row of observed.items) if(["suppressed","delivered"].includes(row.status)) blocked.add(row.key);
+        }
+        fresh = fresh.filter(row => !blocked.has(row.key));
+      }
       if (!fresh.length) {
         for (const session of sessions) base.add(session.key);
-        baseline[target.id] = [...base].slice(-1000);
+        baseline[target.id] = [...base];
       }
       targetResults.push({
         id: target.id,
         sessions: sessions.length,
         new_sessions: fresh.length,
       });
-      if (fresh.length) newItems.push({ target, sessions: fresh });
+      if (fresh.length) newItems.push({ target, sessions: fresh, candidate: page.source === "independent_static" });
     }
   }
 
@@ -1417,17 +1417,38 @@ async function performEmergencyCheck(env, dryRun = false) {
   }
 
   let alertSent = false;
-  if (newItems.length) alertSent = await emergencySendDiscord(env, newItems);
-  if (alertSent) {
-    for (const item of newItems) {
-      const known = new Set(notified[item.target.id] || []);
-      const base = new Set(baseline[item.target.id] || []);
-      for (const session of current.get(item.target.id) || []) {
-        known.add(session.key);
-        base.add(session.key);
+  let notifiedMessages = 0;
+  const owner = crypto.randomUUID().replaceAll("-", "");
+  const chunks = newItems.flatMap(item => Array.from({length:Math.ceil(item.sessions.length/20)},
+    (_,i)=>({...item,sessions:item.sessions.slice(i*20,(i+1)*20)})));
+  for (const item of chunks) {
+    const identities = item.sessions.map(row => ({key:row.key,target_id:item.target.id}));
+    const claim = await deliveryOperation(env, {op:"claim",owner,items:identities});
+    const granted = new Set(claim.items.filter(row => row.status === "granted").map(row => row.key));
+    const sessions = item.sessions.filter(row => granted.has(row.key));
+    if (!sessions.length) continue;
+    const items = identities.filter(row => granted.has(row.key));
+    let confirmed = false;
+    try {
+      confirmed = await emergencySendDiscord(env, [{...item,sessions}]);
+      if (confirmed) {
+        await deliveryOperation(env, {op:"complete",owner,items});
+      } else {
+        await deliveryOperation(env, {op:"fail",owner,items});
       }
-      notified[item.target.id] = [...known].slice(-1000);
-      baseline[item.target.id] = [...base].slice(-1000);
+    } catch (error) {
+      // If HTTP succeeded, leave the reservation for receipt recovery rather than
+      // immediately retrying after a database acknowledgement failure.
+      if (!confirmed) await deliveryOperation(env, {op:"fail",owner,items,
+        uncertain: !error.http_status, http_status:error.http_status,
+        retry_seconds:error.retry_seconds || 0});
+      firstError = firstError || String(error.message).slice(0,160);
+    }
+    if (confirmed) {
+      alertSent = true;
+      notifiedMessages += 1;
+      notified[item.target.id] = [...new Set([...(notified[item.target.id] || []), ...sessions.map(row=>row.key)])];
+      baseline[item.target.id] = [...new Set([...(baseline[item.target.id] || []), ...sessions.map(row=>row.key)])];
     }
   }
 
@@ -1454,7 +1475,7 @@ async function performEmergencyCheck(env, dryRun = false) {
     dry_run: false,
     structural_valid: structuralValid,
     active: true,
-    notified_count: alertSent ? newItems.length : 0,
+    notified_count: notifiedMessages,
     error: firstError,
   };
 }
@@ -2046,6 +2067,7 @@ export default {
       return jsonResponse({
         ok: true,
         version: COMMAND_VERSION,
+        delivery_journal_version: 1,
         cron_dispatch_first: true,
         cron_slot_dedupe: {
           enabled: true,
@@ -2127,6 +2149,15 @@ export default {
       }
     }
 
+    if (request.method === "POST" && url.pathname === "/api/delivery") {
+      if (!authorizedStatusUpdate(request, env)) return new Response("Unauthorized", {status:401});
+      try {
+        return jsonResponse(await deliveryOperation(env, await request.json()));
+      } catch (error) {
+        return jsonResponse({ok:false,error:"delivery journal unavailable"}, 503);
+      }
+    }
+
     if (
       request.method === "GET" &&
       url.pathname === "/api/emergency-seen"
@@ -2135,9 +2166,14 @@ export default {
         return new Response("Unauthorized", { status: 401 });
       }
       const row = await getState(env, EMERGENCY_STATE_KEY);
+      const proof = await deliveryOperation(env, {op:"delivered"});
+      const notified = structuredClone(row?.value?.notified || {});
+      for (const [id, keys] of Object.entries(proof.notified)) {
+        notified[id] = [...new Set([...(notified[id] || []), ...keys])];
+      }
       return jsonResponse({
         ok: true,
-        notified: row?.value?.notified || {},
+        notified,
         active: Boolean(row?.value?.active),
         updated_at: row?.updated_at || null,
       });
@@ -2205,6 +2241,7 @@ export default {
         ok: true,
         service: "cgv-alert-trigger",
         version: COMMAND_VERSION,
+        delivery_journal_version: 1,
         cron_dispatch_first: true,
         cron_slot_dedupe: {
           enabled: true,

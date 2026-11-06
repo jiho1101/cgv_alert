@@ -1,3 +1,4 @@
+from test_delivery_support import acknowledge_embeds
 """Production pipeline recovery simulation. No network, secrets, or live Discord."""
 import json
 from pathlib import Path
@@ -75,7 +76,7 @@ class IndependentFailoverTests(unittest.TestCase):
                 patch.object(checker, "_fetch_priority_public_with_retry", return_value=failed_primary),
                 patch.object(checker, "read_cinema_snapshot", return_value=snapshot),
                 patch.object(checker, "merge_emergency_seen_from_worker", return_value=False),
-                patch.object(checker, "send_discord_embeds", return_value=True) as send,
+                patch.object(checker, "send_discord_embeds", side_effect=acknowledge_embeds) as send,
                 patch.object(checker, "send_health_message", return_value=True),
                 patch.object(checker, "CgvBrowser", side_effect=AssertionError("unexpected browser")),
             ):
@@ -161,7 +162,7 @@ class IndependentFailoverTests(unittest.TestCase):
                 patch.object(checker, "merge_emergency_seen_from_worker",
                              return_value=False),
                 patch.object(checker, "send_discord_embeds",
-                             return_value=True) as send,
+                             side_effect=acknowledge_embeds) as send,
                 patch.object(checker, "send_health_message", return_value=True),
                 patch.object(checker, "CgvBrowser",
                              side_effect=AssertionError("unexpected browser")),
@@ -255,7 +256,7 @@ class IndependentFailoverTests(unittest.TestCase):
                 patch.object(checker, "merge_emergency_seen_from_worker",
                              return_value=False),
                 patch.object(checker, "send_discord_embeds",
-                             return_value=True) as send,
+                             side_effect=acknowledge_embeds) as send,
                 patch.object(checker, "send_health_message", return_value=True),
                 patch.object(checker, "CgvBrowser",
                              side_effect=AssertionError("No blocked CGV browser")),
@@ -349,7 +350,7 @@ class IndependentFailoverTests(unittest.TestCase):
                 patch.object(checker, "merge_emergency_seen_from_worker",
                              return_value=False),
                 patch.object(checker, "send_discord_embeds",
-                             return_value=True) as send,
+                             side_effect=acknowledge_embeds) as send,
                 patch.object(checker, "send_health_message", return_value=True),
                 patch.object(checker, "CgvBrowser",
                              side_effect=AssertionError("No restricted browser")),

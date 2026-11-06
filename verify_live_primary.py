@@ -62,7 +62,8 @@ def verify(day):
               patch.object(checker, 'CgvBrowser', side_effect=AssertionError('Unexpected official access'))):
             checker.run_checker()
             assert not (json.loads(state.read_text()).get('seen') or {}).get(target['id'])
-            send.return_value = True
+            from test_delivery_support import acknowledge_embeds
+            send.side_effect = acknowledge_embeds
             checker.run_checker()
             first_seen = json.loads(state.read_text())['seen'][target['id']]
             assert len(first_seen) == len(parsed)

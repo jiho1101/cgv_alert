@@ -1,0 +1,29 @@
+name: CGV delivery integrity
+on:
+  pull_request:
+    paths: ['checker.py', 'delivery_journal.py', 'cloudflare/worker.js', 'cloudflare/delivery.mjs', 'test_stage2_delivery.py', 'cloudflare/delivery-test-server.mjs', 'tests/fixtures/**', '.github/workflows/cgv-delivery-ci.yml']
+  push:
+    branches: [main]
+    paths: ['checker.py', 'delivery_journal.py', 'cloudflare/worker.js', 'cloudflare/delivery.mjs', 'test_stage2_delivery.py', 'cloudflare/delivery-test-server.mjs', 'tests/fixtures/**', '.github/workflows/cgv-delivery-ci.yml']
+permissions:
+  contents: read
+jobs:
+  real-capture-loopback-delivery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Production pipeline with captured CGV data, loopback webhook and SQLite D1 adapter
+        run: python -m unittest -v test_stage2_delivery
+      - run: python -m unittest discover -q
+      - run: python checker.py --self-test
+      - run: node cloudflare/worker-takeover.test.mjs
+      - run: node cloudflare/worker-browser-content.test.mjs

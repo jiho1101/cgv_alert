@@ -32,7 +32,7 @@ jobs:
               )
               response.raise_for_status()
               data = response.json()
-              if str(data.get("version")) == "26":
+              if str(data.get("version")) == "27":
                   break
               print("Waiting for existing automatic deployment", attempt + 1)
               time.sleep(5)
@@ -44,7 +44,7 @@ jobs:
               json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
           config = result.get("emergency_config") or {}
           print("REAL_WORKER_RUNTIME", json.dumps(result, ensure_ascii=False))
-          assert data.get("ok") is True and str(data.get("version")) == "26"
+          assert data.get("ok") is True and str(data.get("version")) == "27"
           assert config.get("status_present") is True
           assert config.get("target_count") == 2 and config.get("eligible_priority_count") == 2
           print("WORKER_CONFIG_VERIFIED: actual collection health is separate")

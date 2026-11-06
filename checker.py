@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -14,6 +15,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
+from delivery_journal import DeliveryJournal, DeliveryError, retry_seconds
 from verified_feed import FeedError, enabled as verified_feed_enabled, read_verified_feed
 from cgv_payload_contract import parse_cgv_schedule_payload
 from collection_outcome import annotate as annotate_collection
@@ -51,9 +53,20 @@ def load_json(path: Path, default):
 
 
 def save_state(state):
-    with STATE_PATH.open("w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2, sort_keys=True)
-        f.write("\n")
+    # Keep the previous JSON intact if the process dies during a write.
+    name = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=STATE_PATH.parent,
+                                         prefix=STATE_PATH.name+".", delete=False) as f:
+            name = f.name
+            json.dump(state, f, ensure_ascii=False, indent=2, sort_keys=True)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(name, STATE_PATH)
+    finally:
+        if name and os.path.exists(name):
+            os.unlink(name)
 
 
 def save_config(config):
@@ -111,7 +124,7 @@ def migrate_state(state) -> bool:
     for target_id, keys in list(seen.items()):
         merged = set(fallback_seen.get(target_id, []))
         merged.update(keys or [])
-        fallback_seen[target_id] = sorted(merged)[-1000:]
+        fallback_seen[target_id] = sorted(merged)
 
     state["seen"] = {}
     state["version"] = 2
@@ -649,7 +662,7 @@ def merge_emergency_seen_from_worker(state) -> bool:
         current = set(seen_root.get(str(target_id), []))
         merged = current | incoming
         if merged != current:
-            seen_root[str(target_id)] = sorted(merged)[-1000:]
+            seen_root[str(target_id)] = sorted(merged)
             changed = True
     return changed
 
@@ -2032,9 +2045,8 @@ def resolve_public_movie_code(
 ):
     """제목으로 처음 발견한 영화가 단일 movieCode일 때만 자동 고정한다.
 
-    이미 고정된 뒤에는 제목 표기가 바뀌어도 movieCode를 우선한다.
-    같은 alias에 여러 코드가 동시에 걸리면 추측해서 고정하지 않고
-    기존 제목 매칭으로 계속 감시해 첫 알림 속도를 늦추지 않는다.
+    고정 코드와 정확한 제목 alias를 함께 검증한다.
+    같은 alias에 여러 코드가 동시에 걸리면 코드를 추측하지 않는다.
     """
     configured = str(target.get("movie_code") or "").strip()
     if configured:
@@ -2109,6 +2121,7 @@ def extract_public_sessions(
     target,
     play_ymd: str,
     pinned_movie_code=None,
+    include_closed=False,
 ):
     """제3자 구조화 시간표를 안정적인 회차 key로 정규화한다."""
     aliases = set(target_aliases(target))
@@ -2131,7 +2144,7 @@ def extract_public_sessions(
         if not isinstance(row, dict):
             continue
 
-        if row.get("_verified_feed") and not row.get("_bookable"):
+        if not include_closed and row.get("_verified_feed") and not row.get("_bookable"):
             continue
         row_date = str(row.get("play_date") or "")
         theater_code = str(row.get("theater_code") or "")
@@ -2156,8 +2169,8 @@ def extract_public_sessions(
         if (
             not movie_code
             or not schedule_id
-            or (schedule_id.isdigit() and not re.fullmatch(
-                re.escape(row_date + theater_code) + r"[0-9]+", schedule_id))
+            or not re.fullmatch(
+                re.escape(row_date + theater_code) + r"[0-9]+", schedule_id)
             or not start_raw.isdigit()
             or len(start_raw) not in (3, 4)
         ):
@@ -2174,10 +2187,20 @@ def extract_public_sessions(
 
         remaining = _safe_int(row.get("remaining_seats"), 0)
         total = _safe_int(row.get("total_seats"), 0)
+        if target.get("require_sale_open") or include_closed:
+            try:
+                if any(isinstance(row.get(field), bool) or
+                       int(row[field]) != float(row[field]) for field in ("total_seats", "remaining_seats")):
+                    continue
+            except (KeyError, TypeError, ValueError, OverflowError):
+                continue
 
-        if not _public_sale_open_evidence(row, target):
+        if include_closed:
+            if not (total > 0 and 0 <= remaining <= total):
+                continue
+        elif not _public_sale_open_evidence(row, target):
             continue
-        if min_remaining and remaining < min_remaining:
+        if not include_closed and min_remaining and remaining < min_remaining:
             continue
 
         display = f"{hour:02d}:{minute:02d}"
@@ -2198,13 +2221,23 @@ def extract_public_sessions(
                 "RemainingSeats": remaining,
                 "TotalSeats": total,
                 "_public_structured": True,
-                "_sale_open_evidence": True,
+                "_sale_open_evidence": total > 0 and 0 < remaining <= total and remaining >= min_remaining,
+                "_degraded_source": bool(row.get("_degraded_source")),
                 "_key": stable_key,
                 "_dedup_aliases": ([f"{target['theater_code']}|{play_ymd}|{target['id']}|{row.get('screen')}|{display}"] if row.get("_verified_feed") else []),
             }
         )
 
     sessions.sort(key=lambda row: row["PlayStartTm"])
+    return sessions
+
+
+def observe_notification_sessions(state, rows, target, day, movie_code):
+    observed = state.setdefault("notification_observed", {}).setdefault(target["id"], {})
+    sessions = extract_public_sessions(rows, target, day, movie_code, include_closed=True)
+    for row in sessions:
+        observed.setdefault(row["_key"], bool(row["_sale_open_evidence"]))
+    save_state(state)
     return sessions
 
 
@@ -2764,7 +2797,8 @@ def build_alert_embeds(notification_items):
             date_text = datetime.strptime(play_ymd, "%Y%m%d").strftime("%Y-%m-%d")
             unique = {}
             for row in item["by_date"][play_ymd]:
-                unique[row["_key"]] = row
+                if row["_key"] in new_keys:
+                    unique[row["_key"]] = row
 
             ordered = sorted(
                 unique.values(),
@@ -2776,14 +2810,15 @@ def build_alert_embeds(notification_items):
             new_count = sum(1 for row in ordered if row["_key"] in new_keys)
             if not new_count:
                 continue
-            fallback_used = any(row.get("_fallback") for row in ordered)
+            fallback_used = any(row.get("_fallback") or row.get("_degraded_source") for row in ordered)
 
             by_screen = defaultdict(list)
             for row in ordered:
                 screen = row.get("ScreenNm") or "상영관 정보 확인 필요"
                 mark = "🆕 " if row["_key"] in new_keys else ""
                 by_screen[screen].append((
-                    f"{mark}`{pretty_time(row.get('PlayStartTm'))}`", row
+                    f"{mark}`{pretty_time(row.get('PlayStartTm'))}` "
+                    f"(잔여 {row.get('RemainingSeats', '미제공')}/{row.get('TotalSeats', '미제공')}석)", row
                 ))
 
             fields = []
@@ -2830,6 +2865,9 @@ def build_alert_embeds(notification_items):
                 title_suffix = f" · {part}/{len(chunks)}" if len(chunks) > 1 else ""
                 embeds.append({
                     "_fallback": fallback_used,
+                    "_rebuild": {"target_id": item["target_id"], "target": target,
+                                 "by_date": {play_ymd: [row for field in chunk for row in field.get("_rows", [])]},
+                                 "new_keys": {row["_key"] for field in chunk for row in field.get("_rows", [])}},
                     "title": (
                         f"⚠️ 보조 감지 후보 · {movie_name}{title_suffix}"
                         if fallback_used
@@ -2842,7 +2880,7 @@ def build_alert_embeds(notification_items):
                         f"✨ **신규 회차**  **{new_count}개**\n"
                         + (
                             "⚠️ **보조 감지 사용** — 구조화 데이터 조회가 실패해 "
-                            "CGV 예매 페이지 텍스트로 재확인했습니다. "
+                            "독립 보조 자료로 확인했습니다. 최신성은 확정되지 않았습니다. "
                             "오탐 가능성이 있으니 앱/웹에서 한 번 확인하세요.\n"
                             if fallback_used
                             else ""
@@ -2868,7 +2906,7 @@ def build_alert_embeds(notification_items):
     return embeds
 
 
-def send_discord_embeds(embeds, content_override=None, on_delivered=None) -> bool:
+def send_discord_embeds(embeds, content_override=None, on_delivered=None, journal=None) -> bool:
     webhook = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
     if not webhook:
         print("DISCORD_WEBHOOK_URL Secret이 아직 없어 실제 알림은 보내지 않았습니다.")
@@ -2877,10 +2915,29 @@ def send_discord_embeds(embeds, content_override=None, on_delivered=None) -> boo
     any_fallback = any(embed.get("_fallback") for embed in embeds)
     any_structured = any(not embed.get("_fallback") for embed in embeds)
 
+    confirmed_count, deferred_count = 0, 0
     for index, embed in enumerate(embeds):
+        receipt = embed.get("_delivery") or {}
+        items = [{"key": key, "target_id": receipt.get("target_id")}
+                 for category in ("seen", "fallback_seen") for key in receipt.get(category, [])]
+        if journal and items:
+            result = journal.call("claim", items)
+            granted = {r["key"] for r in result["items"] if r["status"] == "granted"}
+            delivered = {r["key"] for r in result["items"] if r["status"] == "delivered"}
+            if delivered and on_delivered:
+                on_delivered({"_delivery": {"target_id": receipt["target_id"], **{
+                    cat: [key for key in receipt.get(cat, []) if key in delivered]
+                    for cat in ("seen", "fallback_seen")}}})
+            if not granted:
+                deferred_count += 1
+                continue
+            item = dict(embed["_rebuild"], new_keys=granted)
+            embed = build_alert_embeds([item])[0]
+            items = [item for item in items if item["key"] in granted]
         payload_embed = dict(embed)
         payload_embed.pop("_fallback", None)
         payload_embed.pop("_delivery", None)
+        payload_embed.pop("_rebuild", None)
         payload = {"embeds": [payload_embed]}
         if index == 0:
             if content_override:
@@ -2894,14 +2951,27 @@ def send_discord_embeds(embeds, content_override=None, on_delivered=None) -> boo
         try:
             response = requests.post(webhook, json=payload, timeout=15)
         except requests.RequestException as exc:
+            if journal and items:
+                journal.call("fail", items, uncertain=True)
             raise RuntimeError(f"Discord 전송 실패 ({type(exc).__name__})") from None
         if response.status_code not in {200, 204}:
+            if journal and items:
+                journal.call("fail", items, http_status=response.status_code, retry_seconds=retry_seconds(response))
             raise RuntimeError(f"Discord 전송 실패 (HTTP {response.status_code})")
+        confirmed_count += 1
+        ack_error = None
+        if journal and items:
+            try:
+                journal.call("complete", items)
+            except DeliveryError as exc:
+                ack_error = exc
         if on_delivered is not None:
             on_delivered(embed)
+        if ack_error:
+            raise ack_error
 
-    print("Discord Embed 알림 전송 완료")
-    return True
+    print(f"Discord HTTP 전달 성공 {confirmed_count}개 · 공유 기록/예약으로 전송 제외 {deferred_count}개")
+    return confirmed_count > 0
 
 
 def run_discord_e2e_test():
@@ -3125,7 +3195,7 @@ def run_self_test(timeout: int):
             "movie_name": "테스트 영화",
             "theater_code": "0128",
             "play_date": "20990101",
-            "schedule_id": "S1",
+            "schedule_id": "2099010101281",
             "start_time": "12:30",
             "remaining_seats": 10,
         },
@@ -3134,7 +3204,7 @@ def run_self_test(timeout: int):
             "movie_name": "다른 영화",
             "theater_code": "0128",
             "play_date": "20990101",
-            "schedule_id": "S2",
+            "schedule_id": "2099010101282",
             "start_time": "13:00",
             "remaining_seats": 10,
         },
@@ -3144,7 +3214,7 @@ def run_self_test(timeout: int):
     )
     if (
         len(public_parsed) != 1
-        or "|public|M1|S1|12:30" not in public_parsed[0]["_key"]
+        or "|public|M1|2099010101281|12:30" not in public_parsed[0]["_key"]
     ):
         raise RuntimeError("제3자 구조화 production 파서 자체점검 실패")
 
@@ -3218,7 +3288,7 @@ def run_self_test(timeout: int):
             "movie_name": "테스트 영화",
             "theater_code": "0128",
             "play_date": "20991218",
-            "schedule_id": "S1",
+            "schedule_id": "2099121801281",
             "start_time": "10:00",
             "end_time": "12:00",
             "screen": "",
@@ -3229,7 +3299,7 @@ def run_self_test(timeout: int):
             "movie_name": "테스트 영화",
             "theater_code": "0128",
             "play_date": "20991218",
-            "schedule_id": "S2",
+            "schedule_id": "2099121801282",
             "start_time": "13:00",
             "end_time": "15:00",
             "screen": "",
@@ -3240,7 +3310,7 @@ def run_self_test(timeout: int):
             "movie_name": "테스트 영화",
             "theater_code": "0128",
             "play_date": "20991218",
-            "schedule_id": "S3",
+            "schedule_id": "2099121801283",
             "start_time": "16:00",
             "end_time": "18:00",
             "screen": "",
@@ -3254,7 +3324,7 @@ def run_self_test(timeout: int):
             "movie_name": "테스트 영화",
             "theater_code": "0128",
             "play_date": "20991218",
-            "schedule_id": "S4",
+            "schedule_id": "2099121801284",
             "start_time": "19:00",
             "end_time": "21:00",
             "screen": "",
@@ -3277,7 +3347,7 @@ def run_self_test(timeout: int):
         or removed_count != 2
         or added_count != 1
         or len(guarded_keys) != 4
-        or not any("|S4|" in key for key in guarded_keys)
+        or not any("|2099121801284|" in key for key in guarded_keys)
     ):
         raise RuntimeError(
             "부분 누락 방어 자체점검 실패: 기존 회차 보존/신규 회차 반영 오류"
@@ -3304,7 +3374,7 @@ def run_self_test(timeout: int):
     sentinel_good = {
         "accepted": True,
         "state": "nonempty_trusted",
-        "rows": [{"schedule_id": "S1"}],
+        "rows": [{"schedule_id": "2099121801281"}],
     }
     sentinel_empty = {
         "accepted": True,
@@ -3322,7 +3392,7 @@ def run_self_test(timeout: int):
     sentinel_partial = {
         "accepted": True,
         "state": "future_partial_drop_guarded",
-        "rows": [{"schedule_id": "S2"}],
+        "rows": [{"schedule_id": "2099121801282"}],
     }
     if not _public_sentinel_result_healthy(sentinel_partial):
         raise RuntimeError(
@@ -3511,7 +3581,7 @@ def run_self_test(timeout: int):
             "movie_name": "테스트 영화",
             "theater_code": "0128",
             "play_date": "20991218",
-            "schedule_id": "S1",
+            "schedule_id": "2099121801281",
             "start_time": "10:00",
             "remaining_seats": 10,
         }
@@ -3545,7 +3615,7 @@ def run_self_test(timeout: int):
             "movie_name": "테스트 영화 - 새 표기",
             "theater_code": "0128",
             "play_date": "20991218",
-            "schedule_id": "S2",
+            "schedule_id": "2099121801282",
             "start_time": "13:00",
             "remaining_seats": 10,
         },
@@ -3554,7 +3624,7 @@ def run_self_test(timeout: int):
             "movie_name": "테스트 영화",
             "theater_code": "0128",
             "play_date": "20991218",
-            "schedule_id": "S3",
+            "schedule_id": "2099121801283",
             "start_time": "16:00",
             "remaining_seats": 10,
         },
@@ -3588,7 +3658,7 @@ def run_self_test(timeout: int):
         dict(
             discovery_rows[0],
             movie_code="M-B",
-            schedule_id="S9",
+            schedule_id="2099121801289",
             start_time="20:00",
         ),
     ]
@@ -3661,7 +3731,7 @@ def run_self_test(timeout: int):
     bookable = [
         dict(
             preopen_like[0],
-            schedule_id="SALE-OK",
+            schedule_id="2099121801281",
             total_seats=150,
             remaining_seats=120,
         )
@@ -4057,7 +4127,7 @@ def run_checker(force_all: bool = False):
                         )
                         if independent_rows:
                             page_cache[key] = {
-                                "mode": "public", "data": independent_rows,
+                                "mode": "public", "data": [dict(row, _degraded_source=True) for row in independent_rows],
                             }
                             page_results[page_id] = {
                                 "ok": True, "degraded": True,
@@ -4252,7 +4322,7 @@ def run_checker(force_all: bool = False):
                     f"{'핵심' if priority_for_any else '비핵심'} 날짜 독립 조회 실패: {independent['error']}"
                 )
                 if additional:
-                    merged_rows = rows + additional
+                    merged_rows = rows + [dict(row, _degraded_source=True) for row in additional]
                     if public_structural_valid(
                         200, None, True, public_inspect_rows(merged_rows)
                     ):
@@ -4369,7 +4439,7 @@ def run_checker(force_all: bool = False):
                 if public_structural_valid(200, None, True, inspection):
                     page_cache[key] = {
                         "mode": "public",
-                        "data": independent_rows,
+                        "data": [dict(row, _degraded_source=True) for row in independent_rows],
                     }
                     page_results[page_id] = {
                         "ok": True,
@@ -4606,8 +4676,11 @@ def run_checker(force_all: bool = False):
                         elif ambiguous_code:
                             print(
                                 f"[{target_id}] movieCode 후보가 여러 개라 "
-                                "자동 고정하지 않고 기존 정확 제목 매칭 유지"
+                                "확정 알림 보류: movieCode 구분 필요"
                             )
+                        if ambiguous_code:
+                            continue
+                        observe_notification_sessions(state, source["data"], target, play_ymd, movie_code)
                         sessions = extract_public_sessions(
                             source["data"],
                             target,
@@ -4663,8 +4736,11 @@ def run_checker(force_all: bool = False):
                     elif ambiguous_code:
                         print(
                             f"[{target_id}] movieCode 후보가 여러 개라 "
-                            "자동 고정하지 않고 기존 정확 제목 매칭 유지"
+                            "확정 알림 보류: movieCode 구분 필요"
                         )
+                    if ambiguous_code:
+                        continue
+                    observe_notification_sessions(state, source["data"], target, earlier, movie_code)
                     sessions = extract_public_sessions(
                         source["data"],
                         target,
@@ -4738,6 +4814,20 @@ def run_checker(force_all: bool = False):
                 "GitHub 복구 뒤 중복 알림 방지"
             )
 
+        journal = DeliveryJournal(state, save_state)
+        observation_items = []
+        for target_id, observations in state.get("notification_observed", {}).items():
+            known = set(state.get("seen", {}).get(target_id, []))
+            for key, bookable in observations.items():
+                observation_items.append({"key": key, "target_id": target_id,
+                                          "bookable": bookable, "delivered": key in known})
+        try:
+            for start in range(0, len(observation_items), 500):
+                journal.call("observe", observation_items[start:start+500])
+        except DeliveryError as exc:
+            print(str(exc) + " · 수집 유지, 알림은 다음 실행에서 재시도")
+            return
+
         notification_items = []
         for target_id, target in target_by_id.items():
             by_date = found.get(target_id, {})
@@ -4766,7 +4856,8 @@ def run_checker(force_all: bool = False):
             new_sessions = [
                 row
                 for row in all_sessions
-                if not set([row["_key"]] + row.get("_dedup_aliases", [])).intersection(
+                if state.get("notification_observed", {}).get(target_id, {}).get(row["_key"], True)
+                and not set([row["_key"]] + row.get("_dedup_aliases", [])).intersection(
                     fallback_seen
                     if row.get("_fallback")
                     else seen
@@ -4808,40 +4899,16 @@ def run_checker(force_all: bool = False):
                 keys = receipt.get(category) or []
                 if keys:
                     known = set(state.setdefault(category, {}).get(target_id) or [])
-                    state[category][target_id] = sorted(known | set(keys))[-1000:]
+                    state[category][target_id] = sorted(known | set(keys))
             # Save each confirmed HTTP delivery immediately. If a later
             # message fails, the always-run workflow state save retains this.
             save_state(state)
             write_runtime_status(build_runtime_snapshot(
                 config, state, targets, now, page_results, found=found))
 
-        if send_discord_embeds(embeds, on_delivered=persist_delivered_embed):
-            for item in notification_items:
-                target_id = item["target_id"]
-                seen = set(state["seen"].get(target_id, []))
-                fallback_seen = set(
-                    state["fallback_seen"].get(target_id, [])
-                )
-                for sessions in item["by_date"].values():
-                    for row in sessions:
-                        if row.get("_fallback"):
-                            fallback_seen.add(row["_key"])
-                        else:
-                            seen.add(row["_key"])
-                state["seen"][target_id] = sorted(seen)[-1000:]
-                state["fallback_seen"][target_id] = sorted(
-                    fallback_seen
-                )[-1000:]
-            save_state(state)
-            write_runtime_status(
-                build_runtime_snapshot(
-                    config, state, targets, now, page_results, found=found
-                )
-            )
-            print(
-                "중복 알림 방지 상태를 저장했습니다. "
-                "구조화 감지와 보조 후보 기록은 서로 분리됩니다."
-            )
+        # Only per-message confirmed receipts can add seen; a reservation is not a receipt.
+        send_discord_embeds(embeds, on_delivered=persist_delivered_embed, journal=journal)
+
     finally:
         try:
             if browser is not None:
