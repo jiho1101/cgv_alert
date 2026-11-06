@@ -3347,7 +3347,7 @@ def run_self_test(timeout: int):
         or removed_count != 2
         or added_count != 1
         or len(guarded_keys) != 4
-        or not any("|S4|" in key for key in guarded_keys)
+        or not any("|2099121801284|" in key for key in guarded_keys)
     ):
         raise RuntimeError(
             "부분 누락 방어 자체점검 실패: 기존 회차 보존/신규 회차 반영 오류"
