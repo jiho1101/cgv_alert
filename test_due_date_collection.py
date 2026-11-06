@@ -1,3 +1,4 @@
+from test_delivery_support import acknowledge_embeds
 """A failed date must not starve a different due date, or duplicate title reads."""
 import json
 from pathlib import Path
@@ -44,7 +45,7 @@ class DueDateCollectionTests(unittest.TestCase):
                   patch.object(checker, 'merge_emergency_seen_from_worker', return_value=False),
                   patch.object(checker, 'record_shadow', return_value=False),
                   patch.object(checker, 'send_health_message', return_value=False),
-                  patch.object(checker, 'send_discord_embeds', return_value=True) as send,
+                  patch.object(checker, 'send_discord_embeds', side_effect=acknowledge_embeds) as send,
                   patch.object(checker, 'CgvBrowser', side_effect=AssertionError('No official access'))):
                 checker.run_checker()
                 final = json.loads(state.read_text())

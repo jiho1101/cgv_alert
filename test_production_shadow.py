@@ -60,7 +60,7 @@ class ProductionShadowTests(unittest.TestCase):
     def test_composite_id_rejects_missing_sequence_and_wrong_date_or_site(self):
         target = {"id": "watch", "theater_code": "0128", "movie_aliases": ["실제 영화"],
                   "require_sale_open": True, "min_remaining_seats": 1}
-        for invalid in ["", "1", "209910280128", "209910280128 ", "2099102901281", "2099102899991"]:
+        for invalid in ["", "1", "S1", "garbage", "209910280128", "209910280128 ", "2099102901281", "2099102899991"]:
             with self.subTest(schedule_id=invalid):
                 row = dict(self.row, schedule_id=invalid)
                 self.assertEqual(checker.extract_public_sessions([row], target, "20991028"), [])

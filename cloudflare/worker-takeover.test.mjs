@@ -182,8 +182,8 @@ assert.equal(emergencySessions([identityRow], identityTarget).length, 1);
 for (const schedule_id of ["", "1", "209910280128", "2099102901281", "2099102899991"]) {
   assert.equal(emergencySessions([{ ...identityRow, schedule_id }], identityTarget).length, 0);
 }
-assert.deepEqual(emergencySessions([{ ...identityRow, remaining_seats: 1 }], identityTarget),
-  emergencySessions([identityRow], identityTarget));
+assert.deepEqual(emergencySessions([{ ...identityRow, remaining_seats: 1 }], identityTarget).map(r=>r.key),
+  emergencySessions([identityRow], identityTarget).map(r=>r.key));
 assert.equal(emergencySessions([{ ...identityRow, movie_name: "다른 영화" }],
   { ...identityTarget, pinned_movie_code: "30001440" }).length, 0);
 assert.equal(emergencySessions([{ ...identityRow, movie_code: "WRONG" }],

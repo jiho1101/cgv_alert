@@ -17,6 +17,8 @@ on:
       - "verified_feed.py"
       - "test_verified_feed.py"
       - "checker.py"
+      - "delivery_journal.py"
+      - "cloudflare/delivery.mjs"
       - "test_due_date_collection.py"
       - "test_notification_delivery.py"
       - "verify_live_primary.py"
@@ -73,7 +75,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Check Python syntax
-        run: python -m py_compile collection_observer.py checker.py shadow_public_monitor.py moviebara_fallback.py cgv_payload_contract.py cgv_first_party_publisher.py test_cgv_payload_contract.py test_cgv_first_party_publisher.py test_moviebara_fallback.py test_independent_failover.py source_transition_canary.py test_source_transition_canary.py test_due_date_collection.py test_notification_delivery.py
+        run: python -m py_compile delivery_journal.py collection_observer.py checker.py shadow_public_monitor.py moviebara_fallback.py cgv_payload_contract.py cgv_first_party_publisher.py test_cgv_payload_contract.py test_cgv_first_party_publisher.py test_moviebara_fallback.py test_independent_failover.py source_transition_canary.py test_source_transition_canary.py test_due_date_collection.py test_notification_delivery.py
 
       - name: Test independent timetable fallback
         run: python -m unittest -v test_moviebara_fallback.py test_independent_failover.py test_collection_outcome.py test_verified_feed.py test_cgv_first_party_publisher.py test_cgv_payload_contract.py test_production_shadow.py test_source_transition_canary.py test_due_date_collection.py test_notification_delivery.py
@@ -253,7 +255,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "26"
+          expected_version = "27"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:
@@ -343,8 +345,18 @@ jobs:
                       and live_targets >= 2
                       and live_priority >= 2
                   ):
+                      receipt = requests.post(
+                          "https://cgv-alert-trigger.choi1101jh.workers.dev/api/delivery",
+                          headers={"Authorization": f"Bearer {token}"},
+                          json={"op":"health"}, timeout=10,
+                      )
+                      receipt.raise_for_status()
+                      journal = receipt.json()
+                      if journal.get("protocol_version") != 1 or journal.get("ok") is not True or journal.get("atomic_claim_sql_ready") is not True:
+                          raise requests.RequestException("delivery journal not ready")
+                      print("DELIVERY_JOURNAL_LIVE " + json.dumps(journal, ensure_ascii=False))
                       print(
-                          "Cloudflare Worker v26 + 2 live emergency targets confirmed (data freshness still unverified)"
+                          "Cloudflare Worker v27 + 2 live emergency targets confirmed (data freshness still unverified)"
                       )
                       raise SystemExit(0)
               except requests.RequestException as exc:
@@ -615,7 +627,7 @@ jobs:
                   merged = set(remote_map.get(key) or [])
                   merged.update(local_map.get(key) or [])
                   if merged:
-                      out[key] = sorted(merged)[-1000:]
+                      out[key] = sorted(merged)
               return out
 
           remote_state = load("state.json", {"version": 2})

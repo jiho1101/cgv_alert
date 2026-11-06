@@ -1,3 +1,4 @@
+from test_delivery_support import acknowledge_embeds
 """New-source boundary/pipeline tests; every packet below is synthetic.
 
 These tests establish readiness, NOT real CGV collection or permission.
@@ -127,7 +128,7 @@ class VerifiedFeedTests(unittest.TestCase):
                  patch.object(checker, "read_cinema_snapshot", side_effect=AssertionError("old feed called")), \
                  patch.object(checker, "merge_emergency_seen_from_worker", return_value=False), \
                  patch.object(checker, "send_health_message", return_value=True), \
-                 patch.object(checker, "send_discord_embeds", return_value=True) as send:
+                 patch.object(checker, "send_discord_embeds", side_effect=acknowledge_embeds) as send:
                 checker.run_checker()
                 self.assertEqual(send.call_count, 1)
                 actual = json.loads(runtime.read_text())
