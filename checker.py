@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
+from latency_trace import traced, source_timed, event as latency_event
 from delivery_journal import DeliveryJournal, DeliveryError, retry_seconds
 from verified_feed import FeedError, enabled as verified_feed_enabled, read_verified_feed
 from cgv_payload_contract import parse_cgv_schedule_payload
@@ -37,6 +38,8 @@ from shadow_public_monitor import (
     natural_end_of_day as public_natural_end_of_day,
     structural_valid as public_structural_valid,
 )
+
+read_cinema_snapshot = source_timed(read_cinema_snapshot, "independent")
 
 CONFIG_PATH = Path("config.json")
 STATE_PATH = Path("state.json")
@@ -1590,6 +1593,7 @@ def _public_guard_success(state, now: datetime):
     return True
 
 
+@__import__("functools").partial(source_timed, source="primary")
 def _production_public_request(site_no: str, play_ymd: str):
     """Production용 구조화 요청.
 
@@ -2949,7 +2953,9 @@ def send_discord_embeds(embeds, content_override=None, on_delivered=None, journa
             else:
                 payload["content"] = "🎟️ **CGV 예매 오픈 감지**"
         try:
+            latency_event("discord_request_started", keys=[item["key"] for item in items])
             response = requests.post(webhook, json=payload, timeout=15)
+            latency_event("discord_response", http_status=response.status_code, keys=[item["key"] for item in items])
         except requests.RequestException as exc:
             if journal and items:
                 journal.call("fail", items, uncertain=True)
@@ -3779,6 +3785,7 @@ def run_self_test(timeout: int):
         "CGV 파서 자체점검 완료 · 다른 영화 혼입 방지 + "
         "제3자 구조화 production key 검증 통과"
     )
+@traced
 def run_checker(force_all: bool = False):
     config = load_json(CONFIG_PATH, {"targets": []})
     state = load_json(STATE_PATH, {"version": 2, "seen": {}})
@@ -4645,14 +4652,139 @@ def run_checker(force_all: bool = False):
 
             return page_cache[key]
 
+        def deliver_found():
+            if merge_emergency_seen_from_worker(state):
+                save_state(state)
+                write_runtime_status(
+                    build_runtime_snapshot(
+                        config, state, targets, now, page_results, found=found
+                    )
+                )
+                print(
+                    "Cloudflare 비상 감시 알림 키를 seen에 합쳤습니다 · "
+                    "GitHub 복구 뒤 중복 알림 방지"
+                )
+
+            journal = DeliveryJournal(state, save_state)
+            observation_items = []
+            for target_id, observations in state.get("notification_observed", {}).items():
+                known = set(state.get("seen", {}).get(target_id, []))
+                for key, bookable in observations.items():
+                    observation_items.append({"key": key, "target_id": target_id,
+                                              "bookable": bookable, "delivered": key in known})
+            try:
+                for start in range(0, len(observation_items), 500):
+                    journal.call("observe", observation_items[start:start+500])
+            except DeliveryError as exc:
+                print(str(exc) + " · 수집 유지, 알림은 다음 실행에서 재시도")
+                return
+
+            notification_items = []
+            for target_id, target in target_by_id.items():
+                by_date = found.get(target_id, {})
+                if target.get("require_sale_open"):
+                    by_date = {date: [row for row in rows if row.get("_sale_open_evidence")]
+                               for date, rows in by_date.items()}
+                    by_date = {date: rows for date, rows in by_date.items() if rows}
+                if not by_date:
+                    print(
+                        f"[{target_id}] 이번 실행에서 감지된 예매 가능 회차 없음 "
+                        "(조회 실패 또는 미확정 날짜 포함 가능; 조회 상태 별도 확인)"
+                    )
+                    continue
+
+                seen = set(state["seen"].get(target_id, []))
+                fallback_seen = set(
+                    state["fallback_seen"].get(target_id, [])
+                )
+                all_sessions = [
+                    row
+                    for play_ymd in sorted(by_date)
+                    for row in by_date[play_ymd]
+                ]
+                if target.get("require_sale_open"):
+                    all_sessions = [row for row in all_sessions if row.get("_sale_open_evidence")]
+                new_sessions = [
+                    row
+                    for row in all_sessions
+                    if state.get("notification_observed", {}).get(target_id, {}).get(row["_key"], True)
+                    and not set([row["_key"]] + row.get("_dedup_aliases", [])).intersection(
+                        fallback_seen
+                        if row.get("_fallback")
+                        else seen
+                    )
+                ]
+                structured_count = sum(
+                    1 for row in all_sessions if not row.get("_fallback")
+                )
+                fallback_count = len(all_sessions) - structured_count
+                print(
+                    f"[{target_id}] 확인 날짜 {len(by_date)}개, "
+                    f"구조화 {structured_count}개, 보조 후보 {fallback_count}개, "
+                    f"신규 {len(new_sessions)}개"
+                )
+                if not new_sessions:
+                    continue
+
+                notification_items.append(
+                    {
+                        "target_id": target_id,
+                        "target": target,
+                        "by_date": by_date,
+                        "new_keys": {row["_key"] for row in new_sessions},
+                    }
+                )
+
+            if not notification_items:
+                return
+
+            message = build_hierarchical_message(notification_items)
+            print(message)
+            embeds = build_alert_embeds(notification_items)
+            def persist_delivered_embed(embed):
+                receipt = embed.get("_delivery") or {}
+                target_id = receipt.get("target_id")
+                if not target_id:
+                    return
+                for category in ("seen", "fallback_seen"):
+                    keys = receipt.get(category) or []
+                    if keys:
+                        known = set(state.setdefault(category, {}).get(target_id) or [])
+                        state[category][target_id] = sorted(known | set(keys))
+                # Save each confirmed HTTP delivery immediately. If a later
+                # message fails, the always-run workflow state save retains this.
+                save_state(state)
+                write_runtime_status(build_runtime_snapshot(
+                    config, state, targets, now, page_results, found=found))
+
+            # Only per-message confirmed receipts can add seen; a reservation is not a receipt.
+            send_discord_embeds(embeds, on_delivered=persist_delivered_embed, journal=journal)
+
+        early_delivery_error = None
         for theater_code, dates in scheduled.items():
-            for play_ymd, target_ids in sorted(dates.items()):
+            had_priority = False
+            ordered_dates = sorted(dates.items(), key=lambda item: (
+                not any(_is_priority_date(target_by_id[tid], item[0]) for tid in item[1]), item[0]))
+            for play_ymd, target_ids in ordered_dates:
+                priority = any(_is_priority_date(target_by_id[tid], play_ymd) for tid in target_ids)
+                if had_priority and not priority:
+                    latency_event('priority_delivery_before_nonpriority')
+                    try:
+                        deliver_found()
+                    except Exception as exc:
+                        early_delivery_error = exc
+                        latency_event('priority_delivery_deferred', error_type=type(exc).__name__)
+                    had_priority = False
+                had_priority = had_priority or priority
+                latency_event('page_started', date=play_ymd, priority=priority)
                 sample_target = target_by_id[next(iter(target_ids))]
                 source = get_source(
                     sample_target,
                     play_ymd,
                     target_ids=target_ids,
                 )
+                latency_event('page_finished', date=play_ymd, priority=priority,
+                              source_mode=source.get('mode') if source else None)
                 if source is None:
                     continue
                 for target_id in target_ids:
@@ -4703,6 +4835,10 @@ def run_checker(force_all: bool = False):
                             scoped=bool(scoped_text),
                         )
                     if sessions:
+                        latency_event('sessions_detected', target_id=target_id, date=play_ymd,
+                                      keys=[row['_key'] for row in sessions],
+                                      source_keys={name:[row['_key'] for row in sessions if bool(row.get('_degraded_source')) == flag]
+                                                   for name,flag in [('primary',False),('independent',True)]})
                         found[target_id][play_ymd] = sessions
 
         # 후보가 생기면 그보다 앞선 날짜를 즉시 확인해 감시 범위 내 최초 날짜를 확정한다.
@@ -4802,112 +4938,9 @@ def run_checker(force_all: bool = False):
         }
         write_runtime_status(runtime)
 
-        if merge_emergency_seen_from_worker(state):
-            save_state(state)
-            write_runtime_status(
-                build_runtime_snapshot(
-                    config, state, targets, now, page_results, found=found
-                )
-            )
-            print(
-                "Cloudflare 비상 감시 알림 키를 seen에 합쳤습니다 · "
-                "GitHub 복구 뒤 중복 알림 방지"
-            )
-
-        journal = DeliveryJournal(state, save_state)
-        observation_items = []
-        for target_id, observations in state.get("notification_observed", {}).items():
-            known = set(state.get("seen", {}).get(target_id, []))
-            for key, bookable in observations.items():
-                observation_items.append({"key": key, "target_id": target_id,
-                                          "bookable": bookable, "delivered": key in known})
-        try:
-            for start in range(0, len(observation_items), 500):
-                journal.call("observe", observation_items[start:start+500])
-        except DeliveryError as exc:
-            print(str(exc) + " · 수집 유지, 알림은 다음 실행에서 재시도")
-            return
-
-        notification_items = []
-        for target_id, target in target_by_id.items():
-            by_date = found.get(target_id, {})
-            if target.get("require_sale_open"):
-                by_date = {date: [row for row in rows if row.get("_sale_open_evidence")]
-                           for date, rows in by_date.items()}
-                by_date = {date: rows for date, rows in by_date.items() if rows}
-            if not by_date:
-                print(
-                    f"[{target_id}] 이번 실행에서 감지된 예매 가능 회차 없음 "
-                    "(조회 실패 또는 미확정 날짜 포함 가능; 조회 상태 별도 확인)"
-                )
-                continue
-
-            seen = set(state["seen"].get(target_id, []))
-            fallback_seen = set(
-                state["fallback_seen"].get(target_id, [])
-            )
-            all_sessions = [
-                row
-                for play_ymd in sorted(by_date)
-                for row in by_date[play_ymd]
-            ]
-            if target.get("require_sale_open"):
-                all_sessions = [row for row in all_sessions if row.get("_sale_open_evidence")]
-            new_sessions = [
-                row
-                for row in all_sessions
-                if state.get("notification_observed", {}).get(target_id, {}).get(row["_key"], True)
-                and not set([row["_key"]] + row.get("_dedup_aliases", [])).intersection(
-                    fallback_seen
-                    if row.get("_fallback")
-                    else seen
-                )
-            ]
-            structured_count = sum(
-                1 for row in all_sessions if not row.get("_fallback")
-            )
-            fallback_count = len(all_sessions) - structured_count
-            print(
-                f"[{target_id}] 확인 날짜 {len(by_date)}개, "
-                f"구조화 {structured_count}개, 보조 후보 {fallback_count}개, "
-                f"신규 {len(new_sessions)}개"
-            )
-            if not new_sessions:
-                continue
-
-            notification_items.append(
-                {
-                    "target_id": target_id,
-                    "target": target,
-                    "by_date": by_date,
-                    "new_keys": {row["_key"] for row in new_sessions},
-                }
-            )
-
-        if not notification_items:
-            return
-
-        message = build_hierarchical_message(notification_items)
-        print(message)
-        embeds = build_alert_embeds(notification_items)
-        def persist_delivered_embed(embed):
-            receipt = embed.get("_delivery") or {}
-            target_id = receipt.get("target_id")
-            if not target_id:
-                return
-            for category in ("seen", "fallback_seen"):
-                keys = receipt.get(category) or []
-                if keys:
-                    known = set(state.setdefault(category, {}).get(target_id) or [])
-                    state[category][target_id] = sorted(known | set(keys))
-            # Save each confirmed HTTP delivery immediately. If a later
-            # message fails, the always-run workflow state save retains this.
-            save_state(state)
-            write_runtime_status(build_runtime_snapshot(
-                config, state, targets, now, page_results, found=found))
-
-        # Only per-message confirmed receipts can add seen; a reservation is not a receipt.
-        send_discord_embeds(embeds, on_delivered=persist_delivered_embed, journal=journal)
+        deliver_found()
+        if early_delivery_error is not None:
+            raise early_delivery_error
 
     finally:
         try:

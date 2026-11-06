@@ -8,6 +8,14 @@ on:
         required: false
         default: "manual"
         type: string
+      cron_scheduled_utc:
+        description: "UTC scheduled Cron instant"
+        required: false
+        type: string
+      dispatch_utc:
+        description: "UTC dispatch request instant"
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -17,6 +25,7 @@ on:
       - "verified_feed.py"
       - "test_verified_feed.py"
       - "checker.py"
+      - "latency_trace.py"
       - "delivery_journal.py"
       - "cloudflare/delivery.mjs"
       - "test_due_date_collection.py"
@@ -78,9 +87,11 @@ jobs:
         run: python -m py_compile delivery_journal.py collection_observer.py checker.py shadow_public_monitor.py moviebara_fallback.py cgv_payload_contract.py cgv_first_party_publisher.py test_cgv_payload_contract.py test_cgv_first_party_publisher.py test_moviebara_fallback.py test_independent_failover.py source_transition_canary.py test_source_transition_canary.py test_due_date_collection.py test_notification_delivery.py
 
       - name: Test independent timetable fallback
+        if: github.event_name == 'push'
         run: python -m unittest -v test_moviebara_fallback.py test_independent_failover.py test_collection_outcome.py test_verified_feed.py test_cgv_first_party_publisher.py test_cgv_payload_contract.py test_production_shadow.py test_source_transition_canary.py test_due_date_collection.py test_notification_delivery.py
 
       - name: Check Cloudflare Worker syntax
+        if: github.event_name == 'push'
         run: |
           node --check cloudflare/worker.js
           node cloudflare/worker-takeover.test.mjs
@@ -135,6 +146,8 @@ jobs:
           CGV_VERIFIED_FEED_TOKEN: ${{ secrets.CGV_VERIFIED_FEED_TOKEN }}
           CGV_VERIFIED_FEED_SOURCE_ID: ${{ vars.CGV_VERIFIED_FEED_SOURCE_ID }}
           CGV_VERIFIED_FEED_PERMISSION: ${{ vars.CGV_VERIFIED_FEED_PERMISSION }}
+          CGV_CRON_SCHEDULED_UTC: ${{ inputs.cron_scheduled_utc }}
+          CGV_DISPATCH_UTC: ${{ inputs.dispatch_utc }}
           FORCE_ALL_CGV_DATES: ${{ github.event_name == 'workflow_dispatch' && inputs.source == 'discord_manual' && '1' || '0' }}
 
       # One round-robin theater/day relay observation per 5 minutes. Records
@@ -235,6 +248,7 @@ jobs:
           name: cgv-runtime-${{ github.run_id }}
           path: |
             runtime_status.json
+            latency_trace.json
             live_primary_validation.json
             independent_shadow_sample.json
             source_transition_observation.json
@@ -255,7 +269,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "27"
+          expected_version = "28"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:
@@ -356,7 +370,7 @@ jobs:
                           raise requests.RequestException("delivery journal not ready")
                       print("DELIVERY_JOURNAL_LIVE " + json.dumps(journal, ensure_ascii=False))
                       print(
-                          "Cloudflare Worker v27 + 2 live emergency targets confirmed (data freshness still unverified)"
+                          "Cloudflare Worker v28 + 2 live emergency targets confirmed (data freshness still unverified)"
                       )
                       raise SystemExit(0)
               except requests.RequestException as exc:

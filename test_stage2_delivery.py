@@ -153,7 +153,7 @@ class Stage2DeliveryTests(unittest.TestCase):
         self.control(reset=True,failAck=True)
         self.state.write_text(json.dumps({'seen':{},'fallback_seen':{}}))
         with self.assertRaises(DeliveryError):self.run_engine()
-        self.assertEqual(len(self.messages()),1);self.assertTrue(self.seen())
+        self.assertEqual(len(self.messages()),2);self.assertTrue(self.seen())
         self.control(failAck=False);self.run_engine();self.assertEqual(len(self.messages()),2)
     def test_timeout_never_seen_then_delayed_retry(self):
         self.control(responses=[{'status':204,'delay':100}])
@@ -163,7 +163,7 @@ class Stage2DeliveryTests(unittest.TestCase):
             return real_post(url,**kwargs)
         with patch.object(checker.requests,'post',side_effect=shortened_timeout):
             with self.assertRaisesRegex(RuntimeError,'ReadTimeout'):self.run_engine()
-        self.assertFalse(self.seen())
+        self.assertTrue(all(self.days[1] in key for key in self.seen()))
         self.run_engine();self.assertEqual(len(self.messages()),2) # Other date remains independent.
         self.assertTrue(all(self.days[1] in key for key in self.seen()))
         self.control(advance=601000);self.run_engine();self.assertEqual(len(self.messages()),3)
@@ -248,6 +248,24 @@ with patch('checker.requests.post',side_effect=post):t.run_engine()
         self.assertEqual(len(self.messages()),3)
         # This third POST is the documented, irreducible acknowledgement-loss ambiguity.
         self.assertEqual(len(self.seen()),7)
+    def test_priority_http_delivery_precedes_slow_nonpriority_failure(self):
+        import time
+        def source(site,day):
+            if day==self.days[1]:
+                self.assertEqual(len(self.messages()),1, 'Priority must deliver before this request starts')
+                time.sleep(.05)
+                return (502,.05,{},'isolated 502',None)
+            return self.responses[day]
+        with self.engine(), patch.object(checker,'_production_public_request',side_effect=source):
+            checker.run_checker()
+        trace=json.loads((self.root/'latency_trace.json').read_text())
+        stages=[e['stage'] for e in trace['events']]
+        self.assertLess(stages.index('discord_response'),max(i for i,s in enumerate(stages) if s=='page_finished'))
+        self.assertIsNone(trace['official_first_seen_utc'])
+        self.assertFalse(trace['real_discord_latency_proven'])
+        self.assertTrue(all(e['at_utc'].endswith('+00:00') for e in trace['events']))
+        response=next(e for e in trace['events'] if e['stage']=='discord_response')
+        self.assertEqual(response['http_status'],204)
     def test_atomic_state_write_preserves_old_file(self):
         old=self.state.read_bytes()
         with patch.object(checker,'STATE_PATH',self.state),patch.object(checker.os,'replace',side_effect=OSError('isolated replace failure')):
