@@ -3,7 +3,7 @@ const GITHUB_OWNER = "jiho1101";
 const GITHUB_REPO = "cgv_alert";
 const WORKFLOW_FILE = "cgv-alert.yml";
 const GITHUB_REF = "main";
-const COMMAND_VERSION = "28";
+const COMMAND_VERSION = "29";
 const MONITORING_STATS_KEY = "monitoring_stats_24h_v2";
 const EMERGENCY_STATE_KEY = "emergency_fallback_v1";
 const EMERGENCY_STALE_MS = 8 * 60 * 1000;
@@ -1658,6 +1658,12 @@ function targetDetectionText(target) {
   return parts.join(" · ");
 }
 
+export function effectiveMonitoringHealth(status, now = Date.now()) {
+  const at = Date.parse(status?.last_run_at || "");
+  if (!Number.isFinite(at) || now-at > EMERGENCY_STALE_MS || at-now > 120000) return "error";
+  return status.health_summary || "normal";
+}
+
 async function buildSystemStatus(env) {
   const [
     statusRow,
@@ -1686,7 +1692,7 @@ async function buildSystemStatus(env) {
   }
 
   const targets = status.targets || [];
-  const health = status.health_summary || "normal";
+  const health = effectiveMonitoringHealth(status);
   const recentError = status.recent_error || "없음";
   const fallbackModes = new Set([
     "cgv_official",

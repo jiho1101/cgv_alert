@@ -269,7 +269,7 @@ jobs:
           import requests
 
           url = "https://cgv-alert-trigger.choi1101jh.workers.dev/api/runtime-check"
-          expected_version = "28"
+          expected_version = "29"
           token = os.environ.get("STATUS_API_TOKEN", "").strip()
 
           if not token:
@@ -370,7 +370,7 @@ jobs:
                           raise requests.RequestException("delivery journal not ready")
                       print("DELIVERY_JOURNAL_LIVE " + json.dumps(journal, ensure_ascii=False))
                       print(
-                          "Cloudflare Worker v28 + 2 live emergency targets confirmed (data freshness still unverified)"
+                          "Cloudflare Worker v29 + 2 live emergency targets confirmed (data freshness still unverified)"
                       )
                       raise SystemExit(0)
               except requests.RequestException as exc:

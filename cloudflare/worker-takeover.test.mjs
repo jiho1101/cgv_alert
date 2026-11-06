@@ -287,3 +287,9 @@ assert.equal(shouldDispatchCron(null, "2-57/5 * * * *"), false);
 assert.equal(shouldDispatchCron(false, "2-57/5 * * * *"), false);
 assert.equal(shouldDispatchCron(true, "2-57/5 * * * *"), true);
 console.log("BACKUP_CRON_POSITIVE_CLAIM_TEST PASS");
+
+import { effectiveMonitoringHealth } from './worker.js';
+assert.equal(effectiveMonitoringHealth({last_run_at:'2026-11-06T00:00:00Z',health_summary:'normal'},Date.parse('2026-11-06T00:09:00Z')),'error');
+assert.equal(effectiveMonitoringHealth({last_run_at:'invalid',health_summary:'normal'}),'error');
+assert.equal(effectiveMonitoringHealth({last_run_at:'2026-11-06T00:00:00Z',health_summary:'normal'},Date.parse('2026-11-06T00:05:00Z')),'normal');
+console.log('STALE_STATUS_FAIL_CLOSED PASS');
