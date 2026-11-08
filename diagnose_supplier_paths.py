@@ -15,6 +15,7 @@ import requests
 BASE = "https://mcp.aka.page"
 SITE = "0128"
 PROBES = (
+    ("near_movies", "/api/cgv/movies", {"theaterCode": SITE, "playDate": "20261109"}),
     ("near_published_default", "/api/cgv/timetable", {"theaterCode": SITE, "playDate": "20261109", "limit": "200"}),
     ("near_published_theater_only", "/api/cgv/timetable", {"theaterCode": SITE, "playDate": "20261109", "limit": "200", "queryMode": "theater-only"}),
     ("priority_default", "/api/cgv/timetable", {"theaterCode": SITE, "playDate": "20261218", "limit": "200"}),
@@ -41,6 +42,16 @@ def summarize(status, payload, error=None):
         if isinstance(rows, list):
             result["shape"] = "rows"
             result["row_count"] = len(rows)
+            # Listings are not booking showtimes. Expose only the watched
+            # movie identities for a pre-publication signal, not full payloads.
+            result["watched_movie_listings"] = [
+                {"movie_code": str(item.get("movieCode") or item.get("movNo") or "")[:50],
+                 "movie_name": str(item.get("movieName") or item.get("movNm") or "")[:80]}
+                for item in rows
+                if isinstance(item, dict)
+                and any(word in str(item.get("movieName") or item.get("movNm") or "")
+                        for word in ("어벤져스", "둠스데이", "듄"))
+            ]
         else:
             result["shape"] = "data_object_without_rows"
         result["theater_only_acknowledged"] = data.get("queryMode") == "theater-only"
