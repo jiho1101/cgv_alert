@@ -74,10 +74,46 @@ def annotate(snapshot, page_results, now):
     snapshot["last_cgv_success_at"] = (
         now.isoformat() if any(r.get("source_mode") == "cgv_official" or r.get("source_origin") == "cgv_first_party" for r in actual) else None
     )
+    target_observed = 0
+    priority_observed = 0
+    checked_target_count = 0
+    checked_priority_count = 0
     for target in snapshot.get("targets", []):
+        watched_dates = set(target.get("watched_dates") or [])
+        priority_dates = set(target.get("priority_dates") or [])
+        site = target.get("theater_code")
         matching = [r for key, r in page_results.items()
-                    if key.split("|", 1)[0] == target.get("theater_code")
-                    and key.split("|", 1)[1] in target.get("watched_dates", [])]
+                    if key.split("|", 1)[0] == site
+                    and key.split("|", 1)[1] in watched_dates]
+        priority_matching = [r for key, r in page_results.items()
+                             if key.split("|", 1)[0] == site
+                             and key.split("|", 1)[1] in priority_dates]
+        # A nonempty page may contain ONLY unrelated movies. Do not call
+        # that evidence of a watched movie, or of its priority date opening.
+        # These are positive observations, not claims of complete coverage.
+        target_matches = int(target.get("available_session_count") or 0)
+        priority_matches = int(target.get("priority_available_session_count") or 0)
+        observed = target_matches > 0 and any(
+            page_outcome(r) == "collected" for r in matching)
+        priority_seen = priority_matches > 0 and any(
+            page_outcome(r) == "collected" for r in priority_matching)
+        target["target_session_observed_now"] = observed
+        target["priority_target_session_observed_now"] = priority_seen
+        target["target_session_evidence"] = (
+            "observed" if observed else "unproven" if matching else "not_due")
+        target["priority_target_session_evidence"] = (
+            "observed" if priority_seen else
+            "unproven" if priority_matching else "not_due")
+        target["target_session_observed_at"] = now.isoformat() if observed else None
+        target["priority_target_session_observed_at"] = (
+            now.isoformat() if priority_seen else None)
+        target["last_page_collection_success_at"] = (
+            now.isoformat() if any(page_outcome(r) == "collected" for r in matching)
+            else None)
+        target_observed += int(observed)
+        priority_observed += int(priority_seen)
+        checked_target_count += int(bool(matching))
+        checked_priority_count += int(bool(priority_matching))
         target["collection"] = summarize(matching)
         target["last_success_at"] = (
             now.isoformat() if any(page_outcome(r) == "collected" for r in matching) else None
@@ -93,6 +129,26 @@ def annotate(snapshot, page_results, now):
             target["health_status"] = "warning"
         if outcome == "unconfirmed" and not target.get("last_error"):
             target["last_error"] = "회차 데이터 미확정: 빈 응답·미게시·텍스트 후보는 수집 성공이 아닙니다."
+    # Separate collected timetable pages from positive observations of the
+    # actual watched films. In particular, a 200 for an unrelated 12/29
+    # session must not be reported as evidence for the 12/18 watch.
+    count = len(snapshot.get("targets", []))
+    def evidence_summary(observed_count, checked_count):
+        return {
+            "outcome": (
+                "not_due" if not checked_count else
+                "observed" if count and observed_count == count else
+                "partial" if observed_count else "unproven"
+            ),
+            "target_count": count,
+            "checked_targets": checked_count,
+            "observed_targets": observed_count,
+        }
+    snapshot["active_target_evidence_version"] = 1
+    snapshot["active_target_evidence"] = evidence_summary(
+        target_observed, checked_target_count)
+    snapshot["priority_target_evidence"] = evidence_summary(
+        priority_observed, checked_priority_count)
     levels = {"normal": 0, "fallback": 1, "warning": 2, "error": 3}
     snapshot["health_summary"] = max(
         (t.get("health_status", "normal") for t in snapshot.get("targets", [])),
