@@ -5,6 +5,9 @@ on:
       - diagnose_supplier_paths.py
       - .github/workflows/cgv-source-path-diagnostic.yml
   workflow_dispatch:
+  # Four bounded observation windows/day; no push-triggered production scans.
+  schedule:
+    - cron: "17 0,6,12,18 * * *"
 
 permissions:
   contents: read
