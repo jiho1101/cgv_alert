@@ -123,7 +123,11 @@ def annotate(snapshot, page_results, now):
         target["last_primary_success_at"] = now.isoformat() if primary_now else None
         target["last_structured_success_at"] = target["last_primary_success_at"]
         outcome = target["collection"]["outcome"]
-        if outcome == "failed":
+        # Priority-date failure must not be downgraded by an unrelated
+        # successful page (e.g. Dec 29 HTTP 200 while Dec 18 is 502).
+        if outcome == "failed" or any(
+            page_outcome(r) == "failed" for r in priority_matching
+        ):
             target["health_status"] = "error"
         elif outcome in {"partial", "unconfirmed"}:
             target["health_status"] = "warning"
