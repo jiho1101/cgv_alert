@@ -91,12 +91,9 @@ def annotate(snapshot, page_results, now):
         # A nonempty page may contain ONLY unrelated movies. Do not call
         # that evidence of a watched movie, or of its priority date opening.
         # These are positive observations, not claims of complete coverage.
-        target_matches = int(target.get("available_session_count") or 0)
-        priority_matches = int(target.get("priority_available_session_count") or 0)
-        observed = target_matches > 0 and any(
-            page_outcome(r) == "collected" for r in matching)
-        priority_seen = priority_matches > 0 and any(
-            page_outcome(r) == "collected" for r in priority_matching)
+        trusted_dates = set(target.get("trusted_target_session_dates") or [])
+        observed = bool(trusted_dates & watched_dates)
+        priority_seen = bool(trusted_dates & priority_dates)
         target["target_session_observed_now"] = observed
         target["priority_target_session_observed_now"] = priority_seen
         target["target_session_evidence"] = (
