@@ -76,6 +76,7 @@ def main():
     parser.add_argument("--output", default="supplier_path_matrix.json")
     args = parser.parse_args()
     results = []
+    near_movie_code = None
     session = requests.Session()
     for name, path, params in PROBES:
         try:
@@ -99,11 +100,50 @@ def main():
                         json.dumps(keys, ensure_ascii=False).encode("utf-8")).hexdigest()
         except requests.RequestException as exc:
             result = summarize(None, None, type(exc).__name__)
+        if name == "near_published_default" and isinstance(payload, dict):
+            data = payload.get("data") or {}
+            rows = data.get("timetable") if isinstance(data, dict) else None
+            if isinstance(rows, list):
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    code = str(row.get("movieCode") or row.get("movNo") or "")
+                    if code.isdigit():
+                        near_movie_code = code
+                        break
         results.append({"probe": name, **result})
         print("SOURCE_PATH_DIAGNOSTIC", json.dumps(results[-1], ensure_ascii=False))
         if result.get("http_status") == 429:
             print("SOURCE_PATH_DIAGNOSTIC stopped: provider rate limit, no further requests")
             break
+    # Explicit movie-code requests may avoid a failing theater-wide
+    # fallback when the chosen movie has no future shows. Validate both
+    # a published date and the priority future date. Do not guess codes.
+    if near_movie_code and not any(r.get("http_status") == 429 for r in results):
+        for label, day in (
+            ("near_moviecode", "20261109"),
+            ("priority_moviecode", "20261218"),
+        ):
+            try:
+                response = session.get(
+                    BASE + "/api/cgv/timetable",
+                    params={"theaterCode": SITE, "playDate": day,
+                            "movieCode": near_movie_code, "limit": "200"},
+                    headers={"Accept": "application/json"}, timeout=17,
+                    allow_redirects=False,
+                )
+                try:
+                    payload = response.json()
+                except ValueError:
+                    payload = None
+                result = summarize(response.status_code, payload)
+            except requests.RequestException as exc:
+                result = summarize(None, None, type(exc).__name__)
+            entry = {"probe": label, "known_published_movie_code": near_movie_code, **result}
+            results.append(entry)
+            print("SOURCE_PATH_DIAGNOSTIC", json.dumps(entry, ensure_ascii=False))
+            if entry.get("http_status") == 429:
+                break
     packet = {"time_utc": datetime.now(timezone.utc).isoformat(),
               "theater_code": SITE, "priority_date": "20261218", "probes": results,
               "note": "A future empty response is unconfirmed, not proof of no showtimes. "
