@@ -76,6 +76,78 @@ class CollectionOutcomeTests(unittest.TestCase):
         self.assertEqual(workflow_exit_code(status), 1)
         self.assertEqual(ci_exit_code(status), 0)
 
+    def test_unrelated_future_page_cannot_prove_active_watch(self):
+        # Reproduce Nov 8: only an unrelated session on Dec 29 collected;
+        # the Dec 18 priority request fails with HTTP 502.
+        targets = [
+            {"id": name, "theater_code": "0128", "label": name,
+             "date_range": {"start": "20991218", "end": "20991231"},
+             "scan_strategy": {"priority_range": {
+                 "start": "20991218", "end": "20991218"}}}
+            for name in ("avengers", "dune")
+        ]
+        status = checker.build_runtime_snapshot(
+            {}, {}, targets,
+            datetime(2026, 11, 8, 19, 0, tzinfo=ZoneInfo("Asia/Seoul")),
+            {"0128|20991218": {"ok": False, "error": "HTTP 502"},
+             "0128|20991229": {"ok": True, "source_mode": "public_primary",
+                                "row_count": 1}},
+        )
+        self.assertEqual(status["collection"]["outcome"], "partial")
+        self.assertIsNotNone(status["last_monitoring_success_at"])
+        self.assertEqual(status["active_target_evidence"]["outcome"], "unproven")
+        self.assertEqual(status["priority_target_evidence"]["outcome"], "unproven")
+        self.assertEqual(status["active_target_evidence"]["observed_targets"], 0)
+        for target in status["targets"]:
+            self.assertFalse(target["target_session_observed_now"])
+            self.assertFalse(target["priority_target_session_observed_now"])
+            self.assertIsNone(target["target_session_observed_at"])
+            self.assertIsNotNone(target["last_page_collection_success_at"])
+            self.assertEqual(target["health_status"], "error")
+
+    def test_unconfirmed_fallback_row_is_not_validated_by_other_date(self):
+        target = {"id": "avengers", "theater_code": "0128",
+                  "date_range": {"start": "20991218", "end": "20991231"},
+                  "scan_strategy": {"priority_range": {
+                      "start": "20991218", "end": "20991218"}}}
+        status = checker.build_runtime_snapshot(
+            {}, {}, [target],
+            datetime(2026, 11, 8, 19, 0, tzinfo=ZoneInfo("Asia/Seoul")),
+            {"0128|20991218": {"ok": True, "source_mode": "text_fallback",
+                                "row_count": 1},
+             "0128|20991229": {"ok": True, "source_mode": "public_primary",
+                                "row_count": 1}},
+            found={"avengers": {"20991218": [{"_key": "untrusted-candidate"}]}},
+        )
+        self.assertEqual(status["collection"]["outcome"], "unconfirmed")
+        self.assertEqual(status["targets"][0]["available_session_count"], 1)
+        self.assertEqual(status["targets"][0]["trusted_target_session_dates"], [])
+        self.assertEqual(status["active_target_evidence"]["outcome"], "unproven")
+        self.assertEqual(status["priority_target_evidence"]["outcome"], "unproven")
+
+    def test_only_proven_watched_movie_counts_as_positive_evidence(self):
+        targets = [
+            {"id": name, "theater_code": "0128", "label": name,
+             "date_range": {"start": "20991218", "end": "20991231"},
+             "scan_strategy": {"priority_range": {
+                 "start": "20991218", "end": "20991218"}}}
+            for name in ("avengers", "dune")
+        ]
+        status = checker.build_runtime_snapshot(
+            {}, {}, targets,
+            datetime(2026, 11, 8, 19, 0, tzinfo=ZoneInfo("Asia/Seoul")),
+            {"0128|20991218": {"ok": True, "source_mode": "public_primary",
+                                "row_count": 1}},
+            found={"avengers": {"20991218": [{"_key": "session-1"}]}},
+        )
+        self.assertEqual(status["active_target_evidence"]["outcome"], "partial")
+        self.assertEqual(status["priority_target_evidence"]["outcome"], "partial")
+        self.assertEqual(status["active_target_evidence"]["observed_targets"], 1)
+        self.assertTrue(status["targets"][0]["priority_target_session_observed_now"])
+        self.assertFalse(status["targets"][1]["priority_target_session_observed_now"])
+        self.assertEqual(status["targets"][0]["priority_available_session_count"], 1)
+        self.assertEqual(status["targets"][1]["priority_available_session_count"], 0)
+
     def test_real_30_minute_full_scan_with_unpublished_dates_does_not_email(self):
         results = {
             "0128|20991218": {"ok": False, "error": (

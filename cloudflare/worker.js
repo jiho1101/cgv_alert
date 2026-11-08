@@ -569,7 +569,7 @@ function monitoringStatsText(stats) {
       : `${stats.structured_rate}%`;
   return [
     `새 체계 조회 ${stats.total}회 · 구조화 ${stats.structured} · 보조 ${stats.fallback} · 실패 ${stats.failed} · 미확정 ${stats.unconfirmed || 0}`,
-    `감시 성공률 ${success} · 구조화 비율 ${structured}`,
+    `시간표 수집 성공률 ${success} · 구조화 비율 ${structured}`,
   ].join("\n");
 }
 
@@ -1755,7 +1755,7 @@ async function buildSystemStatus(env) {
         inline: false,
       },
       {
-        name: "🛡️ 마지막 감시 성공",
+        name: "🛡️ 마지막 시간표 수집 성공",
         value: formatTime(
           status.last_monitoring_success_at ||
           status.last_primary_success_at ||
@@ -1781,7 +1781,7 @@ async function buildSystemStatus(env) {
         inline: false,
       },
       {
-        name: "📊 최근 24시간 감시 · 새 체계",
+        name: "📊 최근 24시간 시간표 조회 · 새 체계",
         value: monitoringStatsText(monitoringStats),
         inline: false,
       },
@@ -1838,7 +1838,9 @@ async function buildWatchList(env) {
               ? `활성 · ${formatTime(target.api_guard_until)}까지`
               : "비활성"
           }`,
-          `**마지막 감시 성공** ${formatTime(target.last_success_at)}`,
+          `**마지막 시간표 수집 성공** ${formatTime(target.last_success_at)}`,
+          `**대상 영화 회차** ${target.target_session_evidence === "observed" ? "이번 실행에서 실제 회차 확인" : "이번 실행에서 확인되지 않음"}`,
+          `**핵심 날짜 회차** ${target.priority_target_session_evidence === "observed" ? "이번 실행에서 실제 회차 확인" : "이번 실행에서 확인되지 않음"}`,
           `**마지막 제3자 구조화 정상** ${formatTime(
             target.last_primary_success_at ||
             target.last_structured_success_at,
