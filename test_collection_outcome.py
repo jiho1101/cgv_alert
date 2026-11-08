@@ -105,6 +105,26 @@ class CollectionOutcomeTests(unittest.TestCase):
             self.assertIsNotNone(target["last_page_collection_success_at"])
             self.assertEqual(target["health_status"], "error")
 
+    def test_unconfirmed_fallback_row_is_not_validated_by_other_date(self):
+        target = {"id": "avengers", "theater_code": "0128",
+                  "date_range": {"start": "20991218", "end": "20991231"},
+                  "scan_strategy": {"priority_range": {
+                      "start": "20991218", "end": "20991218"}}}
+        status = checker.build_runtime_snapshot(
+            {}, {}, [target],
+            datetime(2026, 11, 8, 19, 0, tzinfo=ZoneInfo("Asia/Seoul")),
+            {"0128|20991218": {"ok": True, "source_mode": "text_fallback",
+                                "row_count": 1},
+             "0128|20991229": {"ok": True, "source_mode": "public_primary",
+                                "row_count": 1}},
+            found={"avengers": {"20991218": [{"_key": "untrusted-candidate"}]}},
+        )
+        self.assertEqual(status["collection"]["outcome"], "unconfirmed")
+        self.assertEqual(status["targets"][0]["available_session_count"], 1)
+        self.assertEqual(status["targets"][0]["trusted_target_session_dates"], [])
+        self.assertEqual(status["active_target_evidence"]["outcome"], "unproven")
+        self.assertEqual(status["priority_target_evidence"]["outcome"], "unproven")
+
     def test_only_proven_watched_movie_counts_as_positive_evidence(self):
         targets = [
             {"id": name, "theater_code": "0128", "label": name,
