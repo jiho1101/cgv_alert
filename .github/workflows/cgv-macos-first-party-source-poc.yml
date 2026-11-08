@@ -1,0 +1,76 @@
+name: CGV first-party native macOS source single-shot
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cgv-macos-first-party-source-poc.yml"
+permissions:
+  contents: read
+jobs:
+  macos-public-source:
+    runs-on: macos-15
+    timeout-minutes: 4
+    steps:
+      - name: Request published schedule once using native Apple HTTP client, no retries or identity changes
+        shell: bash
+        run: |
+          cat > /tmp/cgv-native-source.swift <<'SWIFT'
+          import Foundation
+
+          let dates = ["20261109", "20261218"]
+          func probe(_ day: String) -> Bool {
+              var components = URLComponents(string: "https://cgv.co.kr/api/v1/booking/searchMovScnInfo")!
+              components.queryItems = [
+                  URLQueryItem(name:"coCd",value:"A420"),
+                  URLQueryItem(name:"siteNo",value:"0128"),
+                  URLQueryItem(name:"scnYmd",value:day),
+                  URLQueryItem(name:"rtctlScopCd",value:"08")
+              ]
+              var request = URLRequest(url: components.url!)
+              request.setValue("application/json",forHTTPHeaderField:"Accept")
+              request.timeoutInterval = 15
+              let sem = DispatchSemaphore(value:0)
+              var qualified = false
+              let task = URLSession.shared.dataTask(with:request){data,response,error in
+                  defer{sem.signal()}
+                  let code = (response as? HTTPURLResponse)?.statusCode
+                  var validRows = 0
+                  var structured = false
+                  if code == 200, let data=data,
+                     let root=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any],
+                     let status=root["statusCode"] as? Int, status == 0 {
+                      structured=true
+                      if let rows=root["data"] as? [[String:Any]] {
+                          validRows = rows.filter{
+                              ($0["movNo"] as? String) != nil
+                              && ($0["scnsrtTm"] as? String) != nil
+                          }.count
+                      }
+                  }
+                  qualified = structured && validRows > 0
+                  let outcome = code == 403 ? "access_restricted" :
+                      code == 429 ? "rate_limited" :
+                      qualified ? "structured_showtimes" :
+                      structured ? "empty_unconfirmed" : "not_qualified"
+                  print("NATIVE_SOURCE "+String(describing:[
+                      "date":day, "status":code as Any,
+                      "structured":structured, "validated_rows":validRows,
+                      "outcome":outcome, "network_error":error?.localizedDescription ?? ""
+                  ]))
+              }
+              task.resume()
+              if sem.wait(timeout:.now()+20) == .timedOut {
+                  task.cancel()
+                  print("NATIVE_SOURCE date=\(day) transport_timeout")
+                  return false
+              }
+              return qualified
+          }
+          if probe(dates[0]) {
+              // Check future date only if the same client verifies actual
+              // published sessions first. Empty future rows are not "closed".
+              _ = probe(dates[1])
+          } else {
+              print("NATIVE_SOURCE no confirmed supplier route; no further requests")
+          }
+          SWIFT
+          swift /tmp/cgv-native-source.swift
