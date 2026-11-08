@@ -477,6 +477,22 @@ def build_runtime_snapshot(
             for play_ymd, rows in (found.get(target_id) or {}).items()
             if play_ymd in priority_dates
         )
+        # Only mark a watched movie observed if its own session was parsed
+        # from a validated structured page FOR THE SAME DATE. An unrelated
+        # successful page cannot corroborate a fallback candidate elsewhere.
+        structured_modes = {
+            "public_primary", "cgv_official", "independent_static",
+            "verified_feed", "primary_independent_combined",
+        }
+        trusted_target_session_dates = sorted(
+            play_ymd
+            for play_ymd, rows in (found.get(target_id) or {}).items()
+            if rows
+            and (page_results.get(f"{theater_code}|{play_ymd}") or {}).get("ok")
+            and (page_results.get(f"{theater_code}|{play_ymd}") or {}).get("source_mode")
+                in structured_modes
+            and int((page_results.get(f"{theater_code}|{play_ymd}") or {}).get("row_count") or 0) > 0
+        )
         priority_primary_success = False
         for page_id, result in page_results.items():
             parts = page_id.split("|", 1)
@@ -569,6 +585,7 @@ def build_runtime_snapshot(
                 "last_error": last_error,
                 "available_session_count": available_session_count,
                 "priority_available_session_count": priority_available_session_count,
+                "trusted_target_session_dates": trusted_target_session_dates,
                 "detection_mode": detection_mode,
                 "priority_independent_probe": priority_independent_probe,
                 "source_sentinel_status": sentinel_status,
