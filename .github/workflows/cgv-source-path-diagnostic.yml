@@ -1,0 +1,32 @@
+name: CGV source path read-only diagnostic
+on:
+  pull_request:
+    paths:
+      - diagnose_supplier_paths.py
+      - .github/workflows/cgv-source-path-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install requests==2.32.5
+      - name: Validate diagnostic parser syntax
+        run: python -m py_compile diagnose_supplier_paths.py
+      - name: Compare supplier publication paths without changing Production
+        run: python diagnose_supplier_paths.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cgv-source-path-matrix
+          path: supplier_path_matrix.json
+          retention-days: 7
+          if-no-files-found: warn
