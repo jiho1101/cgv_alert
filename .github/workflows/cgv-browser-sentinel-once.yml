@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/cgv-browser-sentinel-once.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/cgv-browser-sentinel-once.yml"
 
 permissions:
   contents: read
