@@ -7,6 +7,7 @@ path. Unknown / invalid responses are failures, never evidence of "not on sale".
 No CGV direct requests, bypass headers, proxies, credentials or cache busting.
 """
 import argparse
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -85,10 +86,24 @@ def main():
             except ValueError:
                 payload = None
             result = summarize(response.status_code, payload)
+            if name.endswith("_movies") and isinstance(payload, dict):
+                data = payload.get("data") or {}
+                movies = data.get("movies") if isinstance(data, dict) else None
+                if isinstance(movies, list):
+                    keys = sorted(
+                        (str(row.get("movieCode") or row.get("movNo") or ""),
+                         str(row.get("movieName") or row.get("movNm") or ""))
+                        for row in movies if isinstance(row, dict)
+                    )
+                    result["listing_identity_sha256"] = hashlib.sha256(
+                        json.dumps(keys, ensure_ascii=False).encode("utf-8")).hexdigest()
         except requests.RequestException as exc:
             result = summarize(None, None, type(exc).__name__)
         results.append({"probe": name, **result})
         print("SOURCE_PATH_DIAGNOSTIC", json.dumps(results[-1], ensure_ascii=False))
+        if result.get("http_status") == 429:
+            print("SOURCE_PATH_DIAGNOSTIC stopped: provider rate limit, no further requests")
+            break
     packet = {"time_utc": datetime.now(timezone.utc).isoformat(),
               "theater_code": SITE, "priority_date": "20261218", "probes": results,
               "note": "A future empty response is unconfirmed, not proof of no showtimes. "
