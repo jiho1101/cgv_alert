@@ -3871,22 +3871,6 @@
           {
             "added_keys": [],
             "added_session_count": 0,
-            "at": "2026-11-12T06:05:49.056951+09:00",
-            "bookable_seat_rows": 5,
-            "date": "20261115",
-            "event": "unchanged",
-            "first_publication_rows": 0,
-            "http_status": 200,
-            "observation_state": "published",
-            "official_publication_time_known": false,
-            "reason": null,
-            "recovered_after_unconfirmed": false,
-            "rejected_rows": 0,
-            "validated_rows": 5
-          },
-          {
-            "added_keys": [],
-            "added_session_count": 0,
             "at": "2026-11-12T06:45:53.248692+09:00",
             "bookable_seat_rows": 5,
             "date": "20261115",
@@ -4190,23 +4174,44 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 7
+          },
+          {
+            "added_keys": [
+              "30001439|0128|20261115|2026111501286|20:00",
+              "79273|0128|20261115|2026111501281|10:20",
+              "89717|0128|20261115|2026111501287|22:35"
+            ],
+            "added_session_count": 3,
+            "at": "2026-11-12T19:25:49.967700+09:00",
+            "bookable_seat_rows": 5,
+            "date": "20261115",
+            "event": "additional_sessions",
+            "first_publication_rows": 0,
+            "http_status": 200,
+            "observation_state": "published",
+            "official_publication_time_known": false,
+            "reason": null,
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 8
           }
         ],
         "identity_baseline_established": true,
-        "last_attempt_at": "2026-11-12T18:45:48.494166+09:00",
+        "last_attempt_at": "2026-11-12T19:25:49.967700+09:00",
         "last_observation_state": "published",
-        "last_run_id": "43194292552:1",
+        "last_run_id": "43200255570:1",
         "last_status": 200,
-        "last_success_at": "2026-11-12T18:45:48.494166+09:00",
+        "last_success_at": "2026-11-12T19:25:49.967700+09:00",
         "last_unconfirmed_at": "2026-11-11T21:25:48.330335+09:00",
-        "last_valid_rows": 7,
+        "last_valid_rows": 8,
         "latest": {
           "added_keys": [
-            "79273|0128|20261115|2026111501281|10:10",
-            "89717|0128|20261115|2026111501286|20:10"
+            "30001439|0128|20261115|2026111501286|20:00",
+            "79273|0128|20261115|2026111501281|10:20",
+            "89717|0128|20261115|2026111501287|22:35"
           ],
-          "added_session_count": 2,
-          "at": "2026-11-12T18:45:48.494166+09:00",
+          "added_session_count": 3,
+          "at": "2026-11-12T19:25:49.967700+09:00",
           "bookable_seat_rows": 5,
           "date": "20261115",
           "event": "additional_sessions",
@@ -4217,20 +4222,23 @@
           "reason": null,
           "recovered_after_unconfirmed": false,
           "rejected_rows": 0,
-          "validated_rows": 7
+          "validated_rows": 8
         },
         "observed_keys": [
           "30001323|0128|20261115|2026111501282|12:05",
+          "30001439|0128|20261115|2026111501286|20:00",
           "79273|0128|20261115|2026111501281|10:10",
+          "79273|0128|20261115|2026111501281|10:20",
           "84945|0128|20261115|2026111501281|09:00",
           "84945|0128|20261115|2026111501283|15:30",
           "84945|0128|20261115|2026111501284|18:35",
           "84945|0128|20261115|2026111501285|21:40",
-          "89717|0128|20261115|2026111501286|20:10"
+          "89717|0128|20261115|2026111501286|20:10",
+          "89717|0128|20261115|2026111501287|22:35"
         ],
         "published_at": "2026-11-09T18:15:46.985878+09:00",
         "started_at": "2026-11-07T00:01:09.709676+09:00",
-        "successful_observations": 103,
+        "successful_observations": 104,
         "theater_code": "0128"
       },
       "0128|20261116": {
@@ -6033,24 +6041,8 @@
       },
       "0128|20261218": {
         "date": "20261218",
-        "failed_or_unconfirmed_observations": 2009,
+        "failed_or_unconfirmed_observations": 2010,
         "history": [
-          {
-            "added_keys": [],
-            "added_session_count": 0,
-            "at": "2026-11-12T17:45:50.737088+09:00",
-            "bookable_seat_rows": 0,
-            "date": "20261218",
-            "event": "unconfirmed",
-            "first_publication_rows": 0,
-            "http_status": 502,
-            "observation_state": "unknown",
-            "official_publication_time_known": false,
-            "reason": "invalid_structure",
-            "recovered_after_unconfirmed": false,
-            "rejected_rows": 0,
-            "validated_rows": 0
-          },
           {
             "added_keys": [],
             "added_session_count": 0,
@@ -6354,17 +6346,33 @@
             "recovered_after_unconfirmed": false,
             "rejected_rows": 0,
             "validated_rows": 0
+          },
+          {
+            "added_keys": [],
+            "added_session_count": 0,
+            "at": "2026-11-12T19:25:46.549683+09:00",
+            "bookable_seat_rows": 0,
+            "date": "20261218",
+            "event": "unconfirmed",
+            "first_publication_rows": 0,
+            "http_status": 502,
+            "observation_state": "unknown",
+            "official_publication_time_known": false,
+            "reason": "invalid_structure",
+            "recovered_after_unconfirmed": false,
+            "rejected_rows": 0,
+            "validated_rows": 0
           }
         ],
-        "last_attempt_at": "2026-11-12T19:20:47.494362+09:00",
+        "last_attempt_at": "2026-11-12T19:25:46.549683+09:00",
         "last_observation_state": "unknown",
-        "last_run_id": "43199504975:1",
+        "last_run_id": "43200255570:1",
         "last_status": 502,
-        "last_unconfirmed_at": "2026-11-12T19:20:47.494362+09:00",
+        "last_unconfirmed_at": "2026-11-12T19:25:46.549683+09:00",
         "latest": {
           "added_keys": [],
           "added_session_count": 0,
-          "at": "2026-11-12T19:20:47.494362+09:00",
+          "at": "2026-11-12T19:25:46.549683+09:00",
           "bookable_seat_rows": 0,
           "date": "20261218",
           "event": "unconfirmed",
@@ -11115,9 +11123,9 @@
   },
   "public_api_guard": {
     "backoff_reason": "adaptive",
-    "backoff_until": "2026-11-12T20:20:47.494362+09:00",
-    "failure_count": 5,
-    "last_failure_at": "2026-11-12T19:20:47.494362+09:00",
+    "backoff_until": "2026-11-12T20:25:46.549683+09:00",
+    "failure_count": 6,
+    "last_failure_at": "2026-11-12T19:25:46.549683+09:00",
     "last_status": 502,
     "last_success_at": "2026-11-12T19:00:46.810057+09:00",
     "retry_after_raw": "",
@@ -12911,16 +12919,16 @@
     ]
   },
   "source_transition_canary": {
-    "attempts": 65,
-    "date": "20261119",
-    "failed_observations": 1,
+    "attempts": 208,
+    "date": "20261115",
+    "failed_observations": 104,
     "history": [
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T06:40:48.010735+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T06:45:53.248692+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -12929,14 +12937,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T07:20:48.658321+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T07:25:55.718201+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -12945,14 +12953,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T08:01:07.317153+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T08:05:50.312906+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -12961,14 +12969,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T08:40:47.225497+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T08:45:50.706194+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -12977,14 +12985,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T09:20:51.315659+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T09:25:51.073647+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -12993,14 +13001,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T10:01:11.781069+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T10:05:45.801108+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13009,14 +13017,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T10:40:50.325591+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T10:45:49.062593+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13025,14 +13033,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T11:20:48.144666+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T11:25:50.219800+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13041,14 +13049,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T12:01:11.100160+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T12:05:48.244723+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13057,14 +13065,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T12:40:46.963720+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T12:45:50.205091+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13073,14 +13081,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T13:20:47.143587+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T13:25:46.918850+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13089,14 +13097,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T14:01:10.794871+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T14:05:47.812354+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13105,14 +13113,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T14:40:49.798741+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T14:45:49.333950+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13121,14 +13129,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T15:20:50.291258+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T15:25:46.746301+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13137,14 +13145,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T16:01:05.724401+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T16:05:50.602639+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13153,14 +13161,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T16:40:50.731695+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T16:45:48.008976+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13169,14 +13177,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T17:20:48.143673+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T17:25:49.189529+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13185,14 +13193,14 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
         "added_keys": [],
         "added_session_count": 0,
-        "at": "2026-11-12T18:01:04.039159+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
+        "at": "2026-11-12T18:05:49.808443+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
         "event": "unchanged",
         "first_publication_rows": 0,
         "http_status": 200,
@@ -13201,15 +13209,18 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 5
       },
       {
-        "added_keys": [],
-        "added_session_count": 0,
-        "at": "2026-11-12T18:40:49.008879+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
-        "event": "unchanged",
+        "added_keys": [
+          "79273|0128|20261115|2026111501281|10:10",
+          "89717|0128|20261115|2026111501286|20:10"
+        ],
+        "added_session_count": 2,
+        "at": "2026-11-12T18:45:48.494166+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
+        "event": "additional_sessions",
         "first_publication_rows": 0,
         "http_status": 200,
         "observation_state": "published",
@@ -13217,15 +13228,19 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 7
       },
       {
-        "added_keys": [],
-        "added_session_count": 0,
-        "at": "2026-11-12T19:20:51.883436+09:00",
-        "bookable_seat_rows": 12,
-        "date": "20261119",
-        "event": "unchanged",
+        "added_keys": [
+          "30001439|0128|20261115|2026111501286|20:00",
+          "79273|0128|20261115|2026111501281|10:20",
+          "89717|0128|20261115|2026111501287|22:35"
+        ],
+        "added_session_count": 3,
+        "at": "2026-11-12T19:25:49.967700+09:00",
+        "bookable_seat_rows": 5,
+        "date": "20261115",
+        "event": "additional_sessions",
         "first_publication_rows": 0,
         "http_status": 200,
         "observation_state": "published",
@@ -13233,32 +13248,30 @@
         "reason": null,
         "recovered_after_unconfirmed": false,
         "rejected_rows": 0,
-        "validated_rows": 12
+        "validated_rows": 8
       }
     ],
-    "last_probe_date": "20261119",
-    "last_request_at": "2026-11-12T19:20:51.883436+09:00",
+    "last_probe_date": "20261115",
+    "last_request_at": "2026-11-12T19:25:49.967700+09:00",
     "last_status": 200,
-    "last_unqualified_at": "2026-11-11T21:20:47.383254+09:00",
-    "last_valid_rows": 12,
+    "last_unqualified_at": "2026-11-11T21:25:48.330335+09:00",
+    "last_valid_rows": 8,
     "observed_keys": [
-      "30001551|0128|20261119|2026111901282|12:25",
-      "30001551|0128|20261119|2026111901284|18:00",
-      "30001783|0128|20261119|2026111901281|10:00",
-      "30001783|0128|20261119|2026111901281|11:00",
-      "30001783|0128|20261119|2026111901282|12:50",
-      "30001783|0128|20261119|2026111901282|14:00",
-      "30001783|0128|20261119|2026111901283|15:40",
-      "30001783|0128|20261119|2026111901283|17:00",
-      "30001783|0128|20261119|2026111901284|18:30",
-      "30001783|0128|20261119|2026111901284|19:55",
-      "30001783|0128|20261119|2026111901285|21:20",
-      "30001783|0128|20261119|2026111901285|22:50"
+      "30001323|0128|20261115|2026111501282|12:05",
+      "30001439|0128|20261115|2026111501286|20:00",
+      "79273|0128|20261115|2026111501281|10:10",
+      "79273|0128|20261115|2026111501281|10:20",
+      "84945|0128|20261115|2026111501281|09:00",
+      "84945|0128|20261115|2026111501283|15:30",
+      "84945|0128|20261115|2026111501284|18:35",
+      "84945|0128|20261115|2026111501285|21:40",
+      "89717|0128|20261115|2026111501286|20:10",
+      "89717|0128|20261115|2026111501287|22:35"
     ],
-    "qualified_at": "2026-11-11T00:01:05.095762+09:00",
+    "qualified_at": "2026-11-09T18:15:46.985878+09:00",
     "scheduler_version": 2,
-    "started_at": "2026-11-11T00:01:05.095762+09:00",
-    "successful_observations": 64,
+    "started_at": "2026-11-07T00:01:09.709676+09:00",
+    "successful_observations": 104,
     "transition_from_unqualified": false,
     "version": 2
   },
