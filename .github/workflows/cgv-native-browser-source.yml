@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   qualify-public-page:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 7
     steps:
       - uses: actions/checkout@v4
